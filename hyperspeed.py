@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# -*- coding: utf-8 -*-
 
 # ZetCode PyGTK tutorial 
 #
@@ -35,7 +36,7 @@ class PyApp(gtk.Window):
         toolbarBox = gtk.HBox(False, 10)
 
         filterBox = gtk.HBox(False, 10)
-        filterLabel = gtk.Label('Search: ')
+        filterLabel = gtk.Label('Filter: ')
         filterBox.pack_start(filterLabel, False, False,)
         filterEntry = gtk.Entry()
         filterEntry.add_events(gtk.gdk.KEY_RELEASE_MASK)
@@ -82,6 +83,7 @@ class PyApp(gtk.Window):
         toolsTreeAutorunColumn.set_resizable(True)
         #toolsTreeInMistikaColumn.set_cell_data_func(cell3, self.checkbox_toggle)
         toolsTreeAutorunColumn.set_expand(False)
+        toolsTreeAutorunColumn.set_cell_data_func(cell3, self.checkbox_toggle)
         self.toolsTree.append_column(toolsTreeAutorunColumn)
         cell2 = gtk.CellRendererToggle()
         cell2.connect("toggled", self.on_tools_toggle, self.toolsTree)
@@ -93,12 +95,12 @@ class PyApp(gtk.Window):
         self.toolsTreestore = gtk.TreeStore(str, bool, bool, str) # Name, show in Mistika, is folder, autorun
         toolsTreestore = self.toolsTreestore
         it = toolsTreestore.append(None, ["Conform", False, True, ''])
-        toolsTreestore.append(it, ["tcSwap.py", True, False, ''])
-        toolsTreestore.append(it, ["empConform.py", False, False, ''])
+        toolsTreestore.append(it, ["tcSwap.py", True, False, 'Never'])
+        toolsTreestore.append(it, ["empConform.py", False, False, 'Never'])
         it = toolsTreestore.append(None, ["VFX", False, True, ''])
-        toolsTreestore.append(it, ["some vfx tool", False, False, ''])
+        toolsTreestore.append(it, ["some vfx tool", False, False, 'Never'])
         itit = toolsTreestore.append(it, ["folder", False, True, ''])
-        toolsTreestore.append(itit, ["bar.py", False, False, ''])
+        toolsTreestore.append(itit, ["bar.py", False, False, 'Never'])
         toolsTreestore.append(None, ["font_parse.py", False, False, 'Hourly'])
 
         toolsFilter = toolsTreestore.filter_new();
@@ -107,7 +109,10 @@ class PyApp(gtk.Window):
         self.toolsTree.set_model(toolsFilter)
         self.toolsTree.expand_all()
 
-        vbox.pack_start(self.toolsTree)
+        scrolled_window = gtk.ScrolledWindow()
+        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+        scrolled_window.add(self.toolsTree)
+        vbox.pack_start(scrolled_window)
 
         #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
         self.afterscriptsTree = gtk.TreeView()
@@ -140,7 +145,10 @@ class PyApp(gtk.Window):
         self.afterscriptsTree.set_model(afterscriptsFilter)
         self.afterscriptsTree.expand_all()
 
-        vbox.pack_start(self.afterscriptsTree)
+        scrolled_window = gtk.ScrolledWindow()
+        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+        scrolled_window.add(self.afterscriptsTree)
+        vbox.pack_start(scrolled_window)
 
         #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
         self.sharedTree = gtk.TreeView()
@@ -165,7 +173,10 @@ class PyApp(gtk.Window):
         self.sharedTree.set_model(sharedFilter)
         self.sharedTree.expand_all()
 
-        vbox.pack_start(self.sharedTree)
+        scrolled_window = gtk.ScrolledWindow()
+        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+        scrolled_window.add(self.sharedTree)
+        vbox.pack_start(scrolled_window)
 
         #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
         self.linksTree = gtk.TreeView()
@@ -195,9 +206,29 @@ class PyApp(gtk.Window):
         self.linksTree.set_model(linksFilter)
         self.linksTree.expand_all()
 
-        vbox.pack_start(self.linksTree)
+        scrolled_window = gtk.ScrolledWindow()
+        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+        scrolled_window.add(self.linksTree)
+        vbox.pack_start(scrolled_window)
 
-        vbox.pack_start(gtk.Label('Afterscript queue'), False, False, 5)
+        vbox.pack_start(gtk.HSeparator())
+        headerBox = gtk.HBox(False, 5)
+        headerLabel  = gtk.Label('<span size="large"><b>Afterscript queue:</b></span>')
+        headerLabel.set_use_markup(True)
+        headerBox.pack_start(headerLabel, False, False, 5)
+        vbox.pack_start(headerBox, False, False, 2)
+        afterscriptsToolbar = gtk.HBox(False, 2)
+        #afterscriptsToolbar.pack_start(headerBox, False, False, 2)
+        checkButton = gtk.CheckButton('Process queue')
+        checkButton.set_property("active", True)
+        afterscriptsToolbar.pack_start(checkButton, False, False, 5)
+        afterscriptsToolbar.pack_start(gtk.CheckButton('Process jobs for other hosts'), False, False, 5)
+        simulBox =  gtk.HBox(False, 5)
+        simulBox.pack_start(gtk.Label('Simultaneous jobs:'), False, False, 0)
+        simulBox.pack_start(gtk.SpinButton(gtk.Adjustment(value=5, lower=0, upper=999, step_incr=1, page_incr=0, page_size=0)), False, False, 0)
+        afterscriptsToolbar.pack_start(simulBox, False, False, 5)
+        vbox.pack_start(afterscriptsToolbar, False, False, 2)
+        afterscriptsBox = gtk.HBox(False, 5)
         self.queueTree = gtk.TreeView()
         queueTreeNameColumn = gtk.TreeViewColumn('Project', gtk.CellRendererText(), text=0)
         queueTreeNameColumn.set_resizable(True)
@@ -228,12 +259,39 @@ class PyApp(gtk.Window):
 
         self.queueTreestore = gtk.TreeStore(str, str, str, str, str)
         queueTreestore = self.queueTreestore
-        it = queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
-
+        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
         self.queueTree.set_model(queueTreestore)
         self.queueTree.expand_all()
-
-        vbox.pack_start(self.queueTree)
+        scrolled_window = gtk.ScrolledWindow()
+        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+        scrolled_window.add(self.queueTree)
+        afterscriptsBox.pack_start(scrolled_window)
+        afterscriptsButtons = gtk.VBox(False, 3)
+        afterscriptsButtons.set_size_request(30,80)
+        gtk.stock_add([(gtk.STOCK_GO_UP, "", 0, 0, "")])
+        upButton = gtk.Button(stock=gtk.STOCK_GO_UP)
+        afterscriptsButtons.pack_start(upButton)
+        gtk.stock_add([(gtk.STOCK_GO_DOWN, "", 0, 0, "")])
+        downButton = gtk.Button(stock=gtk.STOCK_GO_DOWN)
+        afterscriptsButtons.pack_start(downButton)
+        afterscriptsBox.pack_start(afterscriptsButtons, False, False)
+        vbox.pack_start(afterscriptsBox, True, True, 5)
 
 
         footer = gtk.HBox(False, 10)
