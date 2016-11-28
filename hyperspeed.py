@@ -32,15 +32,7 @@ class PyApp(gtk.Window):
 
         #halign = gtk.Alignment(0, 0, 0, 0)
         #halign.add(title)
-        versionBox = gtk.HBox(False, 10)
-
-        versionStr = '<span color="#11cc11">Up to date.</span> Updated 27 Nov 2016.'
-        versionLabel = gtk.Label(versionStr)
-        versionLabel.set_use_markup(gtk.TRUE)
-        versionBox.pack_start(versionLabel, False, False, 5)
-        updateButton = gtk.Button('Update')
-        #versionBox.pack_start(updateButton, False, False, 5)
-        vbox.pack_start(versionBox, False, False)
+        toolbarBox = gtk.HBox(False, 10)
 
         filterBox = gtk.HBox(False, 10)
         filterLabel = gtk.Label('Search: ')
@@ -52,89 +44,174 @@ class PyApp(gtk.Window):
         filterEntry.grab_focus()
         self.filterEntry = filterEntry
         filterBox.pack_start(filterEntry, False, False)
-        vbox.pack_start(filterBox, False, False, 10)
+        toolbarBox.pack_start(filterBox, False, False)
 
+        versionBox = gtk.HBox(False, 2)
+        versionStr = '<span color="#11cc11">Up to date.</span> Updated 27 Nov 2016.'
+        versionLabel = gtk.Label(versionStr)
+        versionLabel.set_use_markup(gtk.TRUE)
+        versionBox.pack_start(versionLabel, False, False, 5)
+        updateButton = gtk.Button('Update')
+        #versionBox.pack_start(updateButton, False, False, 5)
+        toolbarBox.pack_end(versionBox, False, False)
 
+        vbox.pack_start(toolbarBox, False, False, 10)
+
+        #vbox.pack_start(gtk.Label('Tools'), False, False, 5)
         self.toolsTree = gtk.TreeView()
         cell = gtk.CellRendererText()
-        toolsTreeNameColumn = gtk.TreeViewColumn('Name', cell, text=0)
+        toolsTreeNameColumn = gtk.TreeViewColumn('Tools', cell, text=0)
         toolsTreeNameColumn.set_resizable(True)
-        toolsTreeNameColumn.set_sizing(gtk.TREE_VIEW_COLUMN_FIXED)
-        toolsTreeNameColumn.set_fixed_width(650)
+        toolsTreeNameColumn.set_expand(True)
         self.toolsTree.append_column(toolsTreeNameColumn)
         cell2 = gtk.CellRendererToggle()
-        #cell2.set_property('activatable', True)
         cell2.connect("toggled", self.on_tools_toggle, self.toolsTree)
         toolsTreeInMistikaColumn = gtk.TreeViewColumn("Show in Mistika", cell2, active=1)
-
-        toolsTreeInMistikaColumn.set_resizable(True)
-        toolsTreeInMistikaColumn.set_sizing(gtk.TREE_VIEW_COLUMN_FIXED)
-        #toolsTreeInMistikaColumn.set_fixed_width(3)
-        #toolsTreeInMistikaColumn.set_expand(True)
-        # toolsTreeInMistikaColumn.set_fixed_width(6)
-        # toolsTreeInMistikaColumn.set_sizing(gtk.TREE_VIEW_COLUMN_FIXED)
-        #toolsTreeInMistikaColumn.set_title("Show in Mistika")
-        #toolsTreeInMistikaColumn.pack_start(cell2, False)
-        #toolsTreeInMistikaColumn.add_attribute(cell2, "active", 0)
+        toolsTreeInMistikaColumn.set_cell_data_func(cell2, self.checkbox_toggle)
+        toolsTreeInMistikaColumn.set_expand(False)
         self.toolsTree.append_column(toolsTreeInMistikaColumn)
 
-        self.toolsTreestore = gtk.TreeStore(str, bool)
+        self.toolsTreestore = gtk.TreeStore(str, bool, bool) # Name, show in Mistika, is folder
         toolsTreestore = self.toolsTreestore
-        it = toolsTreestore.append(None, ["Conform", False])
-        toolsTreestore.append(it, ["tcSwap.py", True])
-        toolsTreestore.append(it, ["empConform.py", False])
+        it = toolsTreestore.append(None, ["Conform", False, True])
+        toolsTreestore.append(it, ["tcSwap.py", True, False])
+        toolsTreestore.append(it, ["empConform.py", False, False])
 
-        it = toolsTreestore.append(None, ["VFX", False])
-        toolsTreestore.append(it, ["some vfx tool", False])
-        itit = toolsTreestore.append(it, ["folder", False])
-        toolsTreestore.append(itit, ["bar.py", False])
+        it = toolsTreestore.append(None, ["VFX", False, True])
+        toolsTreestore.append(it, ["some vfx tool", False, False])
+        itit = toolsTreestore.append(it, ["folder", False, True])
+        toolsTreestore.append(itit, ["bar.py", False, False])
 
-        # toolsTree.set_model(toolsTreestore)
         toolsFilter = toolsTreestore.filter_new();
         self.toolsFilter = toolsFilter
-        toolsFilter.set_visible_func(self.FilterTree, filterEntry);
+        toolsFilter.set_visible_func(self.FilterTree, (filterEntry, self.toolsTree));
         self.toolsTree.set_model(toolsFilter)
         self.toolsTree.expand_all()
 
         vbox.pack_start(self.toolsTree)
 
-        table = gtk.Table(8, 4, False)
-        table.set_col_spacings(3)
+        #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
+        self.afterscriptsTree = gtk.TreeView()
+        cell = gtk.CellRendererText()
+        afterscriptsTreeNameColumn = gtk.TreeViewColumn('Afterscripts', cell, text=0)
+        afterscriptsTreeNameColumn.set_resizable(True)
+        afterscriptsTreeNameColumn.set_expand(True)
+        self.afterscriptsTree.append_column(afterscriptsTreeNameColumn)
+        cell2 = gtk.CellRendererToggle()
+        cell2.connect("toggled", self.on_afterscripts_toggle, self.afterscriptsTree)
+        afterscriptsTreeInMistikaColumn = gtk.TreeViewColumn("Show in Mistika", cell2, active=1)
+        afterscriptsTreeInMistikaColumn.set_cell_data_func(cell2, self.checkbox_toggle)
+        afterscriptsTreeInMistikaColumn.set_expand(False)
+        self.afterscriptsTree.append_column(afterscriptsTreeInMistikaColumn)
 
-        wins = gtk.TextView()
-        wins.set_editable(False)
-        wins.modify_fg(gtk.STATE_NORMAL, gtk.gdk.Color(5140, 5140, 5140))
-        wins.set_cursor_visible(False)
-        table.attach(wins, 0, 2, 1, 3, gtk.FILL | gtk.EXPAND,
-            gtk.FILL | gtk.EXPAND, 1, 1)
+        self.afterscriptsTreestore = gtk.TreeStore(str, bool, bool) # Name, show in Mistika, is folder
+        afterscriptsTreestore = self.afterscriptsTreestore
+        it = afterscriptsTreestore.append(None, ["Conform", False, True])
+        afterscriptsTreestore.append(it, ["tcSwap.py", True, False])
+        afterscriptsTreestore.append(it, ["empConform.py", False, False])
 
-        activate = gtk.Button("Activate")
-        activate.set_size_request(50, 30)
-        table.attach(activate, 3, 4, 1, 2, gtk.FILL, 
-            gtk.SHRINK, 1, 1)
-        
-        valign = gtk.Alignment(0, 0, 0, 0)
-        close = gtk.Button("Close")
-        close.set_size_request(70, 30)
-        valign.add(close)
-        table.set_row_spacing(1, 3)
-        table.attach(valign, 3, 4, 2, 3, gtk.FILL,
-            gtk.FILL | gtk.EXPAND, 1, 1)
-            
-        halign2 = gtk.Alignment(0, 1, 0, 0)
-        help = gtk.Button("Help")
-        help.set_size_request(70, 30)
-        halign2.add(help)
-        table.set_row_spacing(3, 6)
-        table.attach(halign2, 0, 1, 4, 5, gtk.FILL, 
-            gtk.FILL, 0, 0)
-        
-        ok = gtk.Button("OK")
-        ok.set_size_request(70, 30)
-        table.attach(ok, 3, 4, 4, 5, gtk.FILL, 
-            gtk.FILL, 0, 0);
-                   
-        #vbox.pack_start(table, True, True, 10)
+        it = afterscriptsTreestore.append(None, ["VFX", False, True])
+        afterscriptsTreestore.append(it, ["some vfx tool", False, False])
+        itit = afterscriptsTreestore.append(it, ["folder", False, True])
+        afterscriptsTreestore.append(itit, ["bar.py", False, False])
+
+        afterscriptsFilter = afterscriptsTreestore.filter_new();
+        self.afterscriptsFilter = afterscriptsFilter
+        afterscriptsFilter.set_visible_func(self.FilterTree, (filterEntry, self.afterscriptsTree));
+        self.afterscriptsTree.set_model(afterscriptsFilter)
+        self.afterscriptsTree.expand_all()
+
+        vbox.pack_start(self.afterscriptsTree)
+
+        #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
+        self.sharedTree = gtk.TreeView()
+        cell = gtk.CellRendererText()
+        sharedTreeNameColumn = gtk.TreeViewColumn('Shared items', cell, text=0)
+        sharedTreeNameColumn.set_resizable(True)
+        sharedTreeNameColumn.set_expand(True)
+        self.sharedTree.append_column(sharedTreeNameColumn)
+        cell2 = gtk.CellRendererToggle()
+        cell2.connect("toggled", self.on_shared_toggle, self.sharedTree)
+        sharedTreeInMistikaColumn = gtk.TreeViewColumn("Active", cell2, active=1)
+        sharedTreeInMistikaColumn.set_cell_data_func(cell2, self.checkbox_toggle)
+        sharedTreeInMistikaColumn.set_expand(False)
+        self.sharedTree.append_column(sharedTreeInMistikaColumn)
+        self.sharedTreestore = gtk.TreeStore(str, bool, bool) # Name, active, is folder
+        sharedTreestore = self.sharedTreestore
+        it = sharedTreestore.append(None, ["Shared items", False, True])
+        sharedTreestore.append(it, ["hotKeys.cfg", False, False])
+        sharedFilter = sharedTreestore.filter_new();
+        self.sharedFilter = sharedFilter
+        sharedFilter.set_visible_func(self.FilterTree, (filterEntry, self.sharedTree));
+        self.sharedTree.set_model(sharedFilter)
+        self.sharedTree.expand_all()
+
+        vbox.pack_start(self.sharedTree)
+
+        #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
+        self.linksTree = gtk.TreeView()
+        cell = gtk.CellRendererText()
+        linksTreeNameColumn = gtk.TreeViewColumn('Links', cell, text=0)
+        linksTreeNameColumn.set_resizable(True)
+        linksTreeNameColumn.set_expand(True)
+        self.linksTree.append_column(linksTreeNameColumn)
+        cell2 = gtk.CellRendererText()
+        linksTreeUrlColumn = gtk.TreeViewColumn('URL', cell2, text=1, foreground=2)
+        linksTreeUrlColumn.set_resizable(True)
+        linksTreeUrlColumn.set_expand(True)
+        #linksTreeUrlColumn.add_attribute(cell2, 'underline-set', 3)
+        #linksTreeUrlColumn.set_attribute(cell2, foreground='blue')
+        self.linksTree.append_column(linksTreeUrlColumn)
+        self.linksTreestore = gtk.TreeStore(str, str, str) # Name, url, color, underline
+        linksTreestore = self.linksTreestore
+        it = linksTreestore.append(None, ["sgo.es", '', 'black'])
+        linksTreestore.append(it, ["Support home", 'http://support.sgo.es/support/home', '#9999ff'])
+
+        it = linksTreestore.append(None, ["bovesan.com", '', 'black'])
+        linksTreestore.append(it, ["Comp3D builder", 'https://bovesan.com/cb', '#9999ff'])
+        linksTreestore.append(it, ["Online Reel Browser", 'https://bovesan.com/orb', '#9999ff'])
+        linksFilter = linksTreestore.filter_new();
+        self.linksFilter = linksFilter
+        linksFilter.set_visible_func(self.FilterTree, (filterEntry, self.linksTree));
+        self.linksTree.set_model(linksFilter)
+        self.linksTree.expand_all()
+
+        vbox.pack_start(self.linksTree)
+
+        vbox.pack_start(gtk.Label('Afterscript queue'), False, False, 5)
+        self.queueTree = gtk.TreeView()
+        queueTreeNameColumn = gtk.TreeViewColumn('Project', gtk.CellRendererText(), text=0)
+        queueTreeNameColumn.set_resizable(True)
+        queueTreeNameColumn.set_expand(False)
+        self.queueTree.append_column(queueTreeNameColumn)
+        queueTreeNameColumn = gtk.TreeViewColumn('Name', gtk.CellRendererText(), text=1)
+        queueTreeNameColumn.set_resizable(True)
+        queueTreeNameColumn.set_expand(False)
+        self.queueTree.append_column(queueTreeNameColumn)
+        queueTreeNameColumn = gtk.TreeViewColumn('Status', gtk.CellRendererText(), text=2)
+        queueTreeNameColumn.set_resizable(True)
+        queueTreeNameColumn.set_expand(True)
+        self.queueTree.append_column(queueTreeNameColumn)
+        queueTreeNameColumn = gtk.TreeViewColumn('Added by', gtk.CellRendererText(), text=3)
+        queueTreeNameColumn.set_resizable(True)
+        queueTreeNameColumn.set_expand(False)
+        self.queueTree.append_column(queueTreeNameColumn)
+        queueTreeNameColumn = gtk.TreeViewColumn('Added time', gtk.CellRendererText(), text=4)
+        queueTreeNameColumn.set_resizable(True)
+        queueTreeNameColumn.set_expand(False)
+        self.queueTree.append_column(queueTreeNameColumn)
+        cell2 = gtk.CellRendererToggle()
+        #cell2.connect("toggled", self.on_queue_toggle, self.queueTree)
+
+        self.queueTreestore = gtk.TreeStore(str, str, str, str, str)
+        queueTreestore = self.queueTreestore
+        it = queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+
+        self.queueTree.set_model(queueTreestore)
+        self.queueTree.expand_all()
+
+        vbox.pack_start(self.queueTree)
+
 
         footer = gtk.HBox(False, 10)
         quitButton = gtk.Button('Quit')
@@ -156,8 +233,11 @@ class PyApp(gtk.Window):
         gtk.main_quit()
 
     def on_filter(self, widget, event):
-        print widget.get_text()
+        #print widget.get_text()
         self.toolsFilter.refilter();
+        self.afterscriptsFilter.refilter();
+        self.sharedFilter.refilter();
+        self.linksFilter.refilter();
         #self.toolsTreestore.foreach(self.row_match, widget.get_text())
 
     def row_match(self, model, path, iter, data):
@@ -171,8 +251,10 @@ class PyApp(gtk.Window):
         # if self.myView.row_expanded(path):
         #    self.expandedLines.append(path)
         #visible_func(model, iter, user_data):
-    def FilterTree(self, model, iter, widget, seek_up=True, seek_down=True, filter=False):
-        self.toolsTree.expand_all()
+
+    def FilterTree(self, model, iter, user_data, seek_up=True, seek_down=True, filter=False):
+        widget, tree = user_data
+        tree.expand_all()
         if not filter:
             filter = widget.get_text().lower()
         name = model.get_value(iter, 0).lower()
@@ -180,21 +262,21 @@ class PyApp(gtk.Window):
         has_child = model.iter_has_child(iter)
             # print name + ' has child'
             # return True
-        print 'Seeking ' + name
+        #print 'Seeking ' + name
         for word in filter.split():
             if word in name:
                 continue
             relative_match = False
             if seek_down and has_child:
-                print 'Seeking children'
+                #print 'Seeking children'
                 for n in range(model.iter_n_children(iter)):
-                    if self.FilterTree(model, model.iter_nth_child(iter, n), widget, seek_up=False, filter=word):
-                        print 'Child matches!'
+                    if self.FilterTree(model, model.iter_nth_child(iter, n), user_data, seek_up=False, filter=word):
+                        #print 'Child matches!'
                         relative_match = True
             if seek_up and parent != None:
-                print 'Seeking parents'
-                if self.FilterTree(model, parent, widget, seek_down=False, filter=word):
-                    print 'Parent matches!'
+                #print 'Seeking parents'
+                if self.FilterTree(model, parent, user_data, seek_down=False, filter=word):
+                    #print 'Parent matches!'
                     relative_match = True
             if relative_match:
                 continue
@@ -202,22 +284,30 @@ class PyApp(gtk.Window):
 
         return True
 
-# private bool FilterTree (Gtk.TreeModel model, Gtk.TreeIter iter)
-#     {
-#         string artistName = model.GetValue (iter, 0).ToString ();
- 
-#         if (filterEntry.Text == "")
-#             return true;
- 
-#         if (artistName.IndexOf (filterEntry.Text) > -1)
-#             return true;
-#         else
-#             return false;
-#     }
+    def checkbox_toggle(self, column, cell, model, iter):
+        has_child = model.iter_has_child(iter)
+        is_folder = model[iter][2]
+        if has_child:
+            cell.set_property('visible', False)
+        else:
+            cell.set_property('visible', True)
 
     def on_tools_toggle(self, cellrenderertoggle, path, *ignore):
         self.toolsTreestore[path][1] = not self.toolsTreestore[path][1]
         print self.toolsTreestore[path][0]
+
+
+    def on_afterscripts_toggle(self, cellrenderertoggle, path, *ignore):
+        name = self.afterscriptsTreestore[path][0]
+        state = not self.afterscriptsTreestore[path][1]
+        self.afterscriptsTreestore[path][1] = state
+        print name + ' ' + repr(state)
+
+    def on_shared_toggle(self, cellrenderertoggle, path, *ignore):
+        name = self.sharedTreestore[path][0]
+        state = not self.sharedTreestore[path][1]
+        self.sharedTreestore[path][1] = state
+        print name + ' ' + repr(state)
 
 
 PyApp()
