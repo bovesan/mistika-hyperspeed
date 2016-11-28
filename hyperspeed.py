@@ -64,23 +64,42 @@ class PyApp(gtk.Window):
         toolsTreeNameColumn.set_resizable(True)
         toolsTreeNameColumn.set_expand(True)
         self.toolsTree.append_column(toolsTreeNameColumn)
+        autorunStates = gtk.ListStore(str)
+        autorunStates.append(['Never'])
+        autorunStates.append(['On startup'])
+        autorunStates.append(['Hourly'])
+        autorunStates.append(['Daily'])
+        autorunStates.append(['Weekly'])
+        autorunStates.append(['Monthly'])
+        cell3 = gtk.CellRendererCombo()
+        #cell3.connect("toggled", self.on_tools_toggle, self.toolsTree)
+        cell3.set_property("editable", True)
+        cell3.set_property("has-entry", False)
+        cell3.set_property("text-column", 0)
+        cell3.set_property("model", autorunStates)
+        cell3.connect("edited", self.on_combo_changed)
+        toolsTreeAutorunColumn = gtk.TreeViewColumn("Autorun", cell3, text=3)
+        toolsTreeAutorunColumn.set_resizable(True)
+        #toolsTreeInMistikaColumn.set_cell_data_func(cell3, self.checkbox_toggle)
+        toolsTreeAutorunColumn.set_expand(False)
+        self.toolsTree.append_column(toolsTreeAutorunColumn)
         cell2 = gtk.CellRendererToggle()
         cell2.connect("toggled", self.on_tools_toggle, self.toolsTree)
         toolsTreeInMistikaColumn = gtk.TreeViewColumn("Show in Mistika", cell2, active=1)
         toolsTreeInMistikaColumn.set_cell_data_func(cell2, self.checkbox_toggle)
         toolsTreeInMistikaColumn.set_expand(False)
+        toolsTreeInMistikaColumn.set_resizable(True)
         self.toolsTree.append_column(toolsTreeInMistikaColumn)
-
-        self.toolsTreestore = gtk.TreeStore(str, bool, bool) # Name, show in Mistika, is folder
+        self.toolsTreestore = gtk.TreeStore(str, bool, bool, str) # Name, show in Mistika, is folder, autorun
         toolsTreestore = self.toolsTreestore
-        it = toolsTreestore.append(None, ["Conform", False, True])
-        toolsTreestore.append(it, ["tcSwap.py", True, False])
-        toolsTreestore.append(it, ["empConform.py", False, False])
-
-        it = toolsTreestore.append(None, ["VFX", False, True])
-        toolsTreestore.append(it, ["some vfx tool", False, False])
-        itit = toolsTreestore.append(it, ["folder", False, True])
-        toolsTreestore.append(itit, ["bar.py", False, False])
+        it = toolsTreestore.append(None, ["Conform", False, True, ''])
+        toolsTreestore.append(it, ["tcSwap.py", True, False, ''])
+        toolsTreestore.append(it, ["empConform.py", False, False, ''])
+        it = toolsTreestore.append(None, ["VFX", False, True, ''])
+        toolsTreestore.append(it, ["some vfx tool", False, False, ''])
+        itit = toolsTreestore.append(it, ["folder", False, True, ''])
+        toolsTreestore.append(itit, ["bar.py", False, False, ''])
+        toolsTreestore.append(None, ["font_parse.py", False, False, 'Hourly'])
 
         toolsFilter = toolsTreestore.filter_new();
         self.toolsFilter = toolsFilter
@@ -188,6 +207,10 @@ class PyApp(gtk.Window):
         queueTreeNameColumn.set_resizable(True)
         queueTreeNameColumn.set_expand(False)
         self.queueTree.append_column(queueTreeNameColumn)
+        queueTreeNameColumn = gtk.TreeViewColumn('Progress', gtk.CellRendererProgress())
+        queueTreeNameColumn.set_resizable(True)
+        queueTreeNameColumn.set_expand(False)
+        self.queueTree.append_column(queueTreeNameColumn)
         queueTreeNameColumn = gtk.TreeViewColumn('Status', gtk.CellRendererText(), text=2)
         queueTreeNameColumn.set_resizable(True)
         queueTreeNameColumn.set_expand(True)
@@ -227,7 +250,10 @@ class PyApp(gtk.Window):
         self.show_all()
         self.set_keep_above(True)
         #self.present()
-        
+
+    def on_combo_changed(self, widget, path, text):
+        self.toolsTreestore[path][3] = text
+
     def on_quit(self, widget):
         print 'Closed by: ' + repr(widget)
         gtk.main_quit()
