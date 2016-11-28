@@ -58,6 +58,7 @@ class PyApp(gtk.Window):
 
         vbox.pack_start(toolbarBox, False, False, 10)
 
+        notebook = gtk.Notebook()
         #vbox.pack_start(gtk.Label('Tools'), False, False, 5)
         self.toolsTree = gtk.TreeView()
         cell = gtk.CellRendererText()
@@ -112,7 +113,8 @@ class PyApp(gtk.Window):
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(self.toolsTree)
-        vbox.pack_start(scrolled_window)
+        #vbox.pack_start(scrolled_window)
+        notebook.append_page(scrolled_window, gtk.Label('Tools'))
 
         #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
         self.afterscriptsTree = gtk.TreeView()
@@ -148,7 +150,8 @@ class PyApp(gtk.Window):
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(self.afterscriptsTree)
-        vbox.pack_start(scrolled_window)
+        #vbox.pack_start(scrolled_window)
+        notebook.append_page(scrolled_window, gtk.Label('Afterscripts'))
 
         #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
         self.sharedTree = gtk.TreeView()
@@ -176,7 +179,8 @@ class PyApp(gtk.Window):
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(self.sharedTree)
-        vbox.pack_start(scrolled_window)
+        #vbox.pack_start(scrolled_window)
+        notebook.append_page(scrolled_window, gtk.Label('Shared items'))
 
         #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
         self.linksTree = gtk.TreeView()
@@ -209,9 +213,11 @@ class PyApp(gtk.Window):
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(self.linksTree)
-        vbox.pack_start(scrolled_window)
+        #vbox.pack_start(scrolled_window)
+        notebook.append_page(scrolled_window, gtk.Label('Web links'))
+        vbox.pack_start(notebook)
 
-        vbox.pack_start(gtk.HSeparator())
+        #vbox.pack_start(gtk.HSeparator())
         headerBox = gtk.HBox(False, 5)
         headerLabel  = gtk.Label('<span size="large"><b>Afterscript queue:</b></span>')
         headerLabel.set_use_markup(True)
