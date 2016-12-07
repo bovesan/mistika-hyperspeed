@@ -11,7 +11,7 @@
 # last edited: February 2009
 
 import gtk
-import sys
+import sys, platform
 
 
 class PyApp(gtk.Window):
@@ -23,7 +23,8 @@ class PyApp(gtk.Window):
         self.set_size_request(800, screen.get_height()-200)
         self.set_border_width(20)
         self.set_position(gtk.WIN_POS_CENTER)
-        self.set_resizable(False) # Because resizing crashes the app on Mac
+        if 'darwin' in platform.system().lower():
+            self.set_resizable(False) # Because resizing crashes the app on Mac
 
         vbox = gtk.VBox(False, 10)
 
@@ -62,7 +63,7 @@ class PyApp(gtk.Window):
         #vbox.pack_start(gtk.Label('Tools'), False, False, 5)
         self.toolsTree = gtk.TreeView()
         cell = gtk.CellRendererText()
-        toolsTreeNameColumn = gtk.TreeViewColumn('Tools', cell, text=0)
+        toolsTreeNameColumn = gtk.TreeViewColumn('', cell, text=0)
         toolsTreeNameColumn.set_resizable(True)
         toolsTreeNameColumn.set_expand(True)
         self.toolsTree.append_column(toolsTreeNameColumn)
@@ -119,7 +120,7 @@ class PyApp(gtk.Window):
         #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
         self.afterscriptsTree = gtk.TreeView()
         cell = gtk.CellRendererText()
-        afterscriptsTreeNameColumn = gtk.TreeViewColumn('Afterscripts', cell, text=0)
+        afterscriptsTreeNameColumn = gtk.TreeViewColumn('', cell, text=0)
         afterscriptsTreeNameColumn.set_resizable(True)
         afterscriptsTreeNameColumn.set_expand(True)
         self.afterscriptsTree.append_column(afterscriptsTreeNameColumn)
@@ -156,7 +157,7 @@ class PyApp(gtk.Window):
         #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
         self.sharedTree = gtk.TreeView()
         cell = gtk.CellRendererText()
-        sharedTreeNameColumn = gtk.TreeViewColumn('Shared items', cell, text=0)
+        sharedTreeNameColumn = gtk.TreeViewColumn('', cell, text=0)
         sharedTreeNameColumn.set_resizable(True)
         sharedTreeNameColumn.set_expand(True)
         self.sharedTree.append_column(sharedTreeNameColumn)
@@ -185,7 +186,7 @@ class PyApp(gtk.Window):
         #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
         self.linksTree = gtk.TreeView()
         cell = gtk.CellRendererText()
-        linksTreeNameColumn = gtk.TreeViewColumn('Links', cell, text=0)
+        linksTreeNameColumn = gtk.TreeViewColumn('', cell, text=0)
         linksTreeNameColumn.set_resizable(True)
         linksTreeNameColumn.set_expand(True)
         self.linksTree.append_column(linksTreeNameColumn)
