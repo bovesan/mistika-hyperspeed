@@ -2,6 +2,7 @@
 #-*- coding:utf-8 -*-
 
 import json
+import glob
 import gobject
 import gtk
 import os
@@ -26,7 +27,7 @@ class MyThread(threading.Thread):
         window.set_position(gtk.WIN_POS_CENTER)
         if 'darwin' in platform.system().lower():
             self.window.set_resizable(False) # Because resizing crashes the app on Mac
-
+        self.is_mamba = False
         vbox = gtk.VBox(False, 10)
 
         self.status_bar = gtk.Statusbar()     
@@ -104,7 +105,10 @@ class MyThread(threading.Thread):
         button.connect("clicked", self.remove_host)
         hbox.pack_end(button, False, False, 0)
 
-        button = gtk.Button('List projects')
+        button = gtk.Button('Reload local projects')
+        button.connect("clicked", self.reload_local_projects)
+        hbox.pack_start(button, False, False, 0)
+        button = gtk.Button('Load remote projects')
         button.connect("clicked", self.on_host_select)
         hbox.pack_start(button, False, False, 0)
 
@@ -114,8 +118,8 @@ class MyThread(threading.Thread):
         self.projectsTree = gtk.TreeView()
         self.project_cell = gtk.CellRendererText()
         project_cell = self.project_cell
-        project_cell.set_property('foreground', '#cccccc')
-        project_cell.set_property('style', 'italic')
+        #project_cell.set_property('foreground', '#cccccc')
+        #project_cell.set_property('style', 'italic')
         #cell.connect('edited', self.on_host_edit, (self.projectsTreeStore, 0))
         column = gtk.TreeViewColumn('', project_cell, text=0)
         column.set_resizable(True)
@@ -125,9 +129,11 @@ class MyThread(threading.Thread):
         #hostsTreeStore.append(None, ["Horten", 'horten.hocusfocus.no', 'mistika', 22, '/Volumes/SLOW_HF/PROJECTS/'])
         #hostsTreeStore.append(None, ["Oslo", 's.hocusfocus.no', 'mistika', 22, '/Volumes/SLOW_HF/PROJECTS/'])
         #self.hosts_populate(projectsTreeStore)
-        projectsTreeStore.append(None, ['Loading projects ...'])
+        #projectsTreeStore.append(None, ['Loading projects ...'])
         self.projectsTree.set_model(projectsTreeStore)
-        self.projectsTree.expand_all()
+        self.projectsTree.set_search_column(0)
+        #self.projectsTree.expand_all()
+        self.reload_local_projects()
 
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
@@ -160,20 +166,79 @@ class MyThread(threading.Thread):
         t.setDaemon(True)
         t.start()
 
+    def reload_local_projects(self, *widget):
+        t = threading.Thread(target=self.list_projects_local)
+        self.threads.append(t)
+        t.setDaemon(True)
+        t.start()
+
+    def list_projects_local(self):
+        projects_path_file = os.path.expanduser('~/MISTIKA-ENV/MISTIKA_WORK')
+        if not os.path.isfile(projects_path_file):
+            projects_path_file = os.path.expanduser('~/MAMBA-ENV/MAMBA_WORK')
+        if not os.path.isfile(projects_path_file):
+            gobject.idle_add(self.error, 'Cannot determine local projects path')
+        try:
+            for line in open(projects_path_file):
+                if line.split()[0].endswith('_WORK'):
+                    projects_path = line.split()[-1]
+                    break
+            for root, dirs, files in os.walk(projects_path):
+                root_rel = root.replace(projects_path, '')
+                for name in dirs:
+                    gobject.idle_add(self.append_project, 'local', root_rel+'/'+name)
+        except:
+            raise
+
+    def append_project(self, location, path, children=None):
+        path = path.lstrip('/')
+        projects_in_tree = {}
+        tree = self.projectsTreeStore
+        parts = path.split('/')
+        parent = None
+        for i, row in enumerate(tree):
+            if row[0] == parts[0]:
+                parent = tree[i]
+                parts.pop(0)
+                iterator = parent.iterchildren()
+                while len(parts) > 1:
+                    print path
+                    item = iterator.next()
+                    print item[0]
+                    if path.startswith(item[0]):
+                        parent = item
+                        iterator = parent.iterchildren()
+        if parent == None:
+            parent = self.projectsTreeStore.append(None, [path])
+            self.projectsTreeStore.append(parent, ['Loading project structure ...'])
+        else:
+            parent = self.projectsTreeStore.append(parent, [path])
+            self.projectsTreeStore.append(parent, ['Loading project structure ...'])
+
+
+
+
     def list_projects(self, address, user, port, projects_path):
         cmd = ['ssh', '-oBatchMode=yes', '-p', str(port), '%s@%s' % (user, address), 'ls -xd %s/*/' % projects_path]
         try:
-            output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+            p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            output = p1.communicate()[0]
+            if p1.returncode > 0:
+                gobject.idle_add(self.error, output)
+                return
             projects = output.splitlines()
         except:
+            print output
             raise
+            gobject.idle_add(self.error, output)
             return
         self.projectsTreeStore.clear()
         self.project_cell.set_property('foreground', '#000000')
         self.project_cell.set_property('style', 'normal')
         for project_path in projects:
             project_name = project_path.strip('/').split('/')[-1]
-            self.projectsTreeStore.append(None, [project_name])
+            gobject.idle_add(self.append_project, 'remote', project_name)
+            #self.projectsTreeStore.append(None, [project_name])
         # cmd = ['ssh', '-p', str(port), '%s@%s' % (user, address), 'grep MISTIKA_WORK MISTIKA-ENV/MISTIKA_WORK']
         # output = subprocess.check_output(cmd)
         # projects_path = output.splitlines()[0].split()[1]
@@ -202,7 +267,7 @@ class MyThread(threading.Thread):
         self.hosts_store()
 
     def error(self, message):
-        dialog = gtk.MessageDialog(parent=self, 
+        dialog = gtk.MessageDialog(parent=self.window, 
                             flags=gtk.DIALOG_MODAL, 
                             type=gtk.MESSAGE_ERROR, 
                             buttons=gtk.BUTTONS_NONE, 
