@@ -28,6 +28,7 @@ class MyThread(threading.Thread):
         if 'darwin' in platform.system().lower():
             self.window.set_resizable(False) # Because resizing crashes the app on Mac
         self.is_mamba = False
+
         vbox = gtk.VBox(False, 10)
 
         self.status_bar = gtk.Statusbar()     
@@ -133,6 +134,7 @@ class MyThread(threading.Thread):
         self.projectsTree.set_model(projectsTreeStore)
         self.projectsTree.set_search_column(0)
         #self.projectsTree.expand_all()
+        self.rows = {}
         self.reload_local_projects()
 
         scrolled_window = gtk.ScrolledWindow()
@@ -186,35 +188,30 @@ class MyThread(threading.Thread):
             for root, dirs, files in os.walk(projects_path):
                 root_rel = root.replace(projects_path, '')
                 for name in dirs:
-                    gobject.idle_add(self.append_project, 'local', root_rel+'/'+name)
+                    gobject.idle_add(self.append_project, 'local', root_rel+'/'+name+'/')
+                for name in files:
+                    if not root_rel == '':
+                        gobject.idle_add(self.append_project, 'local', root_rel+'/'+name)
         except:
             raise
 
     def append_project(self, location, path, children=None):
-        path = path.lstrip('/')
-        projects_in_tree = {}
-        tree = self.projectsTreeStore
-        parts = path.split('/')
-        parent = None
-        for i, row in enumerate(tree):
-            if row[0] == parts[0]:
-                parent = tree[i]
-                parts.pop(0)
-                iterator = parent.iterchildren()
-                while len(parts) > 1:
-                    print path
-                    item = iterator.next()
-                    print item[0]
-                    if path.startswith(item[0]):
-                        parent = item
-                        iterator = parent.iterchildren()
-        if parent == None:
-            parent = self.projectsTreeStore.append(None, [path])
-            self.projectsTreeStore.append(parent, ['Loading project structure ...'])
+        is_dir = path.endswith('/')
+        path = path.strip('/')
+        if '/' in path:
+            parent_dir, basename = path.rsplit('/', 1) # parent_dir will not have trailing slash
+            parent = self.rows[parent_dir]
         else:
-            parent = self.projectsTreeStore.append(parent, [path])
-            self.projectsTreeStore.append(parent, ['Loading project structure ...'])
-
+            parent_dir = None
+            basename = path
+            parent = None
+        tree = self.projectsTreeStore
+        print 'Path: %s Parent dir: %s ' % (path, parent_dir)
+        print 'Parent: ' + repr(parent)
+        if path in self.rows: # Update
+            self.rows[path][0] = basename
+        else: # Add
+            self.rows[path] = self.projectsTreeStore.append(parent, [basename])
 
 
 
