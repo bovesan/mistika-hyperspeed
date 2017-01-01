@@ -21,7 +21,7 @@ class MyThread(threading.Thread):
         self.window = gtk.Window()
         window = self.window
         screen = self.window.get_screen()
-        window.set_title("Mistika remote sync")
+        window.set_title("Mistika sync")
         window.set_size_request(screen.get_width()-200, screen.get_height()-200)
         window.set_border_width(20)
         window.set_position(gtk.WIN_POS_CENTER)
@@ -106,12 +106,15 @@ class MyThread(threading.Thread):
         button.connect("clicked", self.remove_host)
         hbox.pack_end(button, False, False, 0)
 
-        button = gtk.Button('Reload local projects')
+        self.button_load_local_projects = gtk.Button('Load local projects')
+        self.button_load_local_projects.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
         button.connect("clicked", self.reload_local_projects)
-        hbox.pack_start(button, False, False, 0)
-        button = gtk.Button('Load remote projects')
-        button.connect("clicked", self.on_host_select)
-        hbox.pack_start(button, False, False, 0)
+        hbox.pack_start(self.button_load_local_projects, False, False, 0)
+
+        self.button_load_remote_projects = gtk.Button('Load remote projects')
+        self.button_load_remote_projects.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
+        self.button_load_remote_projects.connect("clicked", self.on_host_select)
+        hbox.pack_start(self.button_load_remote_projects, False, False, 0)
 
 
         vbox.pack_start(hbox, False, False, 0)
@@ -202,6 +205,8 @@ class MyThread(threading.Thread):
         t.start()
 
     def list_projects_local(self):
+        loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
+        self.button_load_local_projects.set_image(loader)
         projects_path_file = os.path.expanduser('~/MISTIKA-ENV/MISTIKA_WORK')
         if not os.path.isfile(projects_path_file):
             projects_path_file = os.path.expanduser('~/MAMBA-ENV/MAMBA_WORK')
@@ -221,6 +226,7 @@ class MyThread(threading.Thread):
                         gobject.idle_add(self.append_project, False, root_rel+'/'+name)
         except:
             raise
+        loader.set_from_stock(gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
 
     def append_project(self, is_remote, path, children=None):
         is_dir = path.endswith('/')
@@ -273,6 +279,8 @@ class MyThread(threading.Thread):
 
 
     def list_projects(self, address, user, port, projects_path):
+        loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
+        self.button_load_remote_projects.set_image(loader)
         cmd = ['ssh', '-oBatchMode=yes', '-p', str(port), '%s@%s' % (user, address), 'ls -xd %s/*/ %s/*/*' % (projects_path, projects_path)]
         try:
             p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -292,6 +300,7 @@ class MyThread(threading.Thread):
             project_name = project_path.strip('/').split('/')[-1]
             rel = project_path.replace(projects_path, '')
             gobject.idle_add(self.append_project, True, rel)
+        loader.set_from_stock(gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
             #self.projectsTreeStore.append(None, [project_name])
         # cmd = ['ssh', '-p', str(port), '%s@%s' % (user, address), 'grep MISTIKA_WORK MISTIKA-ENV/MISTIKA_WORK']
         # output = subprocess.check_output(cmd)
