@@ -1,0 +1,42 @@
+TimeEditor		0	yR-345	xR	    	345	    	1	1
+TimeEditor		xL	yR-345	xL	    	345	    	1	2
+
+SourceMonitor		x-xm	yL-345	xm	    	345	    	1	1
+SourceMonitor		x-xm	yL-345	xm	    	345	    	1	2
+SourceMonitor		0      0       xR              yR            	1       5
+SourceMonitor		0      0       xR              yR-1            1       6
+
+ReelPanelAudio		xL	yL-345	xL	    	345	    	1	1
+ReelPanelTree       	0      0   	210 	    	yR-550	    	1   	1
+RenderSetupjAWT		xL	yL-345	xL	    	345	    	1	1
+ReelPanelVTR		xL	yL-345	xL	    	345	    	1	1
+PanelEdl		xL	yL-345	xL	    	345	    	1	1
+PanelConform            xL       yL-345  xL              345             1       1
+PanelLive            	xL       yL-345  xL              345             1       1
+ReelPanelFX             xL       yL-345  xL              345             1       1
+Editor			0	0	xR	    	yR-345	    	1	1
+VisualControls		832	yR-345	xR-832	    	345	    	1	1
+Reel			xL	0	xL	    	yL-345-35	1	1
+ReelPanel		xL	yL-345	xL	    	345	    	1	1
+ReelPanelImport        	xL       yL-345  xL-xm           345             1       1
+
+Monitor			0-xm  	yL-345  xm              345             1       1
+Monitor                 0      0       xR              yR              1       5
+Monitor                 0      0       xR              yR-1            1       6
+
+
+PresetFx		xL	yL-345	xL	    	345	    	1	2
+
+Morph			0	0	xR	    	yR-1	    	1	2
+Paint			0	0	xR	    	yR-1	    	1	2
+Title			0	yR-345	xR	    	345	    	1	2
+
+LayoutManager		xL	yL-345-35 xL	    	35	    	1	1
+
+ReelPanelBrowser        0      0       xR              yR-1            1       1
+ReelPanelBrowser        xL	yL-345  xL-xm           345             1       2
+
+MediaFileManager	0	0	xR		yR-1		1	1
+MediaFileManager	0	0	xR		yR-1		1	2
+
+ReelPanelProject       	xL       yL-345  xL              345             1       1
