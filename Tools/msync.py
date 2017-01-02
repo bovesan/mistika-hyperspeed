@@ -22,7 +22,7 @@ class MyThread(threading.Thread):
         window = self.window
         screen = self.window.get_screen()
         window.set_title("Mistika sync")
-        window.set_size_request(screen.get_width()-200, screen.get_height()-200)
+        window.set_size_request(screen.get_height()-200, screen.get_height()-200)
         window.set_border_width(20)
         window.set_position(gtk.WIN_POS_CENTER)
         if 'darwin' in platform.system().lower():
@@ -96,7 +96,7 @@ class MyThread(threading.Thread):
         #vbox.pack_start(scrolled_window)
         vbox.pack_start(scrolled_window)
 
-        hbox = gtk.HBox(False, 10)
+        hbox = gtk.HBox(False, 0)
         button = gtk.Button('+')
         button.set_size_request(30, 30)
         button.connect("clicked", self.add_host)
@@ -116,9 +116,12 @@ class MyThread(threading.Thread):
         self.button_load_remote_projects.connect("clicked", self.on_host_select)
         hbox.pack_start(self.button_load_remote_projects, False, False, 0)
 
+        self.label_active_host = gtk.Label('')
+        hbox.pack_start(self.label_active_host, False, False, 10)
 
         vbox.pack_start(hbox, False, False, 0)
-        self.projectsTreeStore = gtk.TreeStore(str, str, str, str, str) # Basenae, Path, Local, Direction, Remote
+
+        self.projectsTreeStore = gtk.TreeStore(str, str, str, str, str, int, str, bool) # Basenae, Path, Local, Direction, Remote, Progress int, Progress text, Progress visibility
         self.projectsTree = gtk.TreeView()
         #self.project_cell = gtk.CellRendererText()
         #project_cell = self.project_cell
@@ -128,6 +131,7 @@ class MyThread(threading.Thread):
         column = gtk.TreeViewColumn('', gtk.CellRendererText(), markup=0)
         column.set_resizable(True)
         column.set_expand(True)
+        column.set_sort_column_id(0)
         self.projectsTree.append_column(column)
 
         column = gtk.TreeViewColumn('Path', gtk.CellRendererText(), text=1)
@@ -151,6 +155,11 @@ class MyThread(threading.Thread):
         column.set_expand(False)
         self.projectsTree.append_column(column)
 
+        column = gtk.TreeViewColumn('Status', gtk.CellRendererProgress(), pulse=5, text=6, visible=7)
+        column.set_resizable(True)
+        column.set_expand(True)
+        self.projectsTree.append_column(column)
+
         projectsTreeStore = self.projectsTreeStore
         #hostsTreeStore.append(None, ["Horten", 'horten.hocusfocus.no', 'mistika', 22, '/Volumes/SLOW_HF/PROJECTS/'])
         #hostsTreeStore.append(None, ["Oslo", 's.hocusfocus.no', 'mistika', 22, '/Volumes/SLOW_HF/PROJECTS/'])
@@ -158,6 +167,7 @@ class MyThread(threading.Thread):
         #projectsTreeStore.append(None, ['Loading projects ...'])
         self.projectsTree.set_model(projectsTreeStore)
         self.projectsTree.set_search_column(0)
+        self.projectsTreeStore.set_sort_column_id(0, gtk.SORT_ASCENDING)
         #self.projectsTree.expand_all()
         self.rows = {}
         self.reload_local_projects()
@@ -169,6 +179,14 @@ class MyThread(threading.Thread):
         vbox.pack_start(scrolled_window)
 
 
+        hbox = gtk.HBox(False, 0)
+
+        self.button_sync_files = gtk.Button('Sync selected files')
+        #self.button_sync_files.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
+        self.button_sync_files.connect("clicked", self.on_sync_selected)
+        hbox.pack_start(self.button_sync_files, False, False, 0)
+
+        vbox.pack_start(hbox, False, False, 0)
 
         #menu = ['Sync project', 'Sync media']
         footer = gtk.HBox(False, 10)
@@ -182,18 +200,43 @@ class MyThread(threading.Thread):
         window.add(vbox)
         window.show_all()
         window.connect("destroy", self.on_quit)
+        self.window.connect("key-press-event",self._key_press_event)
         self.quit = False
 
     def run(self):
-        #selection = self.hostsTree.get_selection()
-        #selection.unselect_all()
+        treeselection = self.projectsTree.get_selection()
+        treeselection.set_mode(gtk.SELECTION_MULTIPLE)
         pass
+
+    def _key_press_event(self,widget,event):
+        keyval = event.keyval
+        keyval_name = gtk.gdk.keyval_name(keyval)
+        state = event.state
+        ctrl = (state & gtk.gdk.CONTROL_MASK)
+        command = (state & gtk.gdk.MOD1_MASK)
+        if ctrl or command and keyval_name == 'q':
+            self.on_quit(widget)
+        else:
+            return False
+        return True
+
+    def on_sync_selected(self, widget):
+        selection = self.projectsTree.get_selection()
+        (model, pathlist) = selection.get_selected_rows()
+        for path in pathlist:
+            print repr(path)
+            print repr(self.projectsTreeStore[path][1])
+            #self.projectsTreeStore[path][3] = gtk.gdk.PixbufAnimation('../res/img/spinner01.gif')
+            self.projectsTreeStore[path][6] = 'Queued'
+            self.projectsTreeStore[path][5] += 1
+            self.projectsTreeStore[path][7] = True # Visibility
+
 
     def on_host_select(self, widget):
         selection = self.hostsTree.get_selection()
         (model, iter) = selection.get_selected()
         print model[iter][0]
-        t = threading.Thread(target=self.list_projects, args=[model[iter][1], model[iter][2], model[iter][3], model[iter][4]])
+        t = threading.Thread(target=self.list_projects_remote, args=[model[iter][0], model[iter][1], model[iter][2], model[iter][3], model[iter][4]])
         self.threads.append(t)
         t.setDaemon(True)
         t.start()
@@ -231,6 +274,8 @@ class MyThread(threading.Thread):
     def append_project(self, is_remote, path, children=None):
         is_dir = path.endswith('/')
         path = path.strip('/')
+        if path == '':
+            return
         if '/' in path:
             parent_dir, basename = path.rsplit('/', 1) # parent_dir will not have trailing slash
             parent = self.rows[parent_dir]['iter']
@@ -244,9 +289,13 @@ class MyThread(threading.Thread):
         local = None
         direction = None
         remote = None
+        markup = basename
+        progress = 0
+        progress_str = ''
+        progress_visibility = False
         if not path in self.rows:
             self.rows[path] = {}
-            self.rows[path]['iter'] = self.projectsTreeStore.append(parent, [basename, path, local, direction, remote])
+            self.rows[path]['iter'] = self.projectsTreeStore.append(parent, [basename, path, local, direction, remote, progress, progress_str, progress_visibility])
             self.rows[path]['fingerprint_remote'] = ''
             self.rows[path]['fingerprint_local'] = ''
             self.rows[path]['mtime_remote'] = 0
@@ -258,6 +307,7 @@ class MyThread(threading.Thread):
             self.rows[path]['fingerprint_local'] = 'foo'
             self.rows[path]['mtime_local'] = 1
         if self.rows[path]['fingerprint_remote'] == self.rows[path]['fingerprint_local']:
+            markup = '<span foreground="#888888">%s</span>' % basename
             local = gtk.STOCK_YES
             direction = None
             remote = gtk.STOCK_YES
@@ -270,6 +320,7 @@ class MyThread(threading.Thread):
                 local = gtk.STOCK_YES
                 direction = gtk.STOCK_GO_FORWARD
                 remote = gtk.STOCK_NO
+        tree.set_value(self.rows[path]['iter'], 0, markup)
         tree.set_value(self.rows[path]['iter'], 2, local)
         tree.set_value(self.rows[path]['iter'], 3, direction)
         tree.set_value(self.rows[path]['iter'], 4, remote)
@@ -278,7 +329,7 @@ class MyThread(threading.Thread):
 
 
 
-    def list_projects(self, address, user, port, projects_path):
+    def list_projects_remote(self, alias, address, user, port, projects_path):
         loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
         self.button_load_remote_projects.set_image(loader)
         cmd = ['ssh', '-oBatchMode=yes', '-p', str(port), '%s@%s' % (user, address), 'ls -xd %s/*/ %s/*/*' % (projects_path, projects_path)]
@@ -286,6 +337,7 @@ class MyThread(threading.Thread):
             p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             output = p1.communicate()[0]
             if p1.returncode > 0:
+                loader.set_from_stock(gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
                 gobject.idle_add(self.error, output)
                 return
             projects = output.splitlines()
@@ -301,6 +353,7 @@ class MyThread(threading.Thread):
             rel = project_path.replace(projects_path, '')
             gobject.idle_add(self.append_project, True, rel)
         loader.set_from_stock(gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
+        self.label_active_host.set_markup('<span foreground="#888888">Connected to host:</span> %s <span foreground="#888888">(%s)</span>' % (alias, address))
             #self.projectsTreeStore.append(None, [project_name])
         # cmd = ['ssh', '-p', str(port), '%s@%s' % (user, address), 'grep MISTIKA_WORK MISTIKA-ENV/MISTIKA_WORK']
         # output = subprocess.check_output(cmd)
