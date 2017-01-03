@@ -363,13 +363,15 @@ class MyThread(threading.Thread):
         t.start()
 
 
-    def list_projects_remote(self, alias, address, user, port, projects_path, child=False):
+    def list_projects_remote(self, alias, address, user, port, projects_path, child=''):
         loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
         self.button_load_remote_projects.set_image(loader)
-        if not child:
-            cmd = ['ssh', '-oBatchMode=yes', '-p', str(port), '%s@%s' % (user, address), 'ls -xd %s/*/ %s/*/*' % (projects_path, projects_path)]
-        else:
-            cmd = ['ssh', '-oBatchMode=yes', '-p', str(port), '%s@%s' % (user, address), 'find %s/%s -maxdepth 2 -ls' % (projects_path, child)]
+        #cmd = ['ssh', '-oBatchMode=yes', '-p', str(port), '%s@%s' % (user, address), 'ls -xd %s/*/ %s/*/*' % (projects_path, projects_path)]
+        type_filter = ''
+        if child == '':
+            type_filter = ' -type d'
+        cmd = ['ssh', '-oBatchMode=yes', '-p', str(port), '%s@%s' % (user, address), 'find %s/%s %s -name PRIVATE -prune -o -maxdepth 2 -printf "%%i %%s %%T@ %%p\\\\n"' % (projects_path, child, type_filter)]
+        print cmd
         try:
             p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             output = p1.communicate()[0]
@@ -385,10 +387,15 @@ class MyThread(threading.Thread):
             return
         #self.project_cell.set_property('foreground', '#000000')
         #self.project_cell.set_property('style', 'normal')
-        for project_path in projects:
-            project_name = project_path.strip('/').split('/')[-1]
-            rel = project_path.replace(projects_path, '')
-            gobject.idle_add(self.append_project, True, rel)
+        for project_line in projects:
+            try:
+                print project_line
+                f_inode, f_size, f_time, project_path = project_line.strip().split(' ', 3)
+                project_name = project_path.strip('/').split('/')[-1]
+                rel = project_path.replace(projects_path, '')
+                gobject.idle_add(self.append_project, True, rel)
+            except:
+                continue
         loader.set_from_stock(gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
         self.label_active_host.set_markup('<span foreground="#888888">Connected to host:</span> %s <span foreground="#888888">(%s)</span>' % (alias, address))
             #self.projectsTreeStore.append(None, [project_name])
