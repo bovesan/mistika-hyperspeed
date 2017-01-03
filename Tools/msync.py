@@ -84,7 +84,6 @@ class MyThread(threading.Thread):
         hostsTreeStore = self.hostsTreeStore
         #hostsTreeStore.append(None, ["Horten", 'horten.hocusfocus.no', 'mistika', 22, '/Volumes/SLOW_HF/PROJECTS/'])
         #hostsTreeStore.append(None, ["Oslo", 's.hocusfocus.no', 'mistika', 22, '/Volumes/SLOW_HF/PROJECTS/'])
-        self.hosts_populate(hostsTreeStore)
         linksFilter = hostsTreeStore.filter_new();
         self.hostsTree.set_model(hostsTreeStore)
         self.hostsTree.expand_all()
@@ -113,7 +112,7 @@ class MyThread(threading.Thread):
 
         self.button_load_remote_projects = gtk.Button('Load remote projects')
         self.button_load_remote_projects.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
-        self.button_load_remote_projects.connect("clicked", self.on_host_select)
+        self.button_load_remote_projects.connect("clicked", self.on_host_load)
         hbox.pack_start(self.button_load_remote_projects, False, False, 0)
 
         self.label_active_host = gtk.Label('')
@@ -128,7 +127,8 @@ class MyThread(threading.Thread):
         #project_cell.set_property('foreground', '#cccccc')
         #project_cell.set_property('style', 'italic')
         #cell.connect('edited', self.on_host_edit, (self.projectsTreeStore, 0))
-        column = gtk.TreeViewColumn('', gtk.CellRendererText(), markup=0)
+        cell = gtk.CellRendererText()
+        column = gtk.TreeViewColumn('', cell, markup=0)
         column.set_resizable(True)
         column.set_expand(True)
         column.set_sort_column_id(0)
@@ -167,10 +167,11 @@ class MyThread(threading.Thread):
         #projectsTreeStore.append(None, ['Loading projects ...'])
         self.projectsTree.set_model(projectsTreeStore)
         self.projectsTree.set_search_column(0)
+        self.projectsTree.connect("row-expanded", self.on_expand)
+
         self.projectsTreeStore.set_sort_column_id(0, gtk.SORT_ASCENDING)
         #self.projectsTree.expand_all()
         self.rows = {}
-        self.reload_local_projects()
 
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
@@ -204,8 +205,10 @@ class MyThread(threading.Thread):
         self.quit = False
 
     def run(self):
+        self.hosts_populate(self.hostsTreeStore)
         treeselection = self.projectsTree.get_selection()
         treeselection.set_mode(gtk.SELECTION_MULTIPLE)
+        self.reload_local_projects()
         pass
 
     def _key_press_event(self,widget,event):
@@ -227,15 +230,33 @@ class MyThread(threading.Thread):
             print repr(path)
             print repr(self.projectsTreeStore[path][1])
             #self.projectsTreeStore[path][3] = gtk.gdk.PixbufAnimation('../res/img/spinner01.gif')
-            self.projectsTreeStore[path][6] = 'Queued'
-            self.projectsTreeStore[path][5] += 1
-            self.projectsTreeStore[path][7] = True # Visibility
+            gobject.idle_add(self.gui_set_value, self.projectsTreeStore, path, 6, 'Queued')
+            gobject.idle_add(self.gui_set_value, self.projectsTreeStore, path, 7, True)
+            #self.projectsTreeStore[path][6] = 'Queued'
+            #self.projectsTreeStore[path][5] += 1
+            #self.projectsTreeStore[path][7] = True # Visibility
 
+    def gui_set_value(self, model, path, col, value):
+        #print repr(item)
+        #print repr(value)
+        #item = value
+        model[path][col] = value
 
     def on_host_select(self, widget):
+        print model[iter][0]
+        t = threading.Thread(target=self.hosts_store)
+        self.threads.append(t)
+        t.setDaemon(True)
+        t.start()
+
+    def on_host_load(self, widget):
         selection = self.hostsTree.get_selection()
         (model, iter) = selection.get_selected()
         print model[iter][0]
+        t = threading.Thread(target=self.hosts_store)
+        self.threads.append(t)
+        t.setDaemon(True)
+        t.start()
         t = threading.Thread(target=self.list_projects_remote, args=[model[iter][0], model[iter][1], model[iter][2], model[iter][3], model[iter][4]])
         self.threads.append(t)
         t.setDaemon(True)
@@ -327,12 +348,28 @@ class MyThread(threading.Thread):
 
 
 
+    def on_expand(self, treeview, iter, path, *user_params):
+        # print 'Expanding'
+        # print repr(model)
+        # print repr(iter)
+        # print repr(path)
+        file_path = self.projectsTreeStore[iter][1]
+
+        selection = self.hostsTree.get_selection()
+        (model, iter) = selection.get_selected()
+        t = threading.Thread(target=self.list_projects_remote, args=[model[iter][0], model[iter][1], model[iter][2], model[iter][3], model[iter][4], file_path])
+        self.threads.append(t)
+        t.setDaemon(True)
+        t.start()
 
 
-    def list_projects_remote(self, alias, address, user, port, projects_path):
+    def list_projects_remote(self, alias, address, user, port, projects_path, child=False):
         loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
         self.button_load_remote_projects.set_image(loader)
-        cmd = ['ssh', '-oBatchMode=yes', '-p', str(port), '%s@%s' % (user, address), 'ls -xd %s/*/ %s/*/*' % (projects_path, projects_path)]
+        if not child:
+            cmd = ['ssh', '-oBatchMode=yes', '-p', str(port), '%s@%s' % (user, address), 'ls -xd %s/*/ %s/*/*' % (projects_path, projects_path)]
+        else:
+            cmd = ['ssh', '-oBatchMode=yes', '-p', str(port), '%s@%s' % (user, address), 'find %s/%s -maxdepth 2 -ls' % (projects_path, child)]
         try:
             p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             output = p1.communicate()[0]
@@ -399,16 +436,27 @@ class MyThread(threading.Thread):
             return
         #print repr(hosts)
         for host in hosts:
-            tree.append(None, [host, hosts[host]['address'], hosts[host]['user'], hosts[host]['port'], hosts[host]['path']])
+            row_iter = tree.append(None, [host, hosts[host]['address'], hosts[host]['user'], hosts[host]['port'], hosts[host]['path']])
+            if hosts[host]['selected']:
+                selection = self.hostsTree.get_selection()
+                selection.select_iter(row_iter)
         status = 'Loaded hosts.'
         self.status_bar.push(self.context_id, status)
 
 
     def hosts_store(self):
-        tree = self.hostsTreeStore
+        selection = self.hostsTree.get_selection()
+        (model, row_iter) = selection.get_selected()
+        selected_row = model[row_iter]
         cfg_path = os.path.expanduser('~/.mistika-hyperspeed/sync/hosts.json')
         hosts = {}
-        for row in tree:
+        # i = model.get_iter(0)
+        # row = model[i]
+        for row in self.hostsTreeStore:
+            print repr(selected_row[0])
+            print repr(row[0])
+            selected = selected_row[0] == row[0]
+            #selected = selection.iter_is_selected(model[row])
             alias = row[0]
             for value in row:
                 print value,
@@ -418,6 +466,7 @@ class MyThread(threading.Thread):
             hosts[alias]['user'] = row[2]
             hosts[alias]['port'] = row[3]
             hosts[alias]['path'] = row[4]
+            hosts[alias]['selected'] = selected
         cfg_path_parent = os.path.dirname(cfg_path)
         if not os.path.isdir(cfg_path_parent):
             try:
@@ -426,7 +475,7 @@ class MyThread(threading.Thread):
                 self.error('Could not create config folder:\n'+cfg_path_parent)
                 return
         try:
-            open(cfg_path, 'w').write(json.dumps(hosts))
+            open(cfg_path, 'w').write(json.dumps(hosts, sort_keys=True, indent=4, separators=(',', ': ')))
             status = 'Wrote to %s' % cfg_path
             print status
             self.status_bar.push(self.context_id, status)
