@@ -120,7 +120,7 @@ class MyThread(threading.Thread):
 
         vbox.pack_start(hbox, False, False, 0)
 
-        self.projectsTreeStore = gtk.TreeStore(str, str, str, str, str, int, str, bool) # Basenae, Path, Local, Direction, Remote, Progress int, Progress text, Progress visibility
+        self.projectsTreeStore = gtk.TreeStore(str, str, str, str, str, int, str, bool, str) # Basenae, Path, Local, Direction, Remote, Host, Progress int, Progress text, Progress visibility
         self.projectsTree = gtk.TreeView()
         #self.project_cell = gtk.CellRendererText()
         #project_cell = self.project_cell
@@ -292,14 +292,14 @@ class MyThread(threading.Thread):
             raise
         loader.set_from_stock(gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
 
-    def append_project(self, is_remote, path, children=None):
+    def append_project(self, host, path, children=None):
         is_dir = path.endswith('/')
         path = path.strip('/')
         if path == '':
             return
         if '/' in path:
             parent_dir, basename = path.rsplit('/', 1) # parent_dir will not have trailing slash
-            parent = self.rows[parent_dir]['iter']
+            parent = self.projectsTreeStore.get_iter(self.rows[parent_dir]['row_reference'].get_path())
         else:
             parent_dir = None
             basename = path
@@ -316,17 +316,31 @@ class MyThread(threading.Thread):
         progress_visibility = False
         if not path in self.rows:
             self.rows[path] = {}
-            self.rows[path]['iter'] = self.projectsTreeStore.append(parent, [basename, path, local, direction, remote, progress, progress_str, progress_visibility])
+            row_iter = self.projectsTreeStore.append(parent, [basename, path, local, direction, remote, progress, progress_str, progress_visibility, str(host)])
+            self.rows[path]['row_reference'] = gtk.TreeRowReference(self.projectsTreeStore, self.projectsTreeStore.get_path(row_iter))
             self.rows[path]['fingerprint_remote'] = ''
             self.rows[path]['fingerprint_local'] = ''
             self.rows[path]['mtime_remote'] = 0
             self.rows[path]['mtime_local'] = 0
-        if is_remote:
+        if host:
             self.rows[path]['fingerprint_remote'] = 'foo'
             self.rows[path]['mtime_remote'] = 1
-        if not is_remote:
+        else:
             self.rows[path]['fingerprint_local'] = 'foo'
             self.rows[path]['mtime_local'] = 1
+        self.refresh_row(path)
+
+    def refresh_row(self, path):
+        if '/' in path:
+            parent_dir, basename = path.rsplit('/', 1) # parent_dir will not have trailing slash
+            parent = self.rows[parent_dir]['row_reference']
+        else:
+            parent_dir = None
+            basename = path
+            parent = None
+        markup = basename
+        tree = self.projectsTreeStore
+        row_iter = self.projectsTreeStore.get_iter(self.rows[path]['row_reference'].get_path())
         if self.rows[path]['fingerprint_remote'] == self.rows[path]['fingerprint_local']:
             markup = '<span foreground="#888888">%s</span>' % basename
             local = gtk.STOCK_YES
@@ -341,12 +355,21 @@ class MyThread(threading.Thread):
                 local = gtk.STOCK_YES
                 direction = gtk.STOCK_GO_FORWARD
                 remote = gtk.STOCK_NO
-        tree.set_value(self.rows[path]['iter'], 0, markup)
-        tree.set_value(self.rows[path]['iter'], 2, local)
-        tree.set_value(self.rows[path]['iter'], 3, direction)
-        tree.set_value(self.rows[path]['iter'], 4, remote)
+        tree.set_value(row_iter, 0, markup)
+        tree.set_value(row_iter, 2, local)
+        tree.set_value(row_iter, 3, direction)
+        tree.set_value(row_iter, 4, remote)
 
-
+    def clear_remote(self):
+        for path in self.rows.keys():
+            row_iter = self.projectsTreeStore.get_iter(self.rows[path]['row_reference'].get_path())
+            if self.rows[path]['mtime_local'] == 0:
+                self.projectsTreeStore.remove(row_iter)
+                del self.rows[path]
+            elif self.rows[path]['mtime_remote'] != 0:
+                self.rows[path]['mtime_remote'] = 0
+                self.rows[path]['fingerprint_remote'] = ''
+                self.refresh_row(path)
 
     def on_expand(self, treeview, iter, path, *user_params):
         # print 'Expanding'
@@ -366,6 +389,7 @@ class MyThread(threading.Thread):
     def list_projects_remote(self, alias, address, user, port, projects_path, child=''):
         loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
         self.button_load_remote_projects.set_image(loader)
+        gobject.idle_add(self.clear_remote)
         #cmd = ['ssh', '-oBatchMode=yes', '-p', str(port), '%s@%s' % (user, address), 'ls -xd %s/*/ %s/*/*' % (projects_path, projects_path)]
         type_filter = ''
         if child == '':
@@ -373,17 +397,17 @@ class MyThread(threading.Thread):
         cmd = ['ssh', '-oBatchMode=yes', '-p', str(port), '%s@%s' % (user, address), 'find %s/%s %s -name PRIVATE -prune -o -maxdepth 2 -printf "%%i %%s %%T@ %%p\\\\n"' % (projects_path, child, type_filter)]
         print cmd
         try:
-            p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-            output = p1.communicate()[0]
+            p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            output, stderr = p1.communicate()
             if p1.returncode > 0:
                 loader.set_from_stock(gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
-                gobject.idle_add(self.error, output)
+                gobject.idle_add(self.error, stderr)
                 return
             projects = output.splitlines()
         except:
-            print output
+            print stderr
             raise
-            gobject.idle_add(self.error, output)
+            gobject.idle_add(self.error, stderr)
             return
         #self.project_cell.set_property('foreground', '#000000')
         #self.project_cell.set_property('style', 'normal')
@@ -393,7 +417,7 @@ class MyThread(threading.Thread):
                 f_inode, f_size, f_time, project_path = project_line.strip().split(' ', 3)
                 project_name = project_path.strip('/').split('/')[-1]
                 rel = project_path.replace(projects_path, '')
-                gobject.idle_add(self.append_project, True, rel)
+                gobject.idle_add(self.append_project, address, rel)
             except:
                 continue
         loader.set_from_stock(gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
@@ -519,6 +543,7 @@ class MyThread(threading.Thread):
         t.setDaemon(True)
         t.start()
 
+os.environ['LC_CTYPE'] = 'en_US.utf8'
 t = MyThread()
 t.start()
 gtk.main()
