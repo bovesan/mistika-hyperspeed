@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 #-*- coding:utf-8 -*-
 
+import cgi
 import json
 import glob
 import gobject
 import gtk
 import os
 import platform
+import pprint
 import subprocess
 import threading
 import time
@@ -301,10 +303,13 @@ class MainThread(threading.Thread):
         (model, pathlist) = selection.get_selected_rows()
         for path in pathlist:
             print repr(path)
-            print repr(self.projectsTreeStore[path][1])
+            path_str = self.projectsTreeStore[path][1]
+            print path_str
             #self.projectsTreeStore[path][3] = gtk.gdk.PixbufAnimation('../res/img/spinner01.gif')
             gobject.idle_add(self.gui_set_value, self.projectsTreeStore, path, 6, 'Queued')
             gobject.idle_add(self.gui_set_value, self.projectsTreeStore, path, 7, True)
+            #gobject.idle_add(self.gui_show_error, repr(self.rows[self.projectsTreeStore[path][1]]))
+            gobject.idle_add(self.gui_show_error, path_str+'\n'+cgi.escape(pprint.pformat(self.rows[path_str])))
             #self.projectsTreeStore[path][6] = 'Queued'
             #self.projectsTreeStore[path][5] += 1
             #self.projectsTreeStore[path][7] = True # Visibility
@@ -331,7 +336,7 @@ class MainThread(threading.Thread):
 
         #self.hostsTreeStore.append(None, ['New host', '', 'mistika', 22, ''])
 
-    def gui_append_path(self, host, path, children=None):
+    def gui_append_path(self, host, path, children, time):
         is_dir = path.endswith('/')
         path = path.strip('/')
         if path == '':
@@ -363,10 +368,10 @@ class MainThread(threading.Thread):
             self.rows[path]['mtime_local'] = 0
         if host:
             self.rows[path]['fingerprint_remote'] = 'foo'
-            self.rows[path]['mtime_remote'] = 1
+            self.rows[path]['mtime_remote'] = time
         else:
             self.rows[path]['fingerprint_local'] = 'foo'
-            self.rows[path]['mtime_local'] = 1
+            self.rows[path]['mtime_local'] = time
         self.gui_refresh_path(path)
 
     def gui_refresh_path(self, path):
@@ -430,10 +435,12 @@ class MainThread(threading.Thread):
             for root, dirs, files in os.walk(projects_path):
                 root_rel = root.replace(projects_path, '')
                 for name in dirs:
-                    gobject.idle_add(self.gui_append_path, False, root_rel+'/'+name+'/')
+                    statinfo = os.stat(root+'/'+name)
+                    gobject.idle_add(self.gui_append_path, False, root_rel+'/'+name+'/', None, int(statinfo.st_ctime))
                 for name in files:
                     if not root_rel == '':
-                        gobject.idle_add(self.gui_append_path, False, root_rel+'/'+name)
+                        statinfo = os.stat(root+'/'+name)
+                        gobject.idle_add(self.gui_append_path, False, root_rel+'/'+name, None, int(statinfo.st_ctime))
         except:
             raise
         #loader.set_from_stock(gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
@@ -468,10 +475,13 @@ class MainThread(threading.Thread):
             try:
                 print project_line
                 f_inode, f_size, f_time, project_path = project_line.strip().split(' ', 3)
+                f_time = int(f_time.split('.')[0])
                 project_name = project_path.strip('/').split('/')[-1]
                 rel = project_path.replace(projects_path, '')
-                gobject.idle_add(self.gui_append_path, address, rel)
+                print 'Time: %i' % f_time
+                gobject.idle_add(self.gui_append_path, address, rel, None, f_time)
             except:
+                raise
                 continue
         gobject.idle_add(loader.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
         gobject.idle_add(self.label_active_host.set_markup, '<span foreground="#888888">Connected to host:</span> %s <span foreground="#888888">(%s)</span>' % (alias, address))
