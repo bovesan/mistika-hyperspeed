@@ -390,8 +390,8 @@ class MainThread(threading.Thread):
 
     def io_list_projects_remote(self, alias, address, user, port, projects_path, child=''):
         loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
-        self.button_load_remote_projects.set_image(loader)
-        gobject.idle_add(self.buffer_clear_remote)
+        gobject.idle_add(self.button_load_remote_projects.set_image, loader)
+        self.buffer_clear_remote
         #cmd = ['ssh', '-oBatchMode=yes', '-p', str(port), '%s@%s' % (user, address), 'ls -xd %s/*/ %s/*/*' % (projects_path, projects_path)]
         type_filter = ''
         if child == '':
@@ -422,8 +422,8 @@ class MainThread(threading.Thread):
                 gobject.idle_add(self.gui_append_path, address, rel)
             except:
                 continue
-        loader.set_from_stock(gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
-        self.label_active_host.set_markup('<span foreground="#888888">Connected to host:</span> %s <span foreground="#888888">(%s)</span>' % (alias, address))
+        gobject.idle_add(loader.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
+        gobject.idle_add(self.label_active_host.set_markup, '<span foreground="#888888">Connected to host:</span> %s <span foreground="#888888">(%s)</span>' % (alias, address))
             #self.projectsTreeStore.append(None, [project_name])
         # cmd = ['ssh', '-p', str(port), '%s@%s' % (user, address), 'grep MISTIKA_WORK MISTIKA-ENV/MISTIKA_WORK']
         # output = subprocess.check_output(cmd)
