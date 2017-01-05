@@ -26,6 +26,7 @@ class MainThread(threading.Thread):
         self.is_mamba = False
         self.buffer_local = []
         self.buffer_remote = []
+        self.transfer_queue = {}
 
         self.window = gtk.Window()
         window = self.window
@@ -97,12 +98,11 @@ class MainThread(threading.Thread):
         self.hostsTree.set_model(hostsTreeStore)
         self.hostsTree.expand_all()
 
-
+        self.hostsTree.set_size_request(100,150)
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(self.hostsTree)
-        #vbox.pack_start(scrolled_window)
-        vbox.pack_start(scrolled_window)
+        vbox.pack_start(scrolled_window, False, False, 0)
 
         hbox = gtk.HBox(False, 0)
         button = gtk.Button('+')
@@ -190,9 +190,19 @@ class MainThread(threading.Thread):
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(self.projectsTree)
-        #vbox.pack_start(scrolled_window)
         vbox.pack_start(scrolled_window)
 
+        self.transfersTreeStore = gtk.TreeStore(str, str, str, str, str, int, str, bool, str) # Basenae, Path, Local, Direction, Remote, Host, Progress int, Progress text, Progress visibility
+        self.transfersTree = gtk.TreeView()
+        self.transfersTree.set_model(self.transfersTreeStore)
+        self.transfersTree.set_search_column(0)
+        self.transfersTreeStore.set_sort_column_id(0, gtk.SORT_ASCENDING)
+        self.transfersTree.set_size_request(100,150)
+
+        scrolled_window = gtk.ScrolledWindow()
+        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+        scrolled_window.add(self.transfersTree)
+        vbox.pack_start(scrolled_window, False, False, 0)
 
         hbox = gtk.HBox(False, 0)
 
@@ -330,6 +340,7 @@ class MainThread(threading.Thread):
             gobject.idle_add(self.gui_set_value, self.projectsTreeStore, path, 7, True)
             #gobject.idle_add(self.gui_show_error, repr(self.buffer[self.projectsTreeStore[path][1]]))
             gobject.idle_add(self.gui_show_error, path_str+'\n'+cgi.escape(pprint.pformat(self.buffer[path_str])))
+            self.transfer_queue[path_str] = {}
             #self.projectsTreeStore[path][6] = 'Queued'
             #self.projectsTreeStore[path][5] += 1
             #self.projectsTreeStore[path][7] = True # Visibility
