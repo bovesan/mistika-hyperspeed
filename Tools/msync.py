@@ -271,11 +271,12 @@ class MainThread(threading.Thread):
                 print path
                 continue
             row_iter = self.projectsTreeStore.get_iter(self.rows[path]['row_reference'].get_path())
-            if self.rows[path]['mtime_local'] == 0:
+            if self.rows[path]['mtime_local'] < 0:
                 self.projectsTreeStore.remove(row_iter)
                 del self.rows[path]
-            elif self.rows[path]['mtime_remote'] != 0:
-                self.rows[path]['mtime_remote'] = 0
+            elif self.rows[path]['mtime_remote'] >= 0:
+                self.rows[path]['mtime_remote'] = -1
+                self.rows[path]['size_remote'] = -1
                 self.rows[path]['fingerprint_remote'] = ''
                 gobject.idle_add(self.gui_refresh_path, path)
 
@@ -286,6 +287,7 @@ class MainThread(threading.Thread):
         t.start()
 
     def do_list_projects_remote(self, widget):
+        self.do_clear_remote()
         selection = self.hostsTree.get_selection()
         (model, iter) = selection.get_selected()
         print model[iter][0]
@@ -306,6 +308,8 @@ class MainThread(threading.Thread):
             path_str = self.projectsTreeStore[path][1]
             print path_str
             #self.projectsTreeStore[path][3] = gtk.gdk.PixbufAnimation('../res/img/spinner01.gif')
+            if path_str.endswith('/PRIVATE'):
+                continue
             gobject.idle_add(self.gui_set_value, self.projectsTreeStore, path, 6, 'Queued')
             gobject.idle_add(self.gui_set_value, self.projectsTreeStore, path, 7, True)
             #gobject.idle_add(self.gui_show_error, repr(self.rows[self.projectsTreeStore[path][1]]))
@@ -336,7 +340,7 @@ class MainThread(threading.Thread):
 
         #self.hostsTreeStore.append(None, ['New host', '', 'mistika', 22, ''])
 
-    def gui_append_path(self, host, path, children, time):
+    def gui_append_path(self, host, path, children, time, size):
         is_dir = path.endswith('/')
         path = path.strip('/')
         if path == '':
@@ -364,13 +368,15 @@ class MainThread(threading.Thread):
             self.rows[path]['row_reference'] = gtk.TreeRowReference(self.projectsTreeStore, self.projectsTreeStore.get_path(row_iter))
             self.rows[path]['fingerprint_remote'] = ''
             self.rows[path]['fingerprint_local'] = ''
-            self.rows[path]['mtime_remote'] = 0
-            self.rows[path]['mtime_local'] = 0
+            self.rows[path]['mtime_remote'] = -1
+            self.rows[path]['mtime_local'] = -1
+            self.rows[path]['size_remote'] = -1
+            self.rows[path]['size_local'] = -1
         if host:
-            self.rows[path]['fingerprint_remote'] = 'foo'
+            self.rows[path]['size_remote'] = size
             self.rows[path]['mtime_remote'] = time
         else:
-            self.rows[path]['fingerprint_local'] = 'foo'
+            self.rows[path]['size_local'] = size
             self.rows[path]['mtime_local'] = time
         self.gui_refresh_path(path)
 
@@ -385,20 +391,33 @@ class MainThread(threading.Thread):
         markup = basename
         tree = self.projectsTreeStore
         row_iter = self.projectsTreeStore.get_iter(self.rows[path]['row_reference'].get_path())
-        if self.rows[path]['fingerprint_remote'] == self.rows[path]['fingerprint_local']:
+        if self.rows[path]['size_remote'] == self.rows[path]['size_local']:
             markup = '<span foreground="#888888">%s</span>' % basename
             local = gtk.STOCK_YES
             direction = None
             remote = gtk.STOCK_YES
         else:
             if self.rows[path]['mtime_remote'] > self.rows[path]['mtime_local']:
-                local = gtk.STOCK_NO
+                if self.rows[path]['mtime_local'] < 0:
+                    local = None
+                else:
+                    local = gtk.STOCK_NO
                 direction = gtk.STOCK_GO_BACK
                 remote = gtk.STOCK_YES
             else:
                 local = gtk.STOCK_YES
                 direction = gtk.STOCK_GO_FORWARD
-                remote = gtk.STOCK_NO
+                if self.rows[path]['mtime_remote'] < 0:
+                    remote = None
+                else:
+                    remote = gtk.STOCK_NO
+                #gtk.STOCK_STOP
+        if basename == 'PRIVATE':
+            local = None
+            direction = None
+            remote = None
+            tree.set_value(row_iter, 6, 'Use media sync to process this folder')
+            tree.set_value(row_iter, 7, True)
         tree.set_value(row_iter, 0, markup)
         tree.set_value(row_iter, 2, local)
         tree.set_value(row_iter, 3, direction)
@@ -434,13 +453,14 @@ class MainThread(threading.Thread):
                     break
             for root, dirs, files in os.walk(projects_path):
                 root_rel = root.replace(projects_path, '')
+                if root.endswith('PRIVATE'): continue
                 for name in dirs:
                     statinfo = os.stat(root+'/'+name)
-                    gobject.idle_add(self.gui_append_path, False, root_rel+'/'+name+'/', None, int(statinfo.st_ctime))
+                    gobject.idle_add(self.gui_append_path, False, root_rel+'/'+name+'/', None, int(statinfo.st_ctime), 0)
                 for name in files:
                     if not root_rel == '':
                         statinfo = os.stat(root+'/'+name)
-                        gobject.idle_add(self.gui_append_path, False, root_rel+'/'+name, None, int(statinfo.st_ctime))
+                        gobject.idle_add(self.gui_append_path, False, root_rel+'/'+name, None, int(statinfo.st_ctime), int(statinfo.st_size))
         except:
             raise
         #loader.set_from_stock(gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
@@ -449,12 +469,11 @@ class MainThread(threading.Thread):
     def io_list_projects_remote(self, alias, address, user, port, projects_path, child=''):
         loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
         gobject.idle_add(self.button_load_remote_projects.set_image, loader)
-        self.do_clear_remote()
         #cmd = ['ssh', '-oBatchMode=yes', '-p', str(port), '%s@%s' % (user, address), 'ls -xd %s/*/ %s/*/*' % (projects_path, projects_path)]
         type_filter = ''
         if child == '':
             type_filter = ' -type d'
-        cmd = ['ssh', '-oBatchMode=yes', '-p', str(port), '%s@%s' % (user, address), 'find %s/%s -name PRIVATE -prune -o -maxdepth 2 %s -printf "%%i %%s %%T@ %%p\\\\n"' % (projects_path, child, type_filter)]
+        cmd = ['ssh', '-oBatchMode=yes', '-p', str(port), '%s@%s' % (user, address), 'find %s/%s -name PRIVATE/* -prune -o -maxdepth 2 %s -printf "%%i %%y %%s %%T@ %%p\\\\n"' % (projects_path, child, type_filter)]
         print cmd
         try:
             p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -474,12 +493,16 @@ class MainThread(threading.Thread):
         for project_line in projects:
             try:
                 print project_line
-                f_inode, f_size, f_time, project_path = project_line.strip().split(' ', 3)
+                f_inode, f_type, f_size, f_time, project_path = project_line.strip().split(' ', 4)
                 f_time = int(f_time.split('.')[0])
+                if f_type == 'd':
+                    f_size = 0
+                else:
+                    f_size = int(f_size)
                 project_name = project_path.strip('/').split('/')[-1]
                 rel = project_path.replace(projects_path, '')
                 print 'Time: %i' % f_time
-                gobject.idle_add(self.gui_append_path, address, rel, None, f_time)
+                gobject.idle_add(self.gui_append_path, address, rel, None, f_time, f_size)
             except:
                 raise
                 continue
