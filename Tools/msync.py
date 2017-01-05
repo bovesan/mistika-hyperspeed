@@ -114,15 +114,6 @@ class MainThread(threading.Thread):
         button.connect("clicked", self.gui_host_remove)
         hbox.pack_end(button, False, False, 0)
 
-        self.button_load_local_projects = gtk.Button('Load local projects')
-        self.button_load_local_projects.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
-        button.connect("clicked", self.do_list_projects_local)
-        hbox.pack_start(self.button_load_local_projects, False, False, 0)
-
-        self.button_load_remote_projects = gtk.Button('Load remote projects')
-        self.button_load_remote_projects.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
-        self.button_load_remote_projects.connect("clicked", self.do_list_projects_remote)
-        hbox.pack_start(self.button_load_remote_projects, False, False, 0)
 
         self.button_host_connect = gtk.Button('Connect to host')
         self.button_host_connect.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
@@ -131,6 +122,16 @@ class MainThread(threading.Thread):
 
         self.label_active_host = gtk.Label('')
         hbox.pack_start(self.label_active_host, False, False, 10)
+
+        self.button_load_local_projects = gtk.Button('Local list')
+        self.button_load_local_projects.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
+        #button.connect("clicked", self.do_list_projects_local)
+        hbox.pack_start(self.button_load_local_projects, False, False, 0)
+
+        self.button_load_remote_projects = gtk.Button('Remote list')
+        self.button_load_remote_projects.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
+        #self.button_load_remote_projects.connect("clicked", self.do_list_projects_remote)
+        hbox.pack_start(self.button_load_remote_projects, False, False, 0)
 
         vbox.pack_start(hbox, False, False, 0)
 
@@ -577,6 +578,8 @@ class MainThread(threading.Thread):
                 self.buffer[path]['host'] = host
 
     def io_host_connect(self):
+        loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
+        gobject.idle_add(self.button_host_connect.set_image, loader)
         selection = self.hostsTree.get_selection()
         (model, iter) = selection.get_selected()
         self.connection['alias'] = model[iter][0]
@@ -592,6 +595,7 @@ class MainThread(threading.Thread):
             gobject.idle_add(self.gui_show_error, stderr)
         else:
             gobject.idle_add(self.label_active_host.set_markup, '<span foreground="#888888">Connected to host:</span> %s <span foreground="#888888">(%s)</span>' % (self.connection['alias'], self.connection['address']))
+        gobject.idle_add(loader.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
         self.io_list_projects()
 
     def io_list_projects(self, path=''):
