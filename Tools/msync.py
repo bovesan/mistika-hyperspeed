@@ -13,6 +13,7 @@ import subprocess
 import threading
 import time
 
+MISTIKA_EXTENSIONS = ['env', 'grp', 'rnd', 'fx']
 
 gobject.threads_init()
 
@@ -26,7 +27,7 @@ class MainThread(threading.Thread):
         self.is_mamba = False
         self.buffer_local = []
         self.buffer_remote = []
-        self.transfer_queue = {}
+        self.transfer_queue = []
 
         self.window = gtk.Window()
         window = self.window
@@ -211,6 +212,16 @@ class MainThread(threading.Thread):
         self.button_sync_files.connect("clicked", self.do_sync_selected)
         hbox.pack_start(self.button_sync_files, False, False, 0)
 
+        button = gtk.Button('Unqueue selected files')
+        #self.button_sync_files.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
+        button.connect("clicked", self.do_sync_selected_abort)
+        hbox.pack_start(button, False, False, 0)
+
+        button = gtk.Button('Sync associated files')
+        #self.button_sync_files.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
+        button.connect("clicked", self.do_sync_associated)
+        hbox.pack_start(button, False, False, 0)
+
         vbox.pack_start(hbox, False, False, 0)
 
         #menu = ['Sync project', 'Sync media']
@@ -227,7 +238,7 @@ class MainThread(threading.Thread):
         window.connect("destroy", self.on_quit)
         self.window.connect("key-press-event",self.on_key_press_event)
         self.quit = False
-
+        self.do_queue_process()
     def run(self):
         self.io_hosts_populate(self.hostsTreeStore)
         treeselection = self.projectsTree.get_selection()
@@ -326,6 +337,81 @@ class MainThread(threading.Thread):
         t.setDaemon(True)
         t.start()
 
+    def do_queue_process(self):
+        self.queue_process = True
+        t = threading.Thread(target=self.io_queue_process)
+        self.threads.append(t)
+        t.setDaemon(True)
+        t.start()
+
+    def do_sync_associated(self, widget):
+        selection = self.projectsTree.get_selection()
+        (model, pathlist) = selection.get_selected_rows()
+        for path in pathlist:
+            path_str = model[path][1]
+            if path_str.lower().rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS:
+                t = threading.Thread(target=self.io_get_associated, args=[os.path.join(self.projects_path_local, path_str)])
+                self.threads.append(t)
+                t.setDaemon(True)
+                t.start()
+
+    def mistika_object_path(self, level_names):
+        #print repr(level_names)
+        return '/'.join(level_names)
+
+    def io_get_associated(self, path_str):
+        LIMIT = 200000
+        i = 0
+        try:
+            #level = -1
+            level_names = []
+            #level_val = []
+            char_buffer = ''
+            char_buffer_store = ''
+            for line in open(path_str):
+                for char in line:
+                    i += 1
+                    if i > LIMIT:
+                        break
+                    if char == '(':
+                        #print ''
+                        #level += 1
+                        char_buffer = char_buffer.replace('\n', '').strip()
+                        level_names.append(char_buffer)
+                        #print ('-'*level ) + char_buffer + ':',
+                        char_buffer = ''
+                    elif char == ')':
+                        f_path = False
+                        #print self.mistika_object_path(level_names)
+                        object_path = self.mistika_object_path(level_names)
+                        if object_path.endswith('C/F'): # Clip source link
+                            print 'C/F: ' + char_buffer
+                            f_path = char_buffer
+                        elif object_path.endswith('C/d/I/H/p'): # Clip media folder
+                            char_buffer_store = char_buffer
+                        elif object_path.endswith('C/d/I/H/n'): # Clip media name
+                            print 'C/d/I/H: ' + char_buffer_store + char_buffer
+                            f_path = char_buffer_store + char_buffer
+                        elif object_path.endswith('F/D'): # .dat file relative path (from projects_path)
+                            print 'F/D: ' + char_buffer
+                            f_path = char_buffer
+                        if f_path:
+                            self.do_sync_item(f_path, False, path_str.replace(self.projects_path_local+'/', ''))
+                        # if len(level_val) < level+1:
+                        #     level_val.append(char_buffer)
+                        # else:
+                        #     level_val[level] = char_buffer
+                        char_buffer = ''
+                        del level_names[-1]
+                        #level -= 1
+                    elif len(level_names) > 0 and level_names[-1] == 'Shape':
+                        continue
+                    elif char:
+                        char_buffer += char
+        except IOError as e:
+            print 'Could not open ' + path_str
+            raise e
+
     def do_sync_selected(self, widget):
         selection = self.projectsTree.get_selection()
         (model, pathlist) = selection.get_selected_rows()
@@ -333,17 +419,42 @@ class MainThread(threading.Thread):
             print repr(path)
             path_str = self.projectsTreeStore[path][1]
             print path_str
+            self.do_sync_item(path_str, False, False)
             #self.projectsTreeStore[path][3] = gtk.gdk.PixbufAnimation('../res/img/spinner01.gif')
-            if path_str.endswith('/PRIVATE'):
-                continue
-            gobject.idle_add(self.gui_set_value, self.projectsTreeStore, path, 6, 'Queued')
-            gobject.idle_add(self.gui_set_value, self.projectsTreeStore, path, 7, True)
             #gobject.idle_add(self.gui_show_error, repr(self.buffer[self.projectsTreeStore[path][1]]))
-            gobject.idle_add(self.gui_show_error, path_str+'\n'+cgi.escape(pprint.pformat(self.buffer[path_str])))
-            self.transfer_queue[path_str] = {}
-            #self.projectsTreeStore[path][6] = 'Queued'
-            #self.projectsTreeStore[path][5] += 1
-            #self.projectsTreeStore[path][7] = True # Visibility
+            #gobject.idle_add(self.gui_show_error, path_str+'\n'+cgi.escape(pprint.pformat(self.buffer[path_str])))
+
+    def do_sync_item(self, path_str, tree_path, parent_path):
+        transfer_item = {}
+        transfer_item['path'] = path_str
+        if tree_path:
+            transfer_item['row_references'] = [gtk.TreeRowReference(self.projectsTreeStore, tree_path)]
+        else:
+            if not path_str in self.buffer:
+                self.io_list_projects(path_str, parent_path)
+            transfer_item['row_references'] = []
+            for row in self.projectsTreeStore:
+                if row[1] == path_str:
+                    transfer_item['row_references'].append(gtk.TreeRowReference(self.projectsTreeStore, self.projectsTreeStore.get_path(row)))
+        for row_reference in transfer_item['row_references']:
+            row_path = self.projectsTreeStore[row_reference.get_path()] # Race?
+            gobject.idle_add(self.gui_set_value, self.projectsTreeStore, row_path, 6, 'Queued')
+            gobject.idle_add(self.gui_set_value, self.projectsTreeStore, row_path, 7, True)
+        self.transfer_queue.append(transfer_item)
+        #self.projectsTreeStore[path][6] = 'Queued'
+        #self.projectsTreeStore[path][5] += 1
+        #self.projectsTreeStore[path][7] = True # Visibility
+
+    def do_sync_selected_abort(self, widget):
+        selection = self.projectsTree.get_selection()
+        (model, pathlist) = selection.get_selected_rows()
+        for path in pathlist:
+            path_str = model[path][1]
+            for i, transfer_item in enumerate(self.transfer_queue):
+                if transfer_item['path'] == path_str:
+                    del self.transfer_queue[i]
+                    gobject.idle_add(self.gui_set_value, self.projectsTreeStore, path, 7, False)
+                    print 'Removed ' + path_str
 
     def gui_host_add(self, widget, alias='New host', address='', user='mistika', port=22, path='', selected=False):
         row_iter = self.hostsTreeStore.append(None, [alias, address, user, port, path])
@@ -424,25 +535,29 @@ class MainThread(threading.Thread):
         tree = self.projectsTreeStore
         if '/' in path:
             parent_dir, basename = path.rsplit('/', 1) # parent_dir will not have trailing slash
-            parent = tree.get_iter(self.buffer[parent_dir]['row_reference'].get_path())
+            parents = self.buffer[path]['parent_paths']
+            print 'Parents: ' + repr(parents)
             #print 'Parent: %s %s' % (parent_dir, parent)
         else:
             parent_dir = None
             basename = path
-            parent = None
+            parents = [None]
         markup = basename
-        if 'row_reference' in self.buffer[path]:
-            row_iter = tree.get_iter(self.buffer[path]['row_reference'].get_path())
-        else:
+        if self.buffer[path]['row_references'] == []:
             local = None
             direction = None
             remote = None
-            markup = basename
             progress = 0
             progress_str = ''
             progress_visibility = False
-            row_iter = tree.append(parent, [basename, path, local, direction, remote, progress, progress_str, progress_visibility, str(self.connection['address'])])
-            self.buffer[path]['row_reference'] = gtk.TreeRowReference(tree, tree.get_path(row_iter))
+            for parent in parents:
+                #print 'Parent: ' + repr(parent)
+                if parent != None:
+                    print 'Parent: ' + repr(parent)
+                    parent = self.projectsTreeStore.get_iter(self.buffer[parent]['row_references'][0].get_path())
+                row_iter = tree.append(parent, [basename, path, local, direction, remote, progress, progress_str, progress_visibility, str(self.connection['address'])])
+                self.buffer[path]['row_references'].append(gtk.TreeRowReference(tree, tree.get_path(row_iter)))
+        return
         if self.buffer[path]['size_remote'] == self.buffer[path]['size_local']:
             markup = '<span foreground="#888888">%s</span>' % basename
             if self.buffer[path]['size_remote'] == 0:
@@ -454,7 +569,9 @@ class MainThread(threading.Thread):
                 direction = None
                 remote = gtk.STOCK_YES
         else:
-            self.gui_parent_modified(row_iter) # More confusing than informative?
+            for row_reference in self.buffer[path]['row_references']:
+                row_iter = tree.get_iter(row_reference.get_path())
+                self.gui_parent_modified(row_iter) # More confusing than informative?
             if self.buffer[path]['mtime_remote'] > self.buffer[path]['mtime_local']:
                 if self.buffer[path]['mtime_local'] < 0:
                     local = None
@@ -474,12 +591,12 @@ class MainThread(threading.Thread):
             local = None
             direction = None
             remote = None
-            tree.set_value(row_iter, 6, 'Use media sync to process this folder')
-            tree.set_value(row_iter, 7, True)
-        tree.set_value(row_iter, 0, markup)
-        tree.set_value(row_iter, 2, local)
-        tree.set_value(row_iter, 3, direction)
-        tree.set_value(row_iter, 4, remote)
+        for row_reference in self.buffer[path]['row_references']:
+            row_iter = tree.get_iter(row_reference.get_path())
+            tree.set_value(row_iter, 0, markup)
+            tree.set_value(row_iter, 2, local)
+            tree.set_value(row_iter, 3, direction)
+            tree.set_value(row_iter, 4, remote)
 
     def gui_set_value(self, model, path, col, value):
         #print repr(item)
@@ -489,7 +606,7 @@ class MainThread(threading.Thread):
 
     def gui_show_error(self, message):
         dialog = gtk.MessageDialog(parent=self.window, 
-                            flags=gtk.DIALOG_MODAL, 
+                            #flags=gtk.DIALOG_MODAL, 
                             type=gtk.MESSAGE_ERROR, 
                             buttons=gtk.BUTTONS_NONE, 
                             message_format=None)
@@ -519,7 +636,7 @@ class MainThread(threading.Thread):
             try:
                 p1 = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 output, stderr = p1.communicate()
-                if p1.returncode > 0:
+                if False and p1.returncode > 0:
                     loader.set_from_stock(gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
                     gobject.idle_add(self.gui_show_error, stderr)
                     return
@@ -541,7 +658,7 @@ class MainThread(threading.Thread):
         try:
             p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, stderr = p1.communicate()
-            if p1.returncode > 0:
+            if False and p1.returncode > 0:
                 loader.set_from_stock(gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
                 gobject.idle_add(self.gui_show_error, stderr)
                 return
@@ -555,8 +672,15 @@ class MainThread(threading.Thread):
         #self.project_cell.set_property('style', 'normal')
         gobject.idle_add(loader.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
 
-    def buffer_add(self, lines, host, root):
+    def buffer_add(self, lines, host, root, parent_path=False):
+        root = root.rstrip('/')
+        if not root == '':
+            root += '/'
         for file_line in lines:
+            if parent_path:
+                parent_paths = [parent_path]
+            else:
+                parent_paths = []
             f_inode, f_type, f_size, f_time, full_path = file_line.strip().split(' ', 4)
             f_time = int(f_time.split('.')[0])
             if f_type == '/': # Host is Mac
@@ -566,12 +690,26 @@ class MainThread(threading.Thread):
             else:
                 f_size = int(f_size)
             f_basename = full_path.strip('/').split('/')[-1]
-            path = full_path.replace(root, '').strip('/')
+            if full_path.startswith(root):
+                path = full_path.replace(root, '').strip('/')
+            else:
+                path = full_path
+            if '/' in path.strip('/'):
+                parent_dir, basename = path.rsplit('/', 1) # parent_dir will not have trailing slash
+                if not parent_dir in parent_paths:
+                    #print 'Append ' + parent_dir
+                    parent_paths.append(parent_dir)
+            else:
+                parent_dir = ''
+                basename = path
+
             if path == '': # Skip root item
                 continue
             print 'Buffer add: %s "%s" %s %s' % (host, path, f_type, f_time)
             if not path in self.buffer:
                 self.buffer[path] = {}
+                self.buffer[path]['row_references'] = []
+                self.buffer[path]['parent_paths'] = parent_paths
                 self.buffer[path]['mtime_remote'] = -1
                 self.buffer[path]['mtime_local'] = -1
                 self.buffer[path]['size_remote'] = -1
@@ -587,6 +725,14 @@ class MainThread(threading.Thread):
                 self.buffer[path]['size_remote'] = f_size
                 self.buffer[path]['mtime_remote'] = f_time
                 self.buffer[path]['host'] = host
+            #self.buffer[path]['parent_row_references'] += parent_row_references
+
+    def io_queue_process(self):
+        while self.queue_process:
+            for transfer_item in self.transfer_queue:
+                print transfer_item['path']
+            time.sleep(1)
+
 
     def io_host_connect(self):
         loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
@@ -609,12 +755,16 @@ class MainThread(threading.Thread):
         gobject.idle_add(loader.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
         self.io_list_projects()
 
-    def io_list_projects(self, path=''):
+    def io_list_projects(self, path='', parent_path=False):
         type_filter = ''
         if path == '':
             type_filter = ' -type d'
-        root = '<root>'
-        find_cmd = 'find %s/%s -name PRIVATE -prune -o -maxdepth 2 %s -printf "%%i %%y %%s %%T@ %%p\\\\n"' % (root, path, type_filter)
+
+        if path.startswith('/'):
+            root = ''
+        else:
+            root = '<root>/'
+        find_cmd = 'find %s%s -name PRIVATE -prune -o -maxdepth 2 %s -printf "%%i %%y %%s %%T@ %%p\\\\n"' % (root, path, type_filter)
         print find_cmd
         thread_remote = threading.Thread(target=self.io_list_projects_remote, args=[find_cmd])
         self.threads.append(thread_remote)
@@ -628,8 +778,8 @@ class MainThread(threading.Thread):
 
         thread_local.join()
         thread_remote.join()
-        self.buffer_add(self.buffer_local, 'localhost', self.projects_path_local)
-        self.buffer_add(self.buffer_remote, self.connection['alias'], self.connection['projects_path'])
+        self.buffer_add(self.buffer_local, 'localhost', self.projects_path_local, parent_path)
+        self.buffer_add(self.buffer_remote, self.connection['alias'], self.connection['projects_path'], parent_path)
         for f_path in sorted(self.buffer):
             if f_path.startswith(path):
                 gobject.idle_add(self.gui_refresh_path, f_path)
