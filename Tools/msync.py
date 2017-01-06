@@ -533,6 +533,9 @@ class MainThread(threading.Thread):
     def gui_refresh_path(self, path):
         print 'Refreshing ' + path
         tree = self.projectsTreeStore
+        if path.startswith('/'): # Absolute path, child of a MISTIKA_EXTENSIONS object
+            basename = path
+            parents = self.buffer[path]['parent_paths']
         if '/' in path:
             parent_dir, basename = path.rsplit('/', 1) # parent_dir will not have trailing slash
             parents = self.buffer[path]['parent_paths']
@@ -693,7 +696,7 @@ class MainThread(threading.Thread):
             if full_path.startswith(root):
                 path = full_path.replace(root, '').strip('/')
             else:
-                path = full_path
+                path = full_path # Absolute path
             if '/' in path.strip('/'):
                 parent_dir, basename = path.rsplit('/', 1) # parent_dir will not have trailing slash
                 if not parent_dir in parent_paths:
