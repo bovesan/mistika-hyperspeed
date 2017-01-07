@@ -12,6 +12,7 @@ import pprint
 import subprocess
 import threading
 import time
+import sys
 
 MISTIKA_EXTENSIONS = ['env', 'grp', 'rnd', 'fx']
 
@@ -28,7 +29,8 @@ class MainThread(threading.Thread):
         self.connection = {}
         self.is_mac = False
         self.is_mamba = False
-        self.transfer_queue = []
+        self.transfer_queue = {}
+        self.cfgdir = os.path.expanduser('~/.mistika-hyperspeed/sync/')
 
         self.window = gtk.Window()
         window = self.window
@@ -227,7 +229,7 @@ class MainThread(threading.Thread):
         window.connect("destroy", self.on_quit)
         self.window.connect("key-press-event",self.on_key_press_event)
         self.quit = False
-        #self.do_queue_process()
+        self.do_queue_process()
 
     def run(self):
         self.io_hosts_populate(self.hostsTreeStore)
@@ -445,7 +447,7 @@ class MainThread(threading.Thread):
         elif relist:
             self.io_list_files(paths, False, sync=True, maxdepth=False)
         for path_str in paths:
-            print 'do_sync_item: ' + path_str
+            #print 'do_sync_item: ' + path_str
             transfer_item = {}
             transfer_item['path'] = path_str
             for row_reference in self.buffer[path_str]['row_references']:
@@ -457,7 +459,7 @@ class MainThread(threading.Thread):
                     child_iter = model.iter_next(child_iter)
                 gobject.idle_add(self.gui_set_value, model, row_reference, 6, 'Queued')
                 gobject.idle_add(self.gui_set_value, model, row_reference, 7, True)
-            self.transfer_queue.append(transfer_item)
+            self.transfer_queue[path_str] = transfer_item
         #self.projectsTreeStore[path][6] = 'Queued'
         #self.projectsTreeStore[path][5] += 1
         #self.projectsTreeStore[path][7] = True # Visibility
@@ -471,7 +473,7 @@ class MainThread(threading.Thread):
 
     def transfer_remove(self, path_str):
         model = self.projectsTreeStore
-        for i, transfer_item in enumerate(self.transfer_queue):
+        for i, transfer_item in enumerate(self.transfer_queue): # Race?
             if transfer_item['path'] == path_str:
                 del self.transfer_queue[i]
         for row_reference in self.buffer[path_str]['row_references']:
@@ -559,7 +561,7 @@ class MainThread(threading.Thread):
             pass
 
     def gui_refresh_path(self, path, sync):
-        print 'Refreshing ' + path
+        #print 'Refreshing ' + path
         tree = self.projectsTreeStore
         if path.startswith('/'): # Absolute path, child of a MISTIKA_EXTENSIONS object
             basename = path
@@ -784,13 +786,75 @@ class MainThread(threading.Thread):
 
     def io_queue_process(self):
         while self.queue_process:
-            for transfer_item in self.transfer_queue:
-                path = transfer_item['path']
+            file_lines = {}
+            file_lines['local_to_remote_absolute'] = []
+            file_lines['local_to_remote_relative'] = []
+            file_lines['remote_to_local_absolute'] = []
+            file_lines['remote_to_local_relative'] = []
+            for path in self.transfer_queue.keys():
                 print 'In queue:' + path
                 direction = self.buffer[path]['direction']
-                print direction
-            time.sleep(1)
+                if direction == None:
+                    del self.transfer_queue[path]
+                #print direction
+                line = path + '\n'
+                if direction == gtk.STOCK_GO_FORWARD:
+                    if path.endswith('/'):
+                        # ssh mkdir -p path
+                    if path.startswith('/'):
+                        file_lines['local_to_remote_absolute'].append(line)
+                    else:
+                        file_lines['local_to_remote_relative'].append(line)
 
+            for file_lines_list in file_lines:
+                if len(file_lines[file_lines_list]) > 0:
+                    files_list_path = self.cfgdir + file_lines_list + '.lst'
+                    open(files_list_path, 'w').writelines(file_lines[file_lines_list])
+                    if file_lines_list == 'local_to_remote_relative' > 0:
+                        cmd = ['rsync',  '--progress', '-a', '-e', 'ssh', '--files-from=' + files_list_path, self.projects_path_local, '%s@%s:%s' % (self.connection['user'], self.connection['address'], self.connection['projects_path'])]
+                        print repr(cmd)
+                        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                        self.check_transfer(process)
+
+                    if file_lines_list == 'local_to_remote_absolute' > 0:
+                        cmd = ['rsync',  '--progress', '-a', '-e', 'ssh', '--files-from=' + files_list_path, '/', '%s@%s:/' % (self.connection['user'], self.connection['address'])]
+                        print repr(cmd)
+                        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                        self.check_transfer(process)
+
+            time.sleep(10)
+
+    def check_transfer(self, process):
+        print 'Waiting for process to finish'
+        process.poll()
+        out_buffer = ''
+        while process.returncode == None:
+            c = process.stdout.read(1)
+            out_buffer += c
+            sys.stdout.write(c)
+            sys.stdout.flush()
+            if c == '\n':
+                line = out_buffer
+                out_buffer == ''
+                for path in self.transfer_queue:
+                    if path.endswith(line.replace('is uptodate\n', '').strip().rstrip('/')):
+                        del self.transfer_queue[path]
+                        for row_reference in self.buffer[path]['row_references']:
+                            gobject.idle_add(self.gui_set_value, model, row_reference, 5, 100)
+                            gobject.idle_add(self.gui_set_value, model, row_reference, 6, '100%')
+                        print 'Transfer complete: ' + path
+            process.poll()
+        print 'Process has ended'
+        lines = process.communicate()[0].splitlines()
+        for line in lines:
+            print line
+            for path in self.transfer_queue:
+                if line.replace('is uptodate\n', '').strip().rstrip('/') == path:
+                    del self.transfer_queue[path]
+                    for row_reference in self.buffer[path]['row_references']:
+                        gobject.idle_add(self.gui_set_value, model, row_reference, 5, 100)
+                        gobject.idle_add(self.gui_set_value, model, row_reference, 6, '100%')
+                    print 'Transfer complete: ' + path
 
     def io_host_connect(self):
         loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
