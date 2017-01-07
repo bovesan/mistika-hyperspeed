@@ -239,7 +239,7 @@ class MainThread(threading.Thread):
         window.connect("destroy", self.on_quit)
         self.window.connect("key-press-event",self.on_key_press_event)
         self.quit = False
-        # self.do_queue_process()
+        self.do_queue_process()
 
     def run(self):
         self.io_hosts_populate(self.hostsTreeStore)
@@ -558,20 +558,36 @@ class MainThread(threading.Thread):
             basename = path
             parents = [None]
         markup = basename
-        if self.buffer[path]['row_references'] == []:
+        if self.buffer[path]['row_references'] == []: # Will not append objects to parent objects later on
             local = None
             direction = None
             remote = None
             progress = 0
             progress_str = ''
             progress_visibility = False
-            for parent in parents:
+        else:
+            row_reference = self.buffer[path]['row_references'][0]
+            markup = tree[row_reference.get_path()][0]
+            local = tree[row_reference.get_path()][2]
+            direction = tree[row_reference.get_path()][3]
+            remote = tree[row_reference.get_path()][4]
+            progress = tree[row_reference.get_path()][5]
+            progress_str = tree[row_reference.get_path()][6]
+            progress_visibility = tree[row_reference.get_path()][7]
+        for parent in parents:
+            if parent == None and len(self.buffer[path]['row_references']) > 0:
+                continue
+            append_to_this_parent = True
+            #print 'Parent: ' + repr(parent)
+            if parent != None:
+                if not parent in self.buffer:
+                    continue
                 #print 'Parent: ' + repr(parent)
-                if parent != None:
-                    if not parent in self.buffer:
-                        continue
-                    #print 'Parent: ' + repr(parent)
-                    parent = self.projectsTreeStore.get_iter(self.buffer[parent]['row_references'][0].get_path())
+                parent = tree.get_iter(self.buffer[parent]['row_references'][0].get_path())
+                for row_reference in self.buffer[path]['row_references']:
+                    if tree.is_ancestor(parent, tree.get_iter(row_reference.get_path())):
+                        append_to_this_parent = False
+            if append_to_this_parent:
                 row_iter = tree.append(parent, [basename, path, local, direction, remote, progress, progress_str, progress_visibility, str(self.connection['address'])])
                 self.buffer[path]['row_references'].append(gtk.TreeRowReference(tree, tree.get_path(row_iter)))
         if self.buffer[path]['size_remote'] == self.buffer[path]['size_local']:
@@ -735,6 +751,8 @@ class MainThread(threading.Thread):
                 self.buffer[path]['size_local'] = -1
                 self.buffer[path]['type_remote'] = ''
                 self.buffer[path]['type_local'] = ''
+            if parent_path and not parent_path in self.buffer[path]['parent_paths']:
+                self.buffer[path]['parent_paths'].append(parent_path)
             self.buffer_lock.release()
             if host == 'localhost':
                 self.buffer[path]['type_local'] = f_type
