@@ -194,18 +194,6 @@ class MainThread(threading.Thread):
         scrolled_window.add(self.projectsTree)
         vbox.pack_start(scrolled_window)
 
-        self.transfersTreeStore = gtk.TreeStore(str, str, str, str, str, int, str, bool, str) # Basenae, Path, Local, Direction, Remote, Host, Progress int, Progress text, Progress visibility
-        self.transfersTree = gtk.TreeView()
-        self.transfersTree.set_model(self.transfersTreeStore)
-        self.transfersTree.set_search_column(0)
-        self.transfersTreeStore.set_sort_column_id(0, gtk.SORT_ASCENDING)
-        self.transfersTree.set_size_request(100,150)
-
-        scrolled_window = gtk.ScrolledWindow()
-        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
-        scrolled_window.add(self.transfersTree)
-        vbox.pack_start(scrolled_window, False, False, 0)
-
         hbox = gtk.HBox(False, 0)
 
         self.button_sync_files = gtk.Button('Sync selected files')
@@ -239,7 +227,7 @@ class MainThread(threading.Thread):
         window.connect("destroy", self.on_quit)
         self.window.connect("key-press-event",self.on_key_press_event)
         self.quit = False
-        self.do_queue_process()
+        #self.do_queue_process()
 
     def run(self):
         self.io_hosts_populate(self.hostsTreeStore)
@@ -431,26 +419,44 @@ class MainThread(threading.Thread):
         (model, pathlist) = selection.get_selected_rows()
         for path in pathlist:
             print repr(path)
-            path_str = self.projectsTreeStore[path][1]
+            path_str = model[path][1]
             print path_str
-            row_reference = gtk.TreeRowReference(self.projectsTreeStore, path)
-            self.do_sync_item([path_str], row_reference, False)
+            # row_reference = gtk.TreeRowReference(model, path)
+            # child_iter = model.iter_children(model.get_iter(path))
+            # while child_iter != None:
+            #     path_child = model.get_path(child_iter)
+            #     path_str_child = model[path_child][1]
+            #     row_reference_child = gtk.TreeRowReference(model, path_child)
+            #     #self.do_sync_item([path_str_child], row_reference_child, path)
+            #     self.gui_refresh_path(path=path_str_child, sync=True)
+            #     child_iter = model.iter_next(child_iter)
+            self.do_sync_item([path_str], relist=True)
             #self.projectsTreeStore[path][3] = gtk.gdk.PixbufAnimation('../res/img/spinner01.gif')
             #gobject.idle_add(self.gui_show_error, repr(self.buffer[self.projectsTreeStore[path][1]]))
             #gobject.idle_add(self.gui_show_error, path_str+'\n'+cgi.escape(pprint.pformat(self.buffer[path_str])))
 
-    def do_sync_item(self, paths, row_reference, parent_path):
+    def do_sync_item(self, paths, parent_path=False, relist=False):
+        model = self.projectsTreeStore
         for path_str in paths:
             if path_str in self.transfer_queue:
                 paths.remove(path_str)
         if parent_path and len(paths) > 0:
-            self.io_list_files(paths, parent_path)
+            self.io_list_files(paths, parent_path, sync=True, maxdepth=False)
+        elif relist:
+            self.io_list_files(paths, False, sync=True, maxdepth=False)
         for path_str in paths:
+            print 'do_sync_item: ' + path_str
             transfer_item = {}
             transfer_item['path'] = path_str
             for row_reference in self.buffer[path_str]['row_references']:
-                gobject.idle_add(self.gui_set_value, self.projectsTreeStore, row_reference, 6, 'Queued')
-                gobject.idle_add(self.gui_set_value, self.projectsTreeStore, row_reference, 7, True)
+                child_iter = model.iter_children(model.get_iter(row_reference.get_path()))
+                while child_iter != None:
+                    path_child = model.get_path(child_iter)
+                    path_str_child = model[path_child][1]
+                    #self.do_sync_item([path_str_child])
+                    child_iter = model.iter_next(child_iter)
+                gobject.idle_add(self.gui_set_value, model, row_reference, 6, 'Queued')
+                gobject.idle_add(self.gui_set_value, model, row_reference, 7, True)
             self.transfer_queue.append(transfer_item)
         #self.projectsTreeStore[path][6] = 'Queued'
         #self.projectsTreeStore[path][5] += 1
@@ -460,13 +466,23 @@ class MainThread(threading.Thread):
         selection = self.projectsTree.get_selection()
         (model, pathlist) = selection.get_selected_rows()
         for path in pathlist:
-            row_reference = gtk.TreeRowReference(self.projectsTreeStore, path)
             path_str = model[path][1]
-            for i, transfer_item in enumerate(self.transfer_queue):
-                if transfer_item['path'] == path_str:
-                    del self.transfer_queue[i]
-                    gobject.idle_add(self.gui_set_value, self.projectsTreeStore, row_reference, 7, False)
-                    print 'Removed ' + path_str
+            self.transfer_remove(path_str)
+
+    def transfer_remove(self, path_str):
+        model = self.projectsTreeStore
+        for i, transfer_item in enumerate(self.transfer_queue):
+            if transfer_item['path'] == path_str:
+                del self.transfer_queue[i]
+        for row_reference in self.buffer[path_str]['row_references']:
+            gobject.idle_add(self.gui_set_value, model, row_reference, 7, False)
+            child_iter = model.iter_children(model.get_iter(row_reference.get_path()))
+            while child_iter != None:
+                path_child = model.get_path(child_iter)
+                path_str_child = model[path_child][1]
+                self.transfer_remove(path_str_child)
+                child_iter = model.iter_next(child_iter)
+        print 'Removed ' + path_str
 
     def gui_host_add(self, widget, alias='New host', address='', user='mistika', port=22, path='', selected=False):
         row_iter = self.hostsTreeStore.append(None, [alias, address, user, port, path])
@@ -623,6 +639,7 @@ class MainThread(threading.Thread):
             local = None
             direction = None
             remote = None
+        self.buffer[path]['direction'] = direction
         for row_reference in self.buffer[path]['row_references']:
             row_iter = tree.get_iter(row_reference.get_path())
             tree.set_value(row_iter, 0, markup)
@@ -630,7 +647,7 @@ class MainThread(threading.Thread):
             tree.set_value(row_iter, 3, direction)
             tree.set_value(row_iter, 4, remote)
         if sync:
-            self.do_sync_item([path], False, False)
+            self.do_sync_item([path], False)
 
     def gui_set_value(self, model, row_reference, col, value):
         #print repr(item)
@@ -768,7 +785,10 @@ class MainThread(threading.Thread):
     def io_queue_process(self):
         while self.queue_process:
             for transfer_item in self.transfer_queue:
-                print transfer_item['path']
+                path = transfer_item['path']
+                print 'In queue:' + path
+                direction = self.buffer[path]['direction']
+                print direction
             time.sleep(1)
 
 
@@ -793,8 +813,9 @@ class MainThread(threading.Thread):
         gobject.idle_add(loader.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
         self.io_list_files()
 
-    def io_list_files(self, paths=[''], parent_path=False, sync=False):
+    def io_list_files(self, paths=[''], parent_path=False, sync=False, maxdepth = 2):        
         type_filter = ''
+        maxdepth_str = ''
         if paths == ['']:
             type_filter = ' -type d'
 
@@ -805,7 +826,9 @@ class MainThread(threading.Thread):
             else:
                 root = '<root>/'
             search_paths += ' "%s%s"' % (root, path)
-        find_cmd = 'find %s -name PRIVATE -prune -o -maxdepth 2 %s -printf "%%i %%y %%s %%T@ %%p\\\\n"' % (search_paths, type_filter)
+        if maxdepth:
+            maxdepth_str = ' -maxdepth %i' % maxdepth
+        find_cmd = 'find %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%p\\\\n"' % (search_paths, maxdepth_str, type_filter)
         print find_cmd
         thread_remote = threading.Thread(target=self.io_list_files_remote, args=[find_cmd, parent_path])
         self.threads.append(thread_remote)
