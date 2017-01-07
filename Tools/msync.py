@@ -22,6 +22,9 @@ class MainThread(threading.Thread):
         super(MainThread, self).__init__()
         self.threads = []
         self.buffer = {}
+        self.buffer_lock = threading.Lock()
+        self.buffer_local = []
+        self.buffer_local = []
         self.connection = {}
         self.is_mac = False
         self.is_mamba = False
@@ -116,7 +119,7 @@ class MainThread(threading.Thread):
 
         self.button_host_connect = gtk.Button('Connect to host')
         self.button_host_connect.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
-        self.button_host_connect.connect("clicked", self.do_host_connect)
+        self.button_host_connect.connect("clicked", self.on_host_connect)
         hbox.pack_start(self.button_host_connect, False, False, 0)
 
         self.label_active_host = gtk.Label('')
@@ -151,7 +154,7 @@ class MainThread(threading.Thread):
         column = gtk.TreeViewColumn('Path', gtk.CellRendererText(), text=1)
         column.set_resizable(True)
         column.set_expand(True)
-        column.set_visible(False)
+        #column.set_visible(False)
         self.projectsTree.append_column(column)
 
         column = gtk.TreeViewColumn('Local', gtk.CellRendererPixbuf(), stock_id=2)
@@ -207,17 +210,17 @@ class MainThread(threading.Thread):
 
         self.button_sync_files = gtk.Button('Sync selected files')
         #self.button_sync_files.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
-        self.button_sync_files.connect("clicked", self.do_sync_selected)
+        self.button_sync_files.connect("clicked", self.on_sync_selected)
         hbox.pack_start(self.button_sync_files, False, False, 0)
 
         button = gtk.Button('Unqueue selected files')
         #self.button_sync_files.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
-        button.connect("clicked", self.do_sync_selected_abort)
+        button.connect("clicked", self.on_sync_selected_abort)
         hbox.pack_start(button, False, False, 0)
 
         button = gtk.Button('Sync associated files')
         #self.button_sync_files.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
-        button.connect("clicked", self.do_sync_associated)
+        button.connect("clicked", self.on_sync_associated)
         hbox.pack_start(button, False, False, 0)
 
         vbox.pack_start(hbox, False, False, 0)
@@ -236,12 +239,20 @@ class MainThread(threading.Thread):
         window.connect("destroy", self.on_quit)
         self.window.connect("key-press-event",self.on_key_press_event)
         self.quit = False
-        self.do_queue_process()
+        # self.do_queue_process()
+
     def run(self):
         self.io_hosts_populate(self.hostsTreeStore)
         treeselection = self.projectsTree.get_selection()
         treeselection.set_mode(gtk.SELECTION_MULTIPLE)
         #self.do_list_projects_local()
+
+    def aux_fix_mac_printf(self, str):
+        return str.replace('-printf',  '-print0 | xargs -0 stat -f').replace('%T@', '%c').replace('%s', '%z').replace('%y', '%T').replace('%p', '%N').replace('\\\\n', '')
+
+    def aux_mistika_object_path(self, level_names):
+        #print repr(level_names)
+        return '/'.join(level_names)
 
     def on_quit(self, widget):
         print 'Closed by: ' + repr(widget)
@@ -268,11 +279,11 @@ class MainThread(threading.Thread):
         # print repr(iter)
         # print repr(path)
         file_path = self.projectsTreeStore[iter][1]
-        if file_path.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS:
+        if file_path.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS: # Should already be loaded
             return
         selection = self.hostsTree.get_selection()
         (model, iter) = selection.get_selected()
-        t = threading.Thread(target=self.io_list_projects, args=[[file_path]])
+        t = threading.Thread(target=self.io_list_files, args=[[file_path]])
         self.threads.append(t)
         t.setDaemon(True)
         t.start()
@@ -296,6 +307,12 @@ class MainThread(threading.Thread):
         t.setDaemon(True)
         t.start()
 
+    def on_host_connect(self, widget):
+        t = threading.Thread(target=self.io_host_connect)
+        self.threads.append(t)
+        t.setDaemon(True)
+        t.start()
+
     def do_clear_remote(self):
         for path in self.buffer.keys():
             row_path = self.buffer[path]['row_reference'].get_path()
@@ -312,32 +329,6 @@ class MainThread(threading.Thread):
                 self.buffer[path]['fingerprint_remote'] = ''
                 gobject.idle_add(self.gui_refresh_path, path)
 
-    def do_list_projects_local(self, *widget):
-        t = threading.Thread(target=self.io_list_projects_local)
-        self.threads.append(t)
-        t.setDaemon(True)
-        t.start()
-
-    def do_host_connect(self, *widget):
-        t = threading.Thread(target=self.io_host_connect)
-        self.threads.append(t)
-        t.setDaemon(True)
-        t.start()
-
-    def do_list_projects_remote(self, widget):
-        self.do_clear_remote()
-        selection = self.hostsTree.get_selection()
-        (model, iter) = selection.get_selected()
-        print model[iter][0]
-        t = threading.Thread(target=self.io_hosts_store)
-        self.threads.append(t)
-        t.setDaemon(True)
-        t.start()
-        t = threading.Thread(target=self.io_list_projects_remote, args=[model[iter][0], model[iter][1], model[iter][2], model[iter][3], model[iter][4]])
-        self.threads.append(t)
-        t.setDaemon(True)
-        t.start()
-
     def do_queue_process(self):
         self.queue_process = True
         t = threading.Thread(target=self.io_queue_process)
@@ -345,7 +336,7 @@ class MainThread(threading.Thread):
         t.setDaemon(True)
         t.start()
 
-    def do_sync_associated(self, widget):
+    def on_sync_associated(self, widget):
         selection = self.projectsTree.get_selection()
         (model, pathlist) = selection.get_selected_rows()
         for path in pathlist:
@@ -355,10 +346,6 @@ class MainThread(threading.Thread):
                 self.threads.append(t)
                 t.setDaemon(True)
                 t.start()
-
-    def mistika_object_path(self, level_names):
-        #print repr(level_names)
-        return '/'.join(level_names)
 
     def io_get_associated(self, path_str):
         files_chunk_max_size = 10
@@ -380,24 +367,34 @@ class MainThread(threading.Thread):
                         char_buffer = ''
                     elif char == ')':
                         f_path = False
-                        #print self.mistika_object_path(level_names)
-                        object_path = self.mistika_object_path(level_names)
+                        #print self.aux_mistika_object_path(level_names)
+                        object_path = self.aux_mistika_object_path(level_names)
                         if object_path.endswith('C/F'): # Clip source link
                             print 'C/F: ' + char_buffer
                             f_path = char_buffer
                         elif object_path.endswith('C/d/I/H/p'): # Clip media folder
-                            char_buffer_store = char_buffer
+                            CdIHp = char_buffer
+                        elif object_path.endswith('C/d/I/s'): # Clip start frame
+                            CdIs = int(char_buffer)
+                        elif object_path.endswith('C/d/I/e'): # Clip end frame
+                            CdIe = int(char_buffer)
                         elif object_path.endswith('C/d/I/H/n'): # Clip media name
-                            print 'C/d/I/H: ' + char_buffer_store + char_buffer
-                            f_path = char_buffer_store + char_buffer
+                            f_path = CdIHp + char_buffer
+                            print 'C/d/I/H: ' + f_path
                         elif object_path.endswith('F/D'): # .dat file relative path (from projects_path)
                             print 'F/D: ' + char_buffer
                             f_path = char_buffer
                         if f_path:
-                            files_chunk.append(f_path)
+                            if '%' in f_path:
+                                for i in range(CdIs, CdIe+1):
+                                    files_chunk.append(f_path.replace(self.projects_path_local+'/', '') % i)
+                            else:
+                                files_chunk.append(f_path.replace(self.projects_path_local+'/', ''))
                             if len(files_chunk) >= files_chunk_max_size:
-                                self.do_sync_item(files_chunk, False, path_str.replace(self.projects_path_local+'/', ''))
+                                self.aux_list_files(file_path_list=files_chunk, parent_file_path=path_str, sync=True)
                                 files_chunk = []
+                                #self.io_list_files(files_chunk, path_str.replace(self.projects_path_local+'/', ''), sync=True)
+                                #self.do_sync_item(files_chunk, False, path_str.replace(self.projects_path_local+'/', ''))
                         # if len(level_val) < level+1:
                         #     level_val.append(char_buffer)
                         # else:
@@ -409,13 +406,27 @@ class MainThread(threading.Thread):
                         continue
                     elif char:
                         char_buffer += char
-            for f_path in files_chunk:
-                self.do_sync_item(files_chunk, False, path_str.replace(self.projects_path_local+'/', ''))
+            if len(files_chunk) > 0:
+                self.aux_list_files(file_path_list=files_chunk, parent_file_path=path_str, sync=True)
+                files_chunk = []
         except IOError as e:
             print 'Could not open ' + path_str
             raise e
 
-    def do_sync_selected(self, widget):
+    def aux_list_files(self, file_path_list, parent_file_path, sync=False):
+        if parent_file_path.startswith(self.projects_path_local):
+            parent_file_path = parent_file_path.replace(self.projects_path_local+'/', '')
+
+        t = threading.Thread(target=self.io_list_files, kwargs={
+            'paths' : list(file_path_list), # Creates a copy
+            'parent_path' : parent_file_path.replace(self.projects_path_local+'/', ''),
+            'sync' : True
+            })
+        self.threads.append(t)
+        t.setDaemon(True)
+        t.start()
+
+    def on_sync_selected(self, widget):
         selection = self.projectsTree.get_selection()
         (model, pathlist) = selection.get_selected_rows()
         for path in pathlist:
@@ -432,19 +443,12 @@ class MainThread(threading.Thread):
         for path_str in paths:
             if path_str in self.transfer_queue:
                 paths.remove(path_str)
-        if len(paths) > 0:
-            self.io_list_projects(paths, parent_path)
+        if parent_path and len(paths) > 0:
+            self.io_list_files(paths, parent_path)
         for path_str in paths:
             transfer_item = {}
             transfer_item['path'] = path_str
-            if row_reference:
-                transfer_item['row_references'] = [row_reference]
-            else:
-                transfer_item['row_references'] = []
-                for row in self.projectsTreeStore:
-                    if row[1] == path_str:
-                        transfer_item['row_references'].append(gtk.TreeRowReference(self.projectsTreeStore, self.projectsTreeStore.get_path(row)))
-            for row_reference in transfer_item['row_references']:
+            for row_reference in self.buffer[path_str]['row_references']:
                 gobject.idle_add(self.gui_set_value, self.projectsTreeStore, row_reference, 6, 'Queued')
                 gobject.idle_add(self.gui_set_value, self.projectsTreeStore, row_reference, 7, True)
             self.transfer_queue.append(transfer_item)
@@ -452,7 +456,7 @@ class MainThread(threading.Thread):
         #self.projectsTreeStore[path][5] += 1
         #self.projectsTreeStore[path][7] = True # Visibility
 
-    def do_sync_selected_abort(self, widget):
+    def on_sync_selected_abort(self, widget):
         selection = self.projectsTree.get_selection()
         (model, pathlist) = selection.get_selected_rows()
         for path in pathlist:
@@ -538,7 +542,7 @@ class MainThread(threading.Thread):
         except: # Reached top level
             pass
 
-    def gui_refresh_path(self, path):
+    def gui_refresh_path(self, path, sync):
         print 'Refreshing ' + path
         tree = self.projectsTreeStore
         if path.startswith('/'): # Absolute path, child of a MISTIKA_EXTENSIONS object
@@ -609,6 +613,8 @@ class MainThread(threading.Thread):
             tree.set_value(row_iter, 2, local)
             tree.set_value(row_iter, 3, direction)
             tree.set_value(row_iter, 4, remote)
+        if sync:
+            self.do_sync_item([path], False, False)
 
     def gui_set_value(self, model, row_reference, col, value):
         #print repr(item)
@@ -626,10 +632,7 @@ class MainThread(threading.Thread):
         dialog.set_markup(message)
         dialog.run()
 
-    def fix_mac_printf(self, str):
-        return str.replace('-printf',  '-print0 | xargs -0 stat -f').replace('%T@', '%c').replace('%s', '%z').replace('%y', '%T').replace('%p', '%N').replace('\\\\n', '')
-
-    def io_list_projects_local(self, find_cmd):
+    def io_list_files_local(self, find_cmd, parent_path=False):
         loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
         gobject.idle_add(self.button_load_local_projects.set_image, loader)
         projects_path_file = os.path.expanduser('~/MISTIKA-ENV/MISTIKA_WORK')
@@ -644,7 +647,7 @@ class MainThread(threading.Thread):
                     break
             cmd = find_cmd.replace('<root>', self.projects_path_local)
             if self.is_mac:
-                cmd = self.fix_mac_printf(cmd)
+                cmd = self.aux_fix_mac_printf(cmd)
             print repr(cmd)
             try:
                 p1 = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -653,7 +656,8 @@ class MainThread(threading.Thread):
                     loader.set_from_stock(gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
                     gobject.idle_add(self.gui_show_error, stderr)
                     return
-                self.buffer_local = output.splitlines()
+                lines = output.splitlines()
+                self.buffer_add(lines, 'localhost', self.projects_path_local, parent_path)
             except:
                 print stderr
                 raise
@@ -663,7 +667,7 @@ class MainThread(threading.Thread):
             raise
         gobject.idle_add(loader.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
 
-    def io_list_projects_remote(self, find_cmd):
+    def io_list_files_remote(self, find_cmd, parent_path=False):
         loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
         gobject.idle_add(self.button_load_remote_projects.set_image, loader)
         cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.connection['port']), '%s@%s' % (self.connection['user'], self.connection['address']), find_cmd.replace('<root>', self.connection['projects_path'])]
@@ -675,7 +679,8 @@ class MainThread(threading.Thread):
                 loader.set_from_stock(gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
                 gobject.idle_add(self.gui_show_error, stderr)
                 return
-            self.buffer_remote = output.splitlines()
+            lines = output.splitlines()
+            self.buffer_add(lines, self.connection['alias'], self.connection['projects_path'], parent_path)
         except:
             print stderr
             raise
@@ -718,8 +723,9 @@ class MainThread(threading.Thread):
 
             if path == '': # Skip root item
                 continue
-            print 'Buffer add: %s "%s" %s %s' % (host, path, f_type, f_time)
+            self.buffer_lock.acquire()
             if not path in self.buffer:
+                print 'Buffer add: %s "%s" %s %s' % (host, path, f_type, f_time)
                 self.buffer[path] = {}
                 self.buffer[path]['row_references'] = []
                 self.buffer[path]['parent_paths'] = parent_paths
@@ -729,6 +735,7 @@ class MainThread(threading.Thread):
                 self.buffer[path]['size_local'] = -1
                 self.buffer[path]['type_remote'] = ''
                 self.buffer[path]['type_local'] = ''
+            self.buffer_lock.release()
             if host == 'localhost':
                 self.buffer[path]['type_local'] = f_type
                 self.buffer[path]['size_local'] = f_size
@@ -766,9 +773,9 @@ class MainThread(threading.Thread):
         else:
             gobject.idle_add(self.label_active_host.set_markup, '<span foreground="#888888">Connected to host:</span> %s <span foreground="#888888">(%s)</span>' % (self.connection['alias'], self.connection['address']))
         gobject.idle_add(loader.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
-        self.io_list_projects()
+        self.io_list_files()
 
-    def io_list_projects(self, paths=[''], parent_path=False):
+    def io_list_files(self, paths=[''], parent_path=False, sync=False):
         type_filter = ''
         if paths == ['']:
             type_filter = ' -type d'
@@ -782,26 +789,24 @@ class MainThread(threading.Thread):
             search_paths += ' "%s%s"' % (root, path)
         find_cmd = 'find %s -name PRIVATE -prune -o -maxdepth 2 %s -printf "%%i %%y %%s %%T@ %%p\\\\n"' % (search_paths, type_filter)
         print find_cmd
-        self.buffer_local = []
-        self.buffer_local = []
-        thread_remote = threading.Thread(target=self.io_list_projects_remote, args=[find_cmd])
+        thread_remote = threading.Thread(target=self.io_list_files_remote, args=[find_cmd, parent_path])
         self.threads.append(thread_remote)
         thread_remote.setDaemon(True)
         thread_remote.start()
 
-        thread_local = threading.Thread(target=self.io_list_projects_local, args=[find_cmd])
+        thread_local = threading.Thread(target=self.io_list_files_local, args=[find_cmd, parent_path])
         self.threads.append(thread_local)
         thread_local.setDaemon(True)
         thread_local.start()
 
         thread_local.join()
         thread_remote.join()
-        self.buffer_add(self.buffer_local, 'localhost', self.projects_path_local, parent_path)
-        self.buffer_add(self.buffer_remote, self.connection['alias'], self.connection['projects_path'], parent_path)
+        #self.buffer_add(self.buffer_local, 'localhost', self.projects_path_local)
+        #self.buffer_add(self.buffer_remote, self.connection['alias'], self.connection['projects_path'], parent_path)
         for path in paths:
             for f_path in sorted(self.buffer):
                 if f_path.startswith(path):
-                    gobject.idle_add(self.gui_refresh_path, f_path)
+                    gobject.idle_add(self.gui_refresh_path, f_path, sync)
 
     def io_hosts_populate(self, tree):
         cfg_path = os.path.expanduser('~/.mistika-hyperspeed/sync/hosts.json')
