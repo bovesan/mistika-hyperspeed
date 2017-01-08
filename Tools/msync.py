@@ -13,6 +13,7 @@ import subprocess
 import threading
 import time
 import sys
+import Queue
 
 MISTIKA_EXTENSIONS = ['env', 'grp', 'rnd', 'fx']
 
@@ -26,6 +27,9 @@ class MainThread(threading.Thread):
         self.buffer_lock = threading.Lock()
         self.buffer_local = []
         self.buffer_local = []
+        self.queue_buffer = Queue.Queue()
+        self.queue_remote = Queue.Queue()
+        self.queue_local = Queue.Queue()
         self.connection = {}
         self.is_mac = False
         self.is_mamba = False
@@ -229,7 +233,7 @@ class MainThread(threading.Thread):
         window.connect("destroy", self.on_quit)
         self.window.connect("key-press-event",self.on_key_press_event)
         self.quit = False
-        self.do_queue_process()
+        self.do_thread_transfer_active()
 
     def run(self):
         self.io_hosts_populate(self.hostsTreeStore)
@@ -304,24 +308,25 @@ class MainThread(threading.Thread):
         t.start()
 
     def do_clear_remote(self):
-        for path in self.buffer.keys():
-            row_path = self.buffer[path]['row_reference'].get_path()
+        model = self.projectsTreeStore
+        for file_path in self.buffer.keys():
+            row_path = self.buffer[file_path]['row_reference'].get_path()
             if row_path == None:
-                print path
+                print file_path
                 continue
-            row_iter = self.projectsTreeStore.get_iter(self.buffer[path]['row_reference'].get_path())
-            if self.buffer[path]['mtime_local'] < 0:
+            row_iter = model.get_iter(row_path)
+            if self.buffer[file_path]['mtime_local'] < 0:
                 self.projectsTreeStore.remove(row_iter)
-                del self.buffer[path]
-            elif self.buffer[path]['mtime_remote'] >= 0:
-                self.buffer[path]['mtime_remote'] = -1
-                self.buffer[path]['size_remote'] = -1
-                self.buffer[path]['fingerprint_remote'] = ''
-                gobject.idle_add(self.gui_refresh_path, path)
+                del self.buffer[file_path]
+            elif self.buffer[file_path]['mtime_remote'] >= 0:
+                self.buffer[file_path]['mtime_remote'] = -1
+                self.buffer[file_path]['size_remote'] = -1
+                self.buffer[file_path]['fingerprint_remote'] = ''
+                gobject.idle_add(self.gui_refresh_path, file_path)
 
-    def do_queue_process(self):
-        self.queue_process = True
-        t = threading.Thread(target=self.io_queue_process)
+    def do_thread_transfer_active(self):
+        self.thread_transfer_active = True
+        t = threading.Thread(target=self.thread_transfer)
         self.threads.append(t)
         t.setDaemon(True)
         t.start()
@@ -784,13 +789,15 @@ class MainThread(threading.Thread):
                 self.buffer[path]['host'] = host
             #self.buffer[path]['parent_row_references'] += parent_row_references
 
-    def io_queue_process(self):
-        while self.queue_process:
+    def thread_transfer(self):
+        while self.thread_transfer_active:
             file_lines = {}
             file_lines['local_to_remote_absolute'] = []
             file_lines['local_to_remote_relative'] = []
             file_lines['remote_to_local_absolute'] = []
             file_lines['remote_to_local_relative'] = []
+            parent_dirs_remote = []
+            parent_dirs_local = []
             for path in self.transfer_queue.keys():
                 print 'In queue:' + path
                 direction = self.buffer[path]['direction']
@@ -799,13 +806,25 @@ class MainThread(threading.Thread):
                 #print direction
                 line = path + '\n'
                 if direction == gtk.STOCK_GO_FORWARD:
-                    if path.endswith('/'):
-                        # ssh mkdir -p path
+                    parent_dir = path.rstrip('/').rsplit('/', 1)[0]
+                    if parent_dir in self.buffer and self.buffer[parent_dir]['size_remote'] == 0:
+                        pass
+                    else:
+                        parent_dirs_remote.append(parent_dir)
                     if path.startswith('/'):
                         file_lines['local_to_remote_absolute'].append(line)
                     else:
                         file_lines['local_to_remote_relative'].append(line)
-
+            if len(parent_dirs_remote) > 0:
+                mkdir = 'mkdir -p '
+                for parent_dir in parent_dirs_remote:
+                    mkdir += "'%s'" % parent_dir
+                cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.connection['port']), '%s@%s' % (self.connection['user'], self.connection['address']), mkdir]
+                print repr(cmd)
+                p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                output, stderr = p1.communicate()
+                if p1.returncode > 0:
+                    gobject.idle_add(self.gui_show_error, stderr)
             for file_lines_list in file_lines:
                 if len(file_lines[file_lines_list]) > 0:
                     files_list_path = self.cfgdir + file_lines_list + '.lst'
@@ -814,17 +833,53 @@ class MainThread(threading.Thread):
                         cmd = ['rsync',  '--progress', '-a', '-e', 'ssh', '--files-from=' + files_list_path, self.projects_path_local, '%s@%s:%s' % (self.connection['user'], self.connection['address'], self.connection['projects_path'])]
                         print repr(cmd)
                         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                        self.check_transfer(process)
+                        self.transfer_monitor(process)
 
                     if file_lines_list == 'local_to_remote_absolute' > 0:
                         cmd = ['rsync',  '--progress', '-a', '-e', 'ssh', '--files-from=' + files_list_path, '/', '%s@%s:/' % (self.connection['user'], self.connection['address'])]
                         print repr(cmd)
                         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                        self.check_transfer(process)
+                        self.transfer_monitor(process)
 
             time.sleep(10)
 
-    def check_transfer(self, process):
+    def thread_buffer(self):
+        q = self.queue_buffer
+        while self.thread_buffer_active:
+            item in q.get()
+            try:
+                item[0](item[1:])
+            except Exception as e:
+                print 'Error:'
+                print repr(e)
+            q.task_done()
+            time.sleep(10)
+
+    def thread_remote(self):
+        q = self.queue_remote
+        while self.thread_host_active:
+            item in q.get()
+            try:
+                item[0](item[1:])
+            except Exception as e:
+                print 'Error:'
+                print repr(e)
+            q.task_done()
+            time.sleep(10)
+
+    def thread_local(self):
+        q = self.queue_local
+        while self.thread_local_active:
+            item in q.get()
+            try:
+                item[0](item[1:])
+            except Exception as e:
+                print 'Error:'
+                print repr(e)
+            q.task_done()
+            time.sleep(10)
+
+    def transfer_monitor(self, process):
         print 'Waiting for process to finish'
         process.poll()
         out_buffer = ''
