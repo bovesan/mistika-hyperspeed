@@ -284,8 +284,6 @@ class MainThread(threading.Thread):
         model = self.projectsTreeStore
         file_path = model[iter][1]
         print 'Expanding ' + file_path
-        if self.buffer[file_path]['virtual']:
-            return
         if file_path.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS: # Should already be loaded
             return
         selection = self.hostsTree.get_selection()
@@ -960,7 +958,7 @@ class MainThread(threading.Thread):
         self.queue_buffer.put_nowait([self.buffer_list_files])
 
     def buffer_list_files(self, paths=[''], parent_path='', sync=False, maxdepth = 2):
-        print 'buffer_list_files()'     
+        print 'buffer_list_files()'
         type_filter = ''
         maxdepth_str = ''
         if paths == ['']:
@@ -968,11 +966,15 @@ class MainThread(threading.Thread):
 
         search_paths = ''
         for path in paths:
+            if self.buffer[file_path]['virtual']:
+                continue
             if path.startswith('/'):
                 root = ''
             else:
                 root = '<root>/'
             search_paths += ' "%s%s"' % (root, path)
+        if search_paths == '':
+            return
         if maxdepth:
             maxdepth_str = ' -maxdepth %i' % maxdepth
         find_cmd = 'find %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%p\\\\n"' % (search_paths, maxdepth_str, type_filter)
