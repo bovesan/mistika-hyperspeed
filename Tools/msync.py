@@ -18,7 +18,8 @@ import Queue
 MISTIKA_EXTENSIONS = ['env', 'grp', 'rnd', 'fx']
 
 gobject.threads_init()
-
+def print_str(self, str):
+    print str
 class MainThread(threading.Thread):
     def __init__(self):
         super(MainThread, self).__init__()
@@ -45,72 +46,91 @@ class MainThread(threading.Thread):
         window.set_position(gtk.WIN_POS_CENTER)
         if 'darwin' in platform.system().lower():
             self.is_mac = True
-            self.window.set_resizable(False) # Because resizing crashes the app on Mac
+            #self.window.set_resizable(False) # Because resizing crashes the app on Mac
 
+        vpane = gtk.VPaned()
         vbox = gtk.VBox(False, 10)
 
-        self.status_bar = gtk.Statusbar()     
-        vbox.pack_end(self.status_bar, False, False, 0)
-        self.status_bar.show()
-        self.context_id = self.status_bar.get_context_id("Statusbar example")
+        self.hostsTreeStore = gtk.TreeStore(str, str, str, int, str) # Name, url, color, underline
 
         hbox = gtk.HBox(False, 10)
-        hbox.pack_start(gtk.Label('Remote host:'), False, False, 0)
+        label_markup = '<span foreground="#888888">%s</span>'
+        vbox2 = gtk.VBox(False, 5)
+        hbox2 = gtk.HBox(False, 0)
+        label = gtk.Label(label_markup % 'Remote host:')
+        label.set_use_markup(True)
+        hbox2.pack_start(label, False, False, 0)
+        vbox2.pack_start(hbox2, False, False, 0)
+        self.entry_host = gtk.ComboBoxEntry(model=self.hostsTreeStore, column=0)
+        entry = self.entry_host
+        entry.connect("key-release-event", self.on_host_update)
+        entry.connect('changed', self.on_host_selected)
+        vbox2.pack_start(entry, False, False, 0)
+        hbox.pack_start(vbox2, False, False, 0)
+        vbox2 = gtk.VBox(False, 5)
+        hbox2 = gtk.HBox(False, 0)
+        label = gtk.Label(label_markup % 'Address:')
+        label.set_use_markup(True)
+        hbox2.pack_start(label, False, False, 0)
+        vbox2.pack_start(hbox2, False, False, 0)
+        self.entry_address = gtk.Entry()
+        entry = self.entry_address
+        entry.connect('key-release-event', self.on_host_update)
+        #entry.connect('event', print_str)
+        vbox2.pack_start(entry, False, False, 0)
+        hbox.pack_start(vbox2, False, False, 0)
+        vbox2 = gtk.VBox(False, 5)
+        hbox2 = gtk.HBox(False, 0)
+        label = gtk.Label(label_markup % 'User:')
+        label.set_use_markup(True)
+        hbox2.pack_start(label, False, False, 0)
+        vbox2.pack_start(hbox2, False, False, 0)
+        self.entry_user = gtk.Entry()
+        entry = self.entry_user
+        entry.connect('key-release-event', self.on_host_update)
+        vbox2.pack_start(entry, False, False, 0)
+        hbox.pack_start(vbox2, False, False, 0)
+        vbox2 = gtk.VBox(False, 5)
+        hbox2 = gtk.HBox(False, 0)
+        label = gtk.Label(label_markup % 'Port:')
+        label.set_use_markup(True)
+        hbox2.pack_start(label, False, False, 0)
+        vbox2.pack_start(hbox2, False, False, 0)
+        self.entry_port = gtk.SpinButton(gtk.Adjustment(value=22, lower=0, upper=9999999, step_incr=1))
+        entry = self.entry_port
+        entry.connect('key-release-event', self.on_host_update)
+        entry.connect('button-release-event', self.on_host_update)
+        #spinner.set_size_request(80,0)
+        vbox2.pack_start(entry, False, False, 0)
+        hbox.pack_start(vbox2, False, False, 0)
+        vbox2 = gtk.VBox(False, 5)
+        hbox2 = gtk.HBox(False, 0)
+        label = gtk.Label(label_markup % 'Projects path (optional):')
+        label.set_use_markup(True)
+        hbox2.pack_start(label, False, False, 0)
+        vbox2.pack_start(hbox2, False, False, 0)
+        self.entry_projects_path = gtk.Entry()
+        entry = self.entry_projects_path
+        entry.connect('key-release-event', self.on_host_update)
+        vbox2.pack_start(entry, True, True, 0)
+        hbox.pack_start(vbox2, True, True, 0)
+
+        #cell = gtk.CellRendererText()
+        #combobox.pack_start(cell, True)
+        #combobox.add_attribute(cell, 'text', 0)  
+
         vbox.pack_start(hbox, False, False, 0)
 
-        self.hostsTreeStore = gtk.TreeStore(str, str, str, int, str) # Name, url, color, underline
-        self.hostsTree = gtk.TreeView()
-        cell = gtk.CellRendererText()
-        cell.set_property("editable", True)
-        cell.connect('edited', self.on_host_edit, (self.hostsTreeStore, 0))
-        column = gtk.TreeViewColumn('', cell, text=0)
-        column.set_resizable(True)
-        column.set_expand(True)
-        self.hostsTree.append_column(column)
-        cell = gtk.CellRendererText()
-        cell.set_property("foreground", "gray")
-        cell.set_property("editable", True)
-        cell.connect('edited', self.on_host_edit, (self.hostsTreeStore, 1))
-        column = gtk.TreeViewColumn('Host', cell, text=1)
-        column.set_resizable(True)
-        column.set_expand(True)
-        self.hostsTree.append_column(column)
-        cell = gtk.CellRendererText()
-        cell.set_property("foreground", "gray")
-        cell.set_property("editable", True)
-        cell.connect('edited', self.on_host_edit, (self.hostsTreeStore, 2))
-        column = gtk.TreeViewColumn('Username', cell, text=2)
-        column.set_resizable(True)
-        column.set_expand(True)
-        self.hostsTree.append_column(column)
-        cell = gtk.CellRendererText()
-        cell.set_property("foreground", "gray")
-        cell.set_property("editable", True)
-        cell.connect('edited', self.on_host_edit, (self.hostsTreeStore, 3))
-        column = gtk.TreeViewColumn('Port', cell, text=3)
-        column.set_resizable(True)
-        column.set_expand(True)
-        self.hostsTree.append_column(column)
-        cell = gtk.CellRendererText()
-        cell.set_property("foreground", "gray")
-        cell.set_property("editable", True)
-        cell.connect('edited', self.on_host_edit, (self.hostsTreeStore, 4))
-        column = gtk.TreeViewColumn('Projects path', cell, text=4)
-        column.set_resizable(True)
-        column.set_expand(True)
-        self.hostsTree.append_column(column)
-        hostsTreeStore = self.hostsTreeStore
-        #hostsTreeStore.append(None, ["Horten", 'horten.hocusfocus.no', 'mistika', 22, '/Volumes/SLOW_HF/PROJECTS/'])
-        #hostsTreeStore.append(None, ["Oslo", 's.hocusfocus.no', 'mistika', 22, '/Volumes/SLOW_HF/PROJECTS/'])
-        linksFilter = hostsTreeStore.filter_new();
-        self.hostsTree.set_model(hostsTreeStore)
-        self.hostsTree.expand_all()
+        hbox = gtk.HBox(False, 0)
+        button = gtk.Button(label='Connect')
+        button.set_image(gtk.image_new_from_stock(gtk.STOCK_CONNECT,  gtk.ICON_SIZE_BUTTON))
+        #button.set_size_request(100, 100)
+        hbox.pack_start(button, False, False)
+        vbox.pack_start(hbox, False, False, 0)
 
-        self.hostsTree.set_size_request(100,150)
-        scrolled_window = gtk.ScrolledWindow()
-        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
-        scrolled_window.add(self.hostsTree)
-        vbox.pack_start(scrolled_window, False, False, 0)
+        
+        vpane.add1(vbox)
+        vbox = gtk.VBox(False, 10)
 
         hbox = gtk.HBox(False, 0)
         button = gtk.Button('+')
@@ -219,6 +239,12 @@ class MainThread(threading.Thread):
 
         vbox.pack_start(hbox, False, False, 0)
 
+
+        self.status_bar = gtk.Statusbar()     
+        vbox.pack_end(self.status_bar, False, False, 0)
+        self.status_bar.show()
+        self.context_id = self.status_bar.get_context_id("Statusbar example")
+
         #menu = ['Sync project', 'Sync media']
         footer = gtk.HBox(False, 10)
         quitButton = gtk.Button('Quit')
@@ -227,8 +253,9 @@ class MainThread(threading.Thread):
         footer.pack_end(quitButton, False, False)
 
         vbox.pack_end(footer, False, False, 10)
+        vpane.add2(vbox)
 
-        window.add(vbox)
+        window.add(vpane)
         window.show_all()
         window.connect("destroy", self.on_quit)
         self.window.connect("key-press-event",self.on_key_press_event)
@@ -308,9 +335,50 @@ class MainThread(threading.Thread):
         t.setDaemon(True)
         t.start()
 
-    def on_host_select(self, widget):
-        print model[iter][0]
-        t = threading.Thread(target=self.io_hosts_store)
+    def on_host_update(self, widget, *user_data):
+        #print model[iter][0]
+        model = self.hostsTreeStore
+        print repr(self.entry_host.get_active_iter())
+        selected_row_iter = self.entry_host.get_active_iter()
+        if selected_row_iter == None:
+            selected_row_path = self.selected_host_row_reference.get_path()
+            selected_row_iter = model.get_iter(selected_row_path)
+
+        if widget == self.entry_host:
+            print widget.get_active_text()
+        elif widget == self.entry_port:
+            print widget.get_value()
+        else:
+            print widget.get_text()
+        model.set_value(selected_row_iter, 0, self.entry_host.get_active_text())
+        model.set_value(selected_row_iter, 1, self.entry_address.get_text())
+        model.set_value(selected_row_iter, 2, self.entry_user.get_text())
+        model.set_value(selected_row_iter, 3, self.entry_port.get_value())
+        model.set_value(selected_row_iter, 4, self.entry_projects_path.get_text())
+        cfg_path = os.path.expanduser('~/.mistika-hyperspeed/sync/hosts.json')
+        hosts = {}
+        # i = model.get_iter(0)
+        # row = model[i]
+        for row in model:
+            #print repr(selected_row[0])
+            #print repr(row[0])
+            selected = model[selected_row_iter][0] == row[0]
+            #selected = selection.iter_is_selected(model[row])
+            alias = row[0]
+            for value in row:
+                print value,
+            print ''
+            host_dict = {}
+            host_dict['address'] = row[1]
+            if host_dict['address'] == '':
+                continue
+            host_dict['user'] = row[2]
+            host_dict['port'] = row[3]
+            host_dict['path'] = row[4]
+            host_dict['selected'] = selected
+            hosts[alias] = host_dict
+        print 'hosts: ' + repr(hosts)
+        t = threading.Thread(target=self.io_hosts_store, args=[hosts])
         self.threads.append(t)
         t.setDaemon(True)
         t.start()
@@ -525,11 +593,29 @@ class MainThread(threading.Thread):
                 child_iter = model.iter_next(child_iter)
         print 'Removed ' + path_str
 
-    def gui_host_add(self, widget, alias='New host', address='', user='mistika', port=22, path='', selected=False):
-        row_iter = self.hostsTreeStore.append(None, [alias, address, user, port, path])
-        if selected:
-            selection = self.hostsTree.get_selection()
-            selection.select_iter(row_iter)
+    def gui_host_add(self, widget, hosts):
+        model = self.hostsTreeStore
+        for host in hosts:
+            row_iter = self.hostsTreeStore.append(None, [host, hosts[host]['address'], hosts[host]['user'], hosts[host]['port'], hosts[host]['path']])   
+            #, alias='New host', address='', user='mistika', port=22, path='', selected=False
+            if hosts[host]['selected']:
+                self.entry_host.set_active_iter(row_iter)
+                #selection.select_iter(row_iter)
+                self.on_host_selected(None)
+        row_iter = self.hostsTreeStore.append(None, ['[ New connection ]', '', 'mistika', 22, ''])
+
+    def on_host_selected(self, host):
+        #selected_host = self.entry_host.get_text()
+        model = self.hostsTreeStore
+        selected_row_iter = self.entry_host.get_active_iter()
+        selected_row_path = model.get_path(selected_row_iter)
+        self.selected_host_row_reference = gtk.TreeRowReference(model, selected_row_path)
+        #(model, selected_row_iter) = selection.get_selected()
+        #self.entry_host.set_text(model[selected_row_iter][0])
+        self.entry_address.set_text(model[selected_row_iter][1])
+        self.entry_user.set_text(model[selected_row_iter][2])
+        self.entry_port.set_text(str(model[selected_row_iter][3]))
+        self.entry_projects_path.set_text(model[selected_row_iter][4])
         # status = 'Loaded hosts.'
         # self.status_bar.push(self.context_id, status)
 
@@ -1036,33 +1122,11 @@ class MainThread(threading.Thread):
         except IOError as e:
             return
         #print repr(hosts)
-        for host in hosts:
             #row_iter = tree.append(None, [host, hosts[host]['address'], hosts[host]['user'], hosts[host]['port'], hosts[host]['path']])
-            gobject.idle_add(self.gui_host_add, None, host, hosts[host]['address'], hosts[host]['user'], hosts[host]['port'], hosts[host]['path'], hosts[host]['selected'])
+        gobject.idle_add(self.gui_host_add, None, hosts)
 
-    def io_hosts_store(self):
-        selection = self.hostsTree.get_selection()
-        (model, row_iter) = selection.get_selected()
-        selected_row = model[row_iter]
+    def io_hosts_store(self, hosts):
         cfg_path = os.path.expanduser('~/.mistika-hyperspeed/sync/hosts.json')
-        hosts = {}
-        # i = model.get_iter(0)
-        # row = model[i]
-        for row in self.hostsTreeStore:
-            print repr(selected_row[0])
-            print repr(row[0])
-            selected = selected_row[0] == row[0]
-            #selected = selection.iter_is_selected(model[row])
-            alias = row[0]
-            for value in row:
-                print value,
-            print ''
-            hosts[alias] = {}
-            hosts[alias]['address'] = row[1]
-            hosts[alias]['user'] = row[2]
-            hosts[alias]['port'] = row[3]
-            hosts[alias]['path'] = row[4]
-            hosts[alias]['selected'] = selected
         cfg_path_parent = os.path.dirname(cfg_path)
         if not os.path.isdir(cfg_path_parent):
             try:
