@@ -119,13 +119,23 @@ class MainThread(threading.Thread):
         #combobox.pack_start(cell, True)
         #combobox.add_attribute(cell, 'text', 0)  
 
+        self.icon_connect = gtk.image_new_from_stock(gtk.STOCK_CONNECT,  gtk.ICON_SIZE_BUTTON)
+        self.icon_connected = gtk.image_new_from_stock(gtk.STOCK_APPLY,  gtk.ICON_SIZE_BUTTON)
+        self.icon_stop = gtk.image_new_from_stock(gtk.STOCK_STOP,  gtk.ICON_SIZE_BUTTON)
+        self.spinner = gtk.Spinner()
+        self.spinner.start()
+        self.spinner.set_size_request(20, 20)
+
         vbox.pack_start(hbox, False, False, 0)
 
         hbox = gtk.HBox(False, 0)
-        button = gtk.Button(label='Connect')
-        button.set_image(gtk.image_new_from_stock(gtk.STOCK_CONNECT,  gtk.ICON_SIZE_BUTTON))
+        self.button_connect = gtk.Button(label='Connect')
+        button = self.button_connect
+        button.set_image(self.icon_connect)
+        button.connect("clicked", self.on_host_connect)
         #button.set_size_request(100, 100)
         hbox.pack_start(button, False, False)
+        #button.set_image(spinner)
         vbox.pack_start(hbox, False, False, 0)
 
         
@@ -347,13 +357,13 @@ class MainThread(threading.Thread):
         if widget == self.entry_host:
             print widget.get_active_text()
         elif widget == self.entry_port:
-            print widget.get_value()
+            print widget.get_value_as_int()
         else:
             print widget.get_text()
         model.set_value(selected_row_iter, 0, self.entry_host.get_active_text())
         model.set_value(selected_row_iter, 1, self.entry_address.get_text())
         model.set_value(selected_row_iter, 2, self.entry_user.get_text())
-        model.set_value(selected_row_iter, 3, self.entry_port.get_value())
+        model.set_value(selected_row_iter, 3, self.entry_port.get_value_as_int())
         model.set_value(selected_row_iter, 4, self.entry_projects_path.get_text())
         cfg_path = os.path.expanduser('~/.mistika-hyperspeed/sync/hosts.json')
         hosts = {}
@@ -980,20 +990,22 @@ class MainThread(threading.Thread):
             try:
                 #print 'daemon_remote.get()'
                 item = q.get(True, 1)
-                self.loader_remote = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
-                gobject.idle_add(self.button_host_connect.set_image, self.loader_remote)
+                #self.loader_remote = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
+                gobject.idle_add(self.button_connect.set_image, self.spinner)
                 item_len = len(item)
                 try:
                     if item_len == 1:
                         item[0]()
                     else:
                         item[0](**item[1])
-                    gobject.idle_add(self.loader_remote.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
+                    #gobject.idle_add(self.button_connect.set_image, self.icon_connected)
+                    #gobject.idle_add(self.loader_remote.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
                     q.task_done()
                 except Exception as e:
                     print 'Error:'
                     print repr(e)
-                    gobject.idle_add(self.loader_remote.set_from_stock, gtk.STOCK_STOP, gtk.ICON_SIZE_BUTTON)
+                    #gobject.idle_add(self.button_connect.set_image, self.icon_stop)
+                    #gobject.idle_add(self.loader_remote.set_from_stock, gtk.STOCK_STOP, gtk.ICON_SIZE_BUTTON)
             except Queue.Empty:
                 time.sleep(1)
 
@@ -1049,20 +1061,25 @@ class MainThread(threading.Thread):
                     print 'Transfer complete: ' + path
 
     def remote_connect(self):
-        selection = self.hostsTree.get_selection()
-        (model, iter) = selection.get_selected()
-        self.remote['alias'] = model[iter][0]
-        self.remote['address'] = model[iter][1]
-        self.remote['user'] = model[iter][2]
-        self.remote['port'] = model[iter][3]
-        self.remote['projects_path'] = model[iter][4]
+        #gobject.idle_add(self.button_connect.set_image, self.spinner)
+        #selection = self.hostsTree.get_selection()
+        #(model, iter) = selection.get_selected()
+        self.remote['alias'] = self.entry_host.get_active_text()
+        self.remote['address'] = self.entry_address.get_text()
+        self.remote['user'] = self.entry_user.get_text()
+        self.remote['port'] = self.entry_port.get_value_as_int()
+        self.remote['projects_path'] = self.entry_projects_path.get_text()
         cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), 'exit']
         p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         output, stderr = p1.communicate()
         if p1.returncode > 0:
-            gobject.idle_add(self.loader_remote.set_from_stock, gtk.STOCK_STOP, gtk.ICON_SIZE_BUTTON)
+            #gobject.idle_add(self.loader_remote.set_from_stock, gtk.STOCK_STOP, gtk.ICON_SIZE_BUTTON)
+            gobject.idle_add(self.button_connect.set_image, self.icon_connect)
             gobject.idle_add(self.gui_show_error, stderr)
+            raise 'Connection error'
         else:
+            gobject.idle_add(self.button_connect.set_image, self.icon_connected)
+            gobject.idle_add(self.button_connect.set_label, 'Disconnect')
             gobject.idle_add(self.label_active_host.set_markup, '<span foreground="#888888">Connected to host:</span> %s <span foreground="#888888">(%s)</span>' % (self.remote['alias'], self.remote['address']))
         self.queue_buffer.put_nowait([self.buffer_list_files])
 
