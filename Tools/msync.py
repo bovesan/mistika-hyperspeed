@@ -48,6 +48,15 @@ class MainThread(threading.Thread):
             self.is_mac = True
             #self.window.set_resizable(False) # Because resizing crashes the app on Mac
 
+
+        self.icon_connect = gtk.image_new_from_stock(gtk.STOCK_CONNECT,  gtk.ICON_SIZE_BUTTON)
+        self.icon_connected = gtk.image_new_from_stock(gtk.STOCK_APPLY,  gtk.ICON_SIZE_BUTTON)
+        self.icon_stop = gtk.image_new_from_stock(gtk.STOCK_STOP,  gtk.ICON_SIZE_BUTTON)
+        self.spinner = gtk.Spinner()
+        self.spinner.start()
+        self.spinner.set_size_request(20, 20)
+
+
         vpane = gtk.VPaned()
         vbox = gtk.VBox(False, 10)
 
@@ -55,6 +64,7 @@ class MainThread(threading.Thread):
 
         hbox = gtk.HBox(False, 10)
         label_markup = '<span foreground="#888888">%s</span>'
+
         vbox2 = gtk.VBox(False, 5)
         hbox2 = gtk.HBox(False, 0)
         label = gtk.Label(label_markup % 'Remote host:')
@@ -67,6 +77,7 @@ class MainThread(threading.Thread):
         entry.connect('changed', self.on_host_selected)
         vbox2.pack_start(entry, False, False, 0)
         hbox.pack_start(vbox2, False, False, 0)
+
         vbox2 = gtk.VBox(False, 5)
         hbox2 = gtk.HBox(False, 0)
         label = gtk.Label(label_markup % 'Address:')
@@ -79,6 +90,7 @@ class MainThread(threading.Thread):
         #entry.connect('event', print_str)
         vbox2.pack_start(entry, False, False, 0)
         hbox.pack_start(vbox2, False, False, 0)
+
         vbox2 = gtk.VBox(False, 5)
         hbox2 = gtk.HBox(False, 0)
         label = gtk.Label(label_markup % 'User:')
@@ -90,6 +102,7 @@ class MainThread(threading.Thread):
         entry.connect('key-release-event', self.on_host_update)
         vbox2.pack_start(entry, False, False, 0)
         hbox.pack_start(vbox2, False, False, 0)
+
         vbox2 = gtk.VBox(False, 5)
         hbox2 = gtk.HBox(False, 0)
         label = gtk.Label(label_markup % 'Port:')
@@ -103,6 +116,7 @@ class MainThread(threading.Thread):
         #spinner.set_size_request(80,0)
         vbox2.pack_start(entry, False, False, 0)
         hbox.pack_start(vbox2, False, False, 0)
+
         vbox2 = gtk.VBox(False, 5)
         hbox2 = gtk.HBox(False, 0)
         label = gtk.Label(label_markup % 'Projects path (optional):')
@@ -119,13 +133,6 @@ class MainThread(threading.Thread):
         #combobox.pack_start(cell, True)
         #combobox.add_attribute(cell, 'text', 0)  
 
-        self.icon_connect = gtk.image_new_from_stock(gtk.STOCK_CONNECT,  gtk.ICON_SIZE_BUTTON)
-        self.icon_connected = gtk.image_new_from_stock(gtk.STOCK_APPLY,  gtk.ICON_SIZE_BUTTON)
-        self.icon_stop = gtk.image_new_from_stock(gtk.STOCK_STOP,  gtk.ICON_SIZE_BUTTON)
-        self.spinner = gtk.Spinner()
-        self.spinner.start()
-        self.spinner.set_size_request(20, 20)
-
         vbox.pack_start(hbox, False, False, 0)
 
         hbox = gtk.HBox(False, 0)
@@ -135,6 +142,11 @@ class MainThread(threading.Thread):
         button.connect("clicked", self.on_host_connect)
         #button.set_size_request(100, 100)
         hbox.pack_start(button, False, False)
+        self.spinner_remote = gtk.Spinner()
+        self.spinner_remote.start()
+        self.spinner_remote.set_size_request(20, 20)
+        hbox.pack_start(self.spinner_remote, False, False)
+
         #button.set_image(spinner)
         vbox.pack_start(hbox, False, False, 0)
 
@@ -270,6 +282,7 @@ class MainThread(threading.Thread):
         window.connect("destroy", self.on_quit)
         self.window.connect("key-press-event",self.on_key_press_event)
         self.quit = False
+        self.spinner_remote.set_visible(False)
 
     def run(self):
         self.io_hosts_populate(self.hostsTreeStore)
@@ -1060,15 +1073,39 @@ class MainThread(threading.Thread):
                         gobject.idle_add(self.gui_set_value, model, row_reference, 6, '100%')
                     print 'Transfer complete: ' + path
 
+
+    def remote_get_projects_path(self):
+        cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), 'cat MISTIKA-ENV/MISTIKA_WORK MAMBA-ENV/MAMBA_WORK']
+        p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        output, stderr = p1.communicate()
+        outline1 = output.splitlines()[0]
+        outfields = outline1.split(None, 1)
+        if outfields[0].endswith('_WORK') and len(outfields) == 2:
+            return outfields[1]
+        else:
+            if p1.returncode > 0:
+                #gobject.idle_add(self.loader_remote.set_from_stock, gtk.STOCK_STOP, gtk.ICON_SIZE_BUTTON)
+                gobject.idle_add(self.button_connect.set_image, self.icon_connect)
+                gobject.idle_add(self.gui_show_error, stderr)
+            return None
+
     def remote_connect(self):
         #gobject.idle_add(self.button_connect.set_image, self.spinner)
         #selection = self.hostsTree.get_selection()
         #(model, iter) = selection.get_selected()
+        self.spinner_remote.set_visible(True)
         self.remote['alias'] = self.entry_host.get_active_text()
         self.remote['address'] = self.entry_address.get_text()
         self.remote['user'] = self.entry_user.get_text()
         self.remote['port'] = self.entry_port.get_value_as_int()
         self.remote['projects_path'] = self.entry_projects_path.get_text()
+        if self.remote['projects_path'] == '':
+            remote_projects_path = self.remote_get_projects_path()
+            if remote_projects_path == None:
+                return
+            else:
+                self.remote['projects_path'] = remote_projects_path
+                self.entry_projects_path.set_text(remote_projects_path)
         cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), 'exit']
         p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         output, stderr = p1.communicate()
@@ -1078,6 +1115,21 @@ class MainThread(threading.Thread):
             gobject.idle_add(self.gui_show_error, stderr)
             raise 'Connection error'
         else:
+            #self.entry_address.set_property('editable', False)
+            self.entry_host.set_state(gtk.STATE_INSENSITIVE)
+            self.entry_address.set_state(gtk.STATE_INSENSITIVE)
+            self.entry_user.set_state(gtk.STATE_INSENSITIVE)
+            self.entry_port.set_state(gtk.STATE_INSENSITIVE)
+            self.entry_projects_path.set_state(gtk.STATE_INSENSITIVE)
+            self.spinner_remote.set_visible(False)
+            # self.label_address.set_label(self.remote['address'])
+            # self.label_user.set_label(self.remote['user'])
+            # self.label_port.set_label(str(self.remote['port']))
+            # self.label_projects_path.set_label(self.remote['projects_path'])
+            # self.label_address.set_visible(True)
+            # self.label_user.set_visible(True)
+            # self.label_port.set_visible(True)
+            # self.label_projects_path.set_visible(True)
             gobject.idle_add(self.button_connect.set_image, self.icon_connected)
             gobject.idle_add(self.button_connect.set_label, 'Disconnect')
             gobject.idle_add(self.label_active_host.set_markup, '<span foreground="#888888">Connected to host:</span> %s <span foreground="#888888">(%s)</span>' % (self.remote['alias'], self.remote['address']))
