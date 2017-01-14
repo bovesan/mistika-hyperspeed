@@ -50,7 +50,7 @@ class MainThread(threading.Thread):
 
 
         self.icon_connect = gtk.image_new_from_stock(gtk.STOCK_CONNECT,  gtk.ICON_SIZE_BUTTON)
-        self.icon_connected = gtk.image_new_from_stock(gtk.STOCK_APPLY,  gtk.ICON_SIZE_BUTTON)
+        self.icon_connected = gtk.image_new_from_stock(gtk.STOCK_DISCONNECT,  gtk.ICON_SIZE_BUTTON)
         self.icon_stop = gtk.image_new_from_stock(gtk.STOCK_STOP,  gtk.ICON_SIZE_BUTTON)
         self.spinner = gtk.Spinner()
         self.spinner.start()
@@ -135,7 +135,7 @@ class MainThread(threading.Thread):
 
         vbox.pack_start(hbox, False, False, 0)
 
-        hbox = gtk.HBox(False, 0)
+        hbox = gtk.HBox(False, 10)
         self.button_connect = gtk.Button(label='Connect')
         button = self.button_connect
         button.set_image(self.icon_connect)
@@ -146,6 +146,8 @@ class MainThread(threading.Thread):
         self.spinner_remote.start()
         self.spinner_remote.set_size_request(20, 20)
         hbox.pack_start(self.spinner_remote, False, False)
+        self.remote_status_label = gtk.Label()
+        hbox.pack_start(self.remote_status_label, False, False)
 
         #button.set_image(spinner)
         vbox.pack_start(hbox, False, False, 0)
@@ -1002,9 +1004,10 @@ class MainThread(threading.Thread):
         while self.daemon_remote_active:
             try:
                 #print 'daemon_remote.get()'
-                item = q.get(True, 1)
+                item = q.get(True, 10)
                 #self.loader_remote = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
-                gobject.idle_add(self.button_connect.set_image, self.spinner)
+                #gobject.idle_add(self.button_connect.set_image, self.spinner)
+                self.spinner_remote.set_visible(True)
                 item_len = len(item)
                 try:
                     if item_len == 1:
@@ -1014,13 +1017,15 @@ class MainThread(threading.Thread):
                     #gobject.idle_add(self.button_connect.set_image, self.icon_connected)
                     #gobject.idle_add(self.loader_remote.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
                     q.task_done()
+                    self.spinner_remote.set_visible(False)
                 except Exception as e:
+                    self.spinner_remote.set_visible(False)
                     print 'Error:'
                     print repr(e)
                     #gobject.idle_add(self.button_connect.set_image, self.icon_stop)
                     #gobject.idle_add(self.loader_remote.set_from_stock, gtk.STOCK_STOP, gtk.ICON_SIZE_BUTTON)
             except Queue.Empty:
-                time.sleep(1)
+                pass
 
     def daemon_local(self):
         q = self.queue_local
@@ -1078,23 +1083,21 @@ class MainThread(threading.Thread):
         cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), 'cat MISTIKA-ENV/MISTIKA_WORK MAMBA-ENV/MAMBA_WORK']
         p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         output, stderr = p1.communicate()
-        outline1 = output.splitlines()[0]
-        outfields = outline1.split(None, 1)
-        if outfields[0].endswith('_WORK') and len(outfields) == 2:
-            return outfields[1]
-        else:
-            if p1.returncode > 0:
-                #gobject.idle_add(self.loader_remote.set_from_stock, gtk.STOCK_STOP, gtk.ICON_SIZE_BUTTON)
-                gobject.idle_add(self.button_connect.set_image, self.icon_connect)
-                gobject.idle_add(self.gui_show_error, stderr)
-            return None
+        if output != '':
+            outline1 = output.splitlines()[0]
+            outfields = outline1.split(None, 1)
+            if outfields[0].endswith('_WORK') and len(outfields) == 2:
+                return outfields[1]
+        self.remote_status_label.set_markup('Could not get read MISTIKA-ENV/MISTIKA_WORK or MAMBA-ENV/MAMBA_WORK in home directory of user %s' % self.remote['user'])
+        return None
 
     def remote_connect(self):
         #gobject.idle_add(self.button_connect.set_image, self.spinner)
         #selection = self.hostsTree.get_selection()
         #(model, iter) = selection.get_selected()
-        self.spinner_remote.set_visible(True)
+        #self.spinner_remote.set_visible(True)
         self.remote['alias'] = self.entry_host.get_active_text()
+        self.remote_status_label.set_markup('Connecting')
         self.remote['address'] = self.entry_address.get_text()
         self.remote['user'] = self.entry_user.get_text()
         self.remote['port'] = self.entry_port.get_value_as_int()
@@ -1113,15 +1116,17 @@ class MainThread(threading.Thread):
             #gobject.idle_add(self.loader_remote.set_from_stock, gtk.STOCK_STOP, gtk.ICON_SIZE_BUTTON)
             gobject.idle_add(self.button_connect.set_image, self.icon_connect)
             gobject.idle_add(self.gui_show_error, stderr)
+            self.remote_status_label.set_markup('Connection error.')
             raise 'Connection error'
         else:
             #self.entry_address.set_property('editable', False)
+            self.remote_status_label.set_markup('')
             self.entry_host.set_state(gtk.STATE_INSENSITIVE)
             self.entry_address.set_state(gtk.STATE_INSENSITIVE)
             self.entry_user.set_state(gtk.STATE_INSENSITIVE)
             self.entry_port.set_state(gtk.STATE_INSENSITIVE)
             self.entry_projects_path.set_state(gtk.STATE_INSENSITIVE)
-            self.spinner_remote.set_visible(False)
+            #self.spinner_remote.set_visible(False)
             # self.label_address.set_label(self.remote['address'])
             # self.label_user.set_label(self.remote['user'])
             # self.label_port.set_label(str(self.remote['port']))
