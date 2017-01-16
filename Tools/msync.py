@@ -521,8 +521,6 @@ class MainThread(threading.Thread):
                         continue
                     elif char:
                         char_buffer += char
-            gobject.idle_add(self.gui_refresh_progress, self.buffer[parent_file_path]['placeholder_child_row_reference'], 1.0)
-            gobject.idle_add(self.gui_row_delete, self.buffer[parent_file_path]['placeholder_child_row_reference'])
             if len(files_chunk) > 0:
                 self.queue_buffer.put_nowait([self.buffer_list_files, {
                                     'paths' : files_chunk,
@@ -531,10 +529,18 @@ class MainThread(threading.Thread):
                                     }])
                 #self.aux_list_files(file_path_list=files_chunk, parent_file_path=path_str, sync=True)
                 files_chunk = []
+            gobject.idle_add(self.gui_refresh_progress, self.buffer[parent_file_path]['placeholder_child_row_reference'], 1.0)
+            #time.sleep(1)
+            self.queue_buffer.put_nowait([self.buffer_remove_item, {
+                                'row_reference' : self.buffer[parent_file_path]['placeholder_child_row_reference']
+                                }])
+            #gobject.idle_add(self.gui_row_delete, self.buffer[parent_file_path]['placeholder_child_row_reference'])
         except IOError as e:
             print 'Could not open ' + path_str
             raise e
 
+    def buffer_remove_item(self, row_reference):
+        gobject.idle_add(self.gui_row_delete, row_reference)
 
     def on_sync_selected(self, widget):
         selection = self.projectsTree.get_selection()
@@ -744,6 +750,8 @@ class MainThread(threading.Thread):
                 if basename.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS and not 'placeholder_child_row_reference' in self.buffer[path]:
                     placeholder_child_iter = tree.append(row_iter, ['<i>Getting associated files ...</i>', '', '', '', '', 0, '0%', True, '', True])
                     self.buffer[path]['placeholder_child_row_reference'] = gtk.TreeRowReference(tree, tree.get_path(placeholder_child_iter))
+                # if parent.split('.', 1)[-1] in MISTIKA_EXTENSIONS:
+                #     tree.expand_row(parent_row_path)
         if self.buffer[path]['size_remote'] == self.buffer[path]['size_local']:
             markup = '<span foreground="#888888">%s</span>' % basename
             if self.buffer[path]['size_remote'] == 0:
@@ -786,7 +794,7 @@ class MainThread(threading.Thread):
             tree.set_value(row_iter, 0, markup)
             tree.set_value(row_iter, 2, local)
             tree.set_value(row_iter, 3, direction)
-            tree.set_value(row_iter, 4, remote)
+            tree.set_value(row_iter, 4, remote)      
 
         #if sync:
             #self.do_sync_item([path], False)
