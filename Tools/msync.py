@@ -187,6 +187,19 @@ class MainThread(threading.Thread):
         column.set_resizable(True)
         column.set_expand(True)
         column.set_sort_column_id(0)
+
+        column = gtk.TreeViewColumn()
+        column.set_title('Icons & Text')
+        treeview.append_column(column)
+
+        rendererer = gtk.CellRendererPixbuf()
+        column.pack_start(renderer, expand=False)
+        column.add_attribute(renderer, 'pixbuf', COL_PIXBUF)
+
+        renderer = gtk.CellRendererText()
+        column.pack_start(renderer, expand=True)
+        column.add_attribute(renderer, 'text', COL_STRING)
+        
         self.projectsTree.append_column(column)
 
         column = gtk.TreeViewColumn('Path', gtk.CellRendererText(), text=1)
