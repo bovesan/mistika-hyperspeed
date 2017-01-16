@@ -7,6 +7,7 @@ import glob
 import gobject
 import gtk
 import os
+import pango
 import platform
 import pprint
 import subprocess
@@ -139,15 +140,15 @@ class MainThread(threading.Thread):
 
         hbox = gtk.HBox(False, 10)
 
-        self.button_connect = gtk.Button(label='Connect')
+        self.button_connect = gtk.Button(stock=gtk.STOCK_CONNECT)
         button = self.button_connect
-        button.set_image(self.icon_connect)
+        #button.set_image(self.icon_connect)
         button.connect("clicked", self.on_host_connect)
         hbox.pack_start(button, False, False)
 
-        self.button_disconnect = gtk.Button(label='Disconnect')
+        self.button_disconnect = gtk.Button(stock=gtk.STOCK_DISCONNECT)
         button = self.button_disconnect
-        button.set_image(self.icon_disconnect)
+        #button.set_image(self.icon_disconnect)
         button.connect("clicked", self.on_host_disconnect)
         hbox.pack_start(button, False, False)
 
@@ -232,16 +233,24 @@ class MainThread(threading.Thread):
         vbox.pack_start(scrolled_window)
 
         hbox = gtk.HBox(False, 0)
+        
+        self.button_queue_add = gtk.Button(stock=gtk.STOCK_ADD)
+        self.button_queue_add.connect("clicked", self.on_sync_selected)
+        hbox.pack_start(self.button_queue_add, False, False, 0)
+        
+        self.button_queue_remove = gtk.Button(stock=gtk.STOCK_REMOVE)
+        self.button_queue_remove.connect("clicked", self.on_sync_selected_abort)
+        hbox.pack_start(self.button_queue_remove, False, False, 0)
 
         self.button_sync_files = gtk.Button('Sync selected files')
         #self.button_sync_files.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
         self.button_sync_files.connect("clicked", self.on_sync_selected)
-        hbox.pack_start(self.button_sync_files, False, False, 0)
+        #hbox.pack_start(self.button_sync_files, False, False, 0)
 
         button = gtk.Button('Unqueue selected files')
         #self.button_sync_files.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
         button.connect("clicked", self.on_sync_selected_abort)
-        hbox.pack_start(button, False, False, 0)
+        #hbox.pack_start(button, False, False, 0)
 
         vbox.pack_start(hbox, False, False, 0)
 
@@ -1286,6 +1295,7 @@ class MainThread(threading.Thread):
 
 
 os.environ['LC_CTYPE'] = 'en_US.utf8'
+os.environ['LC_ALL'] = 'en_US.utf8'
 t = MainThread()
 t.start()
 gtk.main()
