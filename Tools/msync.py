@@ -50,7 +50,8 @@ class MainThread(threading.Thread):
 
 
         self.icon_connect = gtk.image_new_from_stock(gtk.STOCK_CONNECT,  gtk.ICON_SIZE_BUTTON)
-        self.icon_connected = gtk.image_new_from_stock(gtk.STOCK_DISCONNECT,  gtk.ICON_SIZE_BUTTON)
+        self.icon_disconnect = gtk.image_new_from_stock(gtk.STOCK_DISCONNECT,  gtk.ICON_SIZE_BUTTON)
+        self.icon_connected = gtk.image_new_from_stock(gtk.STOCK_APPLY,  gtk.ICON_SIZE_BUTTON)
         self.icon_stop = gtk.image_new_from_stock(gtk.STOCK_STOP,  gtk.ICON_SIZE_BUTTON)
         self.spinner = gtk.Spinner()
         self.spinner.start()
@@ -136,12 +137,19 @@ class MainThread(threading.Thread):
         vbox.pack_start(hbox, False, False, 0)
 
         hbox = gtk.HBox(False, 10)
+
         self.button_connect = gtk.Button(label='Connect')
         button = self.button_connect
         button.set_image(self.icon_connect)
         button.connect("clicked", self.on_host_connect)
-        #button.set_size_request(100, 100)
         hbox.pack_start(button, False, False)
+
+        self.button_disconnect = gtk.Button(label='Disconnect')
+        button = self.button_disconnect
+        button.set_image(self.icon_disconnect)
+        button.connect("clicked", self.on_host_disconnect)
+        hbox.pack_start(button, False, False)
+
         self.spinner_remote = gtk.Spinner()
         self.spinner_remote.start()
         self.spinner_remote.set_size_request(20, 20)
@@ -284,6 +292,7 @@ class MainThread(threading.Thread):
         window.connect("destroy", self.on_quit)
         self.window.connect("key-press-event",self.on_key_press_event)
         self.quit = False
+        self.button_disconnect.set_visible(False)
         self.spinner_remote.set_visible(False)
 
     def run(self):
@@ -338,8 +347,6 @@ class MainThread(threading.Thread):
         print 'Expanding ' + file_path
         if file_path.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS: # Should already be loaded
             return
-        selection = self.hostsTree.get_selection()
-        (model, iter) = selection.get_selected()  
         self.queue_buffer.put_nowait([self.buffer_list_files, {
             'paths':[file_path]
             }])
@@ -414,6 +421,9 @@ class MainThread(threading.Thread):
         self.threads.append(t)
         t.setDaemon(True)
         t.start()
+
+    def on_host_disconnect(self, widget):
+        self.queue_remote.put([self.remote_disconnect])
 
     def buffer_clear_remote(self):
         model = self.projectsTreeStore
@@ -825,10 +835,13 @@ class MainThread(threading.Thread):
     def io_list_files_remote(self, find_cmd):
         loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
         gobject.idle_add(self.button_load_remote_projects.set_image, loader)
-        cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), find_cmd.replace('<root>', self.remote['projects_path'])]
-        print cmd
+        cmd = find_cmd.replace('<root>', self.remote['projects_path'])
+        if self.remote['is_mac']:
+            cmd = self.aux_fix_mac_printf(cmd)
+        ssh_cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), cmd]
+        print ssh_cmd
         try:
-            p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            p1 = subprocess.Popen(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, stderr = p1.communicate()
             if False and p1.returncode > 0:
                 loader.set_from_stock(gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
@@ -865,10 +878,10 @@ class MainThread(threading.Thread):
             debug_line = ''
             for var in ['f_inode', 'f_type', 'f_size', 'f_time', 'full_path', 'host', 'root', 'parent_path']:
                 debug_line += var +': ' + repr(vars()[var]) + ' '
-            print debug_line
+            #print debug_line
             if full_path.startswith(root): # Relative path
                 path = full_path.replace(root, '', 1).strip('/')
-                print 'Relative path: '
+                #print 'Relative path: '
                 if '/' in path.strip('/'):
                     parent_dir, basename = path.rsplit('/', 1) # parent_dir will not have trailing slash
                 else:
@@ -885,7 +898,7 @@ class MainThread(threading.Thread):
                 continue
             else:
                 parent_path_to_store = parent_dir
-            print 'parent_path_to_store: ' + parent_path_to_store
+            #print 'parent_path_to_store: ' + parent_path_to_store
             if parent_path_to_store != '' and not parent_path_to_store in self.buffer:
                 self.buffer_add(['0 d 0 0 %s' % parent_path_to_store], host, root)
             if f_time == 0:
@@ -893,7 +906,7 @@ class MainThread(threading.Thread):
             else:
                 virtual = False
             if not path in self.buffer:
-                print 'Buffer add: %s "%s" %s %s virtual: %s' % (host, path, f_type, f_time, virtual)
+                #print 'Buffer add: %s "%s" %s %s virtual: %s' % (host, path, f_type, f_time, virtual)
                 self.buffer[path] = {}
                 self.buffer[path]['row_references'] = []
                 self.buffer[path]['parent_paths'] = [parent_path_to_store]
@@ -1091,6 +1104,12 @@ class MainThread(threading.Thread):
         self.remote_status_label.set_markup('Could not get read MISTIKA-ENV/MISTIKA_WORK or MAMBA-ENV/MAMBA_WORK in home directory of user %s' % self.remote['user'])
         return None
 
+    def remote_disconnect(self):
+        self.queue_buffer.put_nowait([self.buffer_clear])
+        self.daemon_remote_active = False
+        gobject.idle_add(self.gui_disconnected)
+        #self.spinner_remote.set_visible(False)
+
     def remote_connect(self):
         #gobject.idle_add(self.button_connect.set_image, self.spinner)
         #selection = self.hostsTree.get_selection()
@@ -1109,7 +1128,8 @@ class MainThread(threading.Thread):
             else:
                 self.remote['projects_path'] = remote_projects_path
                 self.entry_projects_path.set_text(remote_projects_path)
-        cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), 'exit']
+        #self.remote['projects_path'] = self.remote['projects_path'].rstrip('/')+'/'
+        cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), 'uname']
         p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         output, stderr = p1.communicate()
         if p1.returncode > 0:
@@ -1119,26 +1139,40 @@ class MainThread(threading.Thread):
             self.remote_status_label.set_markup('Connection error.')
             raise 'Connection error'
         else:
+            if 'Darwin' in output:
+                self.remote['is_mac'] = True
+            else:
+                self.remote['is_mac'] = False
             #self.entry_address.set_property('editable', False)
-            self.remote_status_label.set_markup('')
-            self.entry_host.set_state(gtk.STATE_INSENSITIVE)
-            self.entry_address.set_state(gtk.STATE_INSENSITIVE)
-            self.entry_user.set_state(gtk.STATE_INSENSITIVE)
-            self.entry_port.set_state(gtk.STATE_INSENSITIVE)
-            self.entry_projects_path.set_state(gtk.STATE_INSENSITIVE)
-            #self.spinner_remote.set_visible(False)
-            # self.label_address.set_label(self.remote['address'])
-            # self.label_user.set_label(self.remote['user'])
-            # self.label_port.set_label(str(self.remote['port']))
-            # self.label_projects_path.set_label(self.remote['projects_path'])
-            # self.label_address.set_visible(True)
-            # self.label_user.set_visible(True)
-            # self.label_port.set_visible(True)
-            # self.label_projects_path.set_visible(True)
-            gobject.idle_add(self.button_connect.set_image, self.icon_connected)
-            gobject.idle_add(self.button_connect.set_label, 'Disconnect')
-            gobject.idle_add(self.label_active_host.set_markup, '<span foreground="#888888">Connected to host:</span> %s <span foreground="#888888">(%s)</span>' % (self.remote['alias'], self.remote['address']))
+            gobject.idle_add(self.gui_connected)
         self.queue_buffer.put_nowait([self.buffer_list_files])
+
+    def buffer_clear(self):
+        self.buffer = {}
+
+    def gui_connected(self):
+            self.remote_status_label.set_markup('')
+            self.entry_host.set_sensitive(False)
+            self.entry_address.set_sensitive(False)
+            self.entry_user.set_sensitive(False)
+            self.entry_port.set_sensitive(False)
+            self.entry_projects_path.set_sensitive(False)
+            gobject.idle_add(self.button_connect.set_visible, False)
+            gobject.idle_add(self.button_disconnect.set_visible, True)
+            gobject.idle_add(self.label_active_host.set_markup,
+                '<span foreground="#888888">Connected to host:</span> %s <span foreground="#888888">(%s)</span>'
+                % (self.remote['alias'], self.remote['address']))
+
+    def gui_disconnected(self):
+        self.projectsTreeStore.clear()
+        self.entry_host.set_sensitive(True)
+        self.entry_address.set_sensitive(True)
+        self.entry_user.set_sensitive(True)
+        self.entry_port.set_sensitive(True)
+        self.entry_projects_path.set_sensitive(True)
+        self.button_disconnect.set_visible(False)
+        self.button_connect.set_visible(True)
+        self.spinner_remote.set_visible(False)
 
     def buffer_list_files(self, paths=[''], parent_path='', sync=False, maxdepth = 2):
         #print 'buffer_list_files()'
@@ -1161,7 +1195,7 @@ class MainThread(threading.Thread):
         if maxdepth:
             maxdepth_str = ' -maxdepth %i' % maxdepth
         find_cmd = 'find %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%p\\\\n"' % (search_paths, maxdepth_str, type_filter)
-        print find_cmd
+        #print find_cmd
         self.buffer_remote = []
         self.buffer_local = []
         #self.queue_remote.put(self.io_list_files_remote, find_cmd, parent_path)
@@ -1178,11 +1212,11 @@ class MainThread(threading.Thread):
 
         thread_local.join()
         thread_remote.join()
-        print 'Adding local files to buffer'
+        #print 'Adding local files to buffer'
         self.buffer_add(self.buffer_local, 'localhost', self.projects_path_local, parent_path)
-        print 'Adding remote files to buffer'
+        #print 'Adding remote files to buffer'
         self.buffer_add(self.buffer_remote, self.remote['alias'], self.remote['projects_path'], parent_path)
-        print 'Adding files to GUI'
+        #print 'Adding files to GUI'
         for path in paths:
             for f_path in sorted(self.buffer):
                 #print 'f_path: ' + f_path + ' path: ' + path
