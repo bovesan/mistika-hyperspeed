@@ -41,12 +41,13 @@ class MainThread(threading.Thread):
         window = self.window
         screen = self.window.get_screen()
         window.set_title("Mistika sync")
-        window.set_size_request(screen.get_height()-200, screen.get_height()-200)
+        window.set_size_request(screen.get_width()-200, screen.get_height()-200)
         window.set_border_width(20)
+        #window.set_icon_from_file('../res/img/msync_icon.png')
         window.set_position(gtk.WIN_POS_CENTER)
         if 'darwin' in platform.system().lower():
             self.is_mac = True
-            #self.window.set_resizable(False) # Because resizing crashes the app on Mac
+            self.window.set_resizable(False) # Because resizing crashes the app on Mac
 
 
         self.icon_connect = gtk.image_new_from_stock(gtk.STOCK_CONNECT,  gtk.ICON_SIZE_BUTTON)
@@ -150,12 +151,21 @@ class MainThread(threading.Thread):
         button.connect("clicked", self.on_host_disconnect)
         hbox.pack_start(button, False, False)
 
+        # Remote status
         self.spinner_remote = gtk.Spinner()
         self.spinner_remote.start()
         self.spinner_remote.set_size_request(20, 20)
         hbox.pack_start(self.spinner_remote, False, False)
         self.remote_status_label = gtk.Label()
         hbox.pack_start(self.remote_status_label, False, False)
+
+        # Local status
+        self.spinner_local = gtk.Spinner()
+        self.spinner_local.start()
+        self.spinner_local.set_size_request(20, 20)
+        hbox.pack_start(self.spinner_local, False, False)
+        self.local_status_label = gtk.Label()
+        hbox.pack_start(self.local_status_label, False, False)
 
         #button.set_image(spinner)
         vbox.pack_start(hbox, False, False, 0)
@@ -164,38 +174,7 @@ class MainThread(threading.Thread):
         vpane.add1(vbox)
         vbox = gtk.VBox(False, 10)
 
-        hbox = gtk.HBox(False, 0)
-        button = gtk.Button('+')
-        button.set_size_request(30, 30)
-        button.connect("clicked", self.gui_host_add)
-        hbox.pack_end(button, False, False, 0)
-        button = gtk.Button('-')
-        button.set_size_request(30, 30)
-        button.connect("clicked", self.gui_host_remove)
-        hbox.pack_end(button, False, False, 0)
-
-
-        self.button_host_connect = gtk.Button('Connect to host')
-        self.button_host_connect.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
-        self.button_host_connect.connect("clicked", self.on_host_connect)
-        hbox.pack_start(self.button_host_connect, False, False, 0)
-
-        self.label_active_host = gtk.Label('')
-        hbox.pack_start(self.label_active_host, False, False, 10)
-
-        self.button_load_local_projects = gtk.Button('Local list')
-        self.button_load_local_projects.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
-        #button.connect("clicked", self.do_list_projects_local)
-        hbox.pack_start(self.button_load_local_projects, False, False, 0)
-
-        self.button_load_remote_projects = gtk.Button('Remote list')
-        self.button_load_remote_projects.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
-        #self.button_load_remote_projects.connect("clicked", self.do_list_projects_remote)
-        hbox.pack_start(self.button_load_remote_projects, False, False, 0)
-
-        vbox.pack_start(hbox, False, False, 0)
-
-        self.projectsTreeStore = gtk.TreeStore(str, str, str, str, str, int, str, bool, str, bool) # Basenae, Path, Local, Direction, Remote, Host, Progress int, Progress text, Progress visibility, remote_address, no_reload
+        self.projectsTreeStore = gtk.TreeStore(str, str, str, str, str, int, str, bool, str, bool) # Basename, Path, Local, Direction, Remote, Progress int, Progress text, Progress visibility, remote_address, no_reload
         self.projectsTree = gtk.TreeView()
         #self.project_cell = gtk.CellRendererText()
         #project_cell = self.project_cell
@@ -230,7 +209,7 @@ class MainThread(threading.Thread):
         column.set_expand(False)
         self.projectsTree.append_column(column)
 
-        column = gtk.TreeViewColumn('Status', gtk.CellRendererProgress(), pulse=5, text=6, visible=7)
+        column = gtk.TreeViewColumn('Status', gtk.CellRendererProgress(), value=5, text=6, visible=7)
         column.set_resizable(True)
         column.set_expand(True)
         self.projectsTree.append_column(column)
@@ -264,18 +243,8 @@ class MainThread(threading.Thread):
         button.connect("clicked", self.on_sync_selected_abort)
         hbox.pack_start(button, False, False, 0)
 
-        button = gtk.Button('List associated files')
-        #self.button_sync_files.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
-        button.connect("clicked", self.on_list_associated)
-        hbox.pack_start(button, False, False, 0)
-
         vbox.pack_start(hbox, False, False, 0)
 
-
-        self.status_bar = gtk.Statusbar()     
-        vbox.pack_end(self.status_bar, False, False, 0)
-        self.status_bar.show()
-        self.context_id = self.status_bar.get_context_id("Statusbar example")
 
         #menu = ['Sync project', 'Sync media']
         footer = gtk.HBox(False, 10)
@@ -294,6 +263,7 @@ class MainThread(threading.Thread):
         self.quit = False
         self.button_disconnect.set_visible(False)
         self.spinner_remote.set_visible(False)
+        self.spinner_local.set_visible(False)
 
     def run(self):
         self.io_hosts_populate(self.hostsTreeStore)
@@ -346,6 +316,10 @@ class MainThread(threading.Thread):
         file_path = model[iter][1]
         print 'Expanding ' + file_path
         if file_path.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS: # Should already be loaded
+            t = threading.Thread(target=self.io_get_associated, args=[file_path])
+            self.threads.append(t)
+            t.setDaemon(True)
+            t.start()
             return
         self.queue_buffer.put_nowait([self.buffer_list_files, {
             'paths':[file_path]
@@ -453,6 +427,18 @@ class MainThread(threading.Thread):
                 t.setDaemon(True)
                 t.start()
 
+    def gui_refresh_progress(self, row_reference, progress_float):
+        model = self.projectsTreeStore
+        row_path = row_reference.get_path()
+        progress_percent = progress_float * 100.0
+        model[row_path][5] = int(progress_percent)
+        model[row_path][6] = "%5.2f%%" % progress_percent
+
+    def gui_row_delete(self, row_reference):
+        model = self.projectsTreeStore
+        row_path = row_reference.get_path()
+        del model[row_path]
+
     def io_get_associated(self, path_str):
         files_chunk_max_size = 10
         files_chunk = []
@@ -462,12 +448,25 @@ class MainThread(threading.Thread):
             #level_val = []
             char_buffer = ''
             char_buffer_store = ''
-            parent_file_path = path_str
-            if parent_file_path.startswith(self.projects_path_local):
-                parent_file_path = parent_file_path.replace(self.projects_path_local+'/', '', 1)
+            if path_str.startswith('/'):
+                parent_file_path = path_str
+                if parent_file_path.startswith(self.projects_path_local):
+                    parent_file_path = parent_file_path.replace(self.projects_path_local+'/', '', 1)
+            else:
+                parent_file_path = path_str
+                path_str = os.path.join(self.projects_path_local, path_str)
             #print 'io_get_associated: ' + parent_file_path
+            env_bytes_read = 0
+            last_progress_update_time = 0
+            env_size = os.path.getsize(path_str)
             for line in open(path_str):
                 for char in line:
+                    env_bytes_read += 1
+                    time_now = time.time()
+                    if time_now - last_progress_update_time > 0.1:
+                        last_progress_update_time = time_now
+                        progress_float = float(env_bytes_read) / float(env_size)
+                        gobject.idle_add(self.gui_refresh_progress, self.buffer[parent_file_path]['placeholder_child_row_reference'], progress_float)
                     if char == '(':
                         #print ''
                         #level += 1
@@ -522,6 +521,8 @@ class MainThread(threading.Thread):
                         continue
                     elif char:
                         char_buffer += char
+            gobject.idle_add(self.gui_refresh_progress, self.buffer[parent_file_path]['placeholder_child_row_reference'], 1.0)
+            gobject.idle_add(self.gui_row_delete, self.buffer[parent_file_path]['placeholder_child_row_reference'])
             if len(files_chunk) > 0:
                 self.queue_buffer.put_nowait([self.buffer_list_files, {
                                     'paths' : files_chunk,
@@ -730,14 +731,19 @@ class MainThread(threading.Thread):
                 #print 'parent_row_references: ' + repr(parent_row_references)
                 if len(parent_row_references) == 0:
                     self.gui_refresh_path(parent)
-                parent = tree.get_iter(parent_row_references[0].get_path())
+                parent_row_iter = tree.get_iter(parent_row_references[0].get_path())
                 for row_reference in self.buffer[path]['row_references']:
-                    if tree.is_ancestor(parent, tree.get_iter(row_reference.get_path())):
+                    if tree.is_ancestor(parent_row_iter, tree.get_iter(row_reference.get_path())):
                         append_to_this_parent = False
+            else:
+                parent_row_iter = None
             if append_to_this_parent:
                 #print 'Appending to parent: ' + repr(parent)
-                row_iter = tree.append(parent, [basename, path, local, direction, remote, progress, progress_str, progress_visibility, remote_address, no_reload])
+                row_iter = tree.append(parent_row_iter, [basename, path, local, direction, remote, progress, progress_str, progress_visibility, remote_address, no_reload])
                 self.buffer[path]['row_references'].append(gtk.TreeRowReference(tree, tree.get_path(row_iter)))
+                if basename.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS and not 'placeholder_child_row_reference' in self.buffer[path]:
+                    placeholder_child_iter = tree.append(row_iter, ['<i>Getting associated files ...</i>', '', '', '', '', 0, '0%', True, '', True])
+                    self.buffer[path]['placeholder_child_row_reference'] = gtk.TreeRowReference(tree, tree.get_path(placeholder_child_iter))
         if self.buffer[path]['size_remote'] == self.buffer[path]['size_local']:
             markup = '<span foreground="#888888">%s</span>' % basename
             if self.buffer[path]['size_remote'] == 0:
@@ -749,6 +755,7 @@ class MainThread(threading.Thread):
                 direction = None
                 remote = gtk.STOCK_YES
         else:
+            markup = basename
             for row_reference in self.buffer[path]['row_references']:
                 row_iter = tree.get_iter(row_reference.get_path())
                 self.gui_parent_modified(row_iter) # More confusing than informative?
@@ -767,6 +774,8 @@ class MainThread(threading.Thread):
                 else:
                     remote = gtk.STOCK_NO
                 #gtk.STOCK_STOP
+        if basename.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS:
+            markup = '<span foreground="#00cc00">%s</span>' % basename
         if basename == 'PRIVATE':
             local = None
             direction = None
@@ -778,13 +787,18 @@ class MainThread(threading.Thread):
             tree.set_value(row_iter, 2, local)
             tree.set_value(row_iter, 3, direction)
             tree.set_value(row_iter, 4, remote)
+
         #if sync:
             #self.do_sync_item([path], False)
 
     def gui_set_value(self, model, row_reference, col, value):
-        #print repr(item)
-        #print repr(value)
-        #item = value
+        if model == None:
+            model = self.projectsTreeStore
+        path = row_reference.get_path()
+        model[path][col] = value
+
+    def gui_row_set_value(self, row_reference, col, value):
+        model = self.projectsTreeStore
         path = row_reference.get_path()
         model[path][col] = value
 
@@ -798,8 +812,10 @@ class MainThread(threading.Thread):
         dialog.run()
 
     def io_list_files_local(self, find_cmd, parent_path=False):
-        loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
-        gobject.idle_add(self.button_load_local_projects.set_image, loader)
+        #loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
+        #gobject.idle_add(self.button_load_local_projects.set_image, loader)
+        gobject.idle_add(self.spinner_local.set_visible, True)
+        gobject.idle_add(self.local_status_label.set_label, 'Listing local files')
         projects_path_file = os.path.expanduser('~/MISTIKA-ENV/MISTIKA_WORK')
         if not os.path.isfile(projects_path_file):
             projects_path_file = os.path.expanduser('~/MAMBA-ENV/MAMBA_WORK')
@@ -830,11 +846,15 @@ class MainThread(threading.Thread):
                 return
         except:
             raise
-        gobject.idle_add(loader.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
+        gobject.idle_add(self.spinner_local.set_visible, False)
+        gobject.idle_add(self.local_status_label.set_label, '')
+        #gobject.idle_add(loader.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
 
     def io_list_files_remote(self, find_cmd):
-        loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
-        gobject.idle_add(self.button_load_remote_projects.set_image, loader)
+        #loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
+        #gobject.idle_add(self.button_load_remote_projects.set_image, loader)
+        gobject.idle_add(self.spinner_remote.set_visible, True)
+        gobject.idle_add(self.remote_status_label.set_label, 'Listing remote files')
         cmd = find_cmd.replace('<root>', self.remote['projects_path'])
         if self.remote['is_mac']:
             cmd = self.aux_fix_mac_printf(cmd)
@@ -854,9 +874,11 @@ class MainThread(threading.Thread):
             raise
             gobject.idle_add(self.gui_show_error, stderr)
             return
+        gobject.idle_add(self.spinner_remote.set_visible, False)
+        gobject.idle_add(self.remote_status_label.set_label, '')
         #self.project_cell.set_property('foreground', '#000000')
         #self.project_cell.set_property('style', 'normal')
-        gobject.idle_add(loader.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
+        #gobject.idle_add(loader.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
 
     def buffer_add(self, lines, host, root, parent_path=''):
         root = root.rstrip('/')
@@ -1159,9 +1181,9 @@ class MainThread(threading.Thread):
             self.entry_projects_path.set_sensitive(False)
             gobject.idle_add(self.button_connect.set_visible, False)
             gobject.idle_add(self.button_disconnect.set_visible, True)
-            gobject.idle_add(self.label_active_host.set_markup,
-                '<span foreground="#888888">Connected to host:</span> %s <span foreground="#888888">(%s)</span>'
-                % (self.remote['alias'], self.remote['address']))
+            # gobject.idle_add(self.label_active_host.set_markup,
+            #     '<span foreground="#888888">Connected to host:</span> %s <span foreground="#888888">(%s)</span>'
+            #     % (self.remote['alias'], self.remote['address']))
 
     def gui_disconnected(self):
         self.projectsTreeStore.clear()
