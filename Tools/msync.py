@@ -55,6 +55,10 @@ class MainThread(threading.Thread):
         self.icon_disconnect = gtk.image_new_from_stock(gtk.STOCK_DISCONNECT,  gtk.ICON_SIZE_BUTTON)
         self.icon_connected = gtk.image_new_from_stock(gtk.STOCK_APPLY,  gtk.ICON_SIZE_BUTTON)
         self.icon_stop = gtk.image_new_from_stock(gtk.STOCK_STOP,  gtk.ICON_SIZE_BUTTON)
+        self.icon_folder = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/folder.png', 16, 16)
+        self.icon_list = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/list.png', 16, 16)
+        self.pixbuf_search = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/search.png', 16, 16)
+        print repr(self.icon_folder)
         self.spinner = gtk.Spinner()
         self.spinner.start()
         self.spinner.set_size_request(20, 20)
@@ -175,7 +179,7 @@ class MainThread(threading.Thread):
         vpane.add1(vbox)
         vbox = gtk.VBox(False, 10)
 
-        self.projectsTreeStore = gtk.TreeStore(str, str, str, str, str, int, str, bool, str, bool) # Basename, Path, Local, Direction, Remote, Progress int, Progress text, Progress visibility, remote_address, no_reload
+        self.projectsTreeStore = gtk.TreeStore(str, str, str, str, str, int, str, bool, str, bool, gtk.gdk.Pixbuf) # Basename, Path, Local, Direction, Remote, Progress int, Progress text, Progress visibility, remote_address, no_reload, icon
         self.projectsTree = gtk.TreeView()
         #self.project_cell = gtk.CellRendererText()
         #project_cell = self.project_cell
@@ -190,16 +194,16 @@ class MainThread(threading.Thread):
 
         column = gtk.TreeViewColumn()
         column.set_title('Icons & Text')
-        treeview.append_column(column)
+        self.projectsTree.append_column(column)
 
-        rendererer = gtk.CellRendererPixbuf()
+        renderer = gtk.CellRendererPixbuf()
         column.pack_start(renderer, expand=False)
-        column.add_attribute(renderer, 'pixbuf', COL_PIXBUF)
+        column.add_attribute(renderer, 'pixbuf', 10)
 
         renderer = gtk.CellRendererText()
         column.pack_start(renderer, expand=True)
-        column.add_attribute(renderer, 'text', COL_STRING)
-        
+        column.add_attribute(renderer, 'markup', 0)
+
         self.projectsTree.append_column(column)
 
         column = gtk.TreeViewColumn('Path', gtk.CellRendererText(), text=1)
@@ -734,6 +738,7 @@ class MainThread(threading.Thread):
             progress_visibility = False
             no_reload = False
             remote_address = str(self.remote['address'])
+            icon = None
         else:
             row_reference = self.buffer[path]['row_references'][0]
             markup = tree[row_reference.get_path()][0]
@@ -745,6 +750,7 @@ class MainThread(threading.Thread):
             progress_visibility = tree[row_reference.get_path()][7]
             remote_address = tree[row_reference.get_path()][8]
             no_reload = tree[row_reference.get_path()][9]
+            icon = tree[row_reference.get_path()][10]
         for parent in parents:
             #print 'parent: ' + repr(parent)
             if parent == None and len(self.buffer[path]['row_references']) > 0:
@@ -767,10 +773,10 @@ class MainThread(threading.Thread):
                 parent_row_iter = None
             if append_to_this_parent:
                 #print 'Appending to parent: ' + repr(parent)
-                row_iter = tree.append(parent_row_iter, [basename, path, local, direction, remote, progress, progress_str, progress_visibility, remote_address, no_reload])
+                row_iter = tree.append(parent_row_iter, [basename, path, local, direction, remote, progress, progress_str, progress_visibility, remote_address, no_reload, icon])
                 self.buffer[path]['row_references'].append(gtk.TreeRowReference(tree, tree.get_path(row_iter)))
                 if basename.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS and not 'placeholder_child_row_reference' in self.buffer[path]:
-                    placeholder_child_iter = tree.append(row_iter, ['<i>Getting associated files ...</i>', '', '', '', '', 0, '0%', True, '', True])
+                    placeholder_child_iter = tree.append(row_iter, ['<i>Getting associated files ...</i>', '', '', '', '', 0, '0%', True, '', True, self.pixbuf_search])
                     self.buffer[path]['placeholder_child_row_reference'] = gtk.TreeRowReference(tree, tree.get_path(placeholder_child_iter))
                 # if parent.split('.', 1)[-1] in MISTIKA_EXTENSIONS:
                 #     tree.expand_row(parent_row_path)
@@ -804,8 +810,11 @@ class MainThread(threading.Thread):
                 else:
                     remote = gtk.STOCK_NO
                 #gtk.STOCK_STOP
+        if self.buffer[path]['size_local'] == 0 or self.buffer[path]['size_remote'] == 0: # folder
+            icon = self.icon_folder
         if basename.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS:
-            markup = '<span foreground="#00cc00">%s</span>' % basename
+            #markup = '<span foreground="#00cc00">%s</span>' % basename
+            icon = self.icon_list
         if basename == 'PRIVATE':
             local = None
             direction = None
@@ -816,7 +825,8 @@ class MainThread(threading.Thread):
             tree.set_value(row_iter, 0, markup)
             tree.set_value(row_iter, 2, local)
             tree.set_value(row_iter, 3, direction)
-            tree.set_value(row_iter, 4, remote)      
+            tree.set_value(row_iter, 4, remote)   
+            tree.set_value(row_iter, 10, icon)      
 
         #if sync:
             #self.do_sync_item([path], False)
@@ -1309,6 +1319,8 @@ class MainThread(threading.Thread):
 
 os.environ['LC_CTYPE'] = 'en_US.utf8'
 os.environ['LC_ALL'] = 'en_US.utf8'
+os.chdir(os.path.dirname(sys.argv[0]))
+
 t = MainThread()
 t.start()
 gtk.main()
