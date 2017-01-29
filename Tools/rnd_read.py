@@ -26,13 +26,24 @@ header = [
 'Group/D/reduceFactor', # 2
 'Group/D/btColorSpaceHD', # 1
 'Group/D/DeleteBeforeRender', # 0
-'Group/D/WorkType' # 0
+'Group/D/WorkType', # 0
+'Group/D/L/d', # Disk.dev
+'Group/D/L/f', # IMAGE.jpeg
+'Group/D/L/e', # .jpg
+'Group/D/L/i', # 0
+'Group/D/H/d', # Disk.dev
+'Group/D/H/f', # IMAGE.jpeg
+'Group/D/H/e', # .jpg
+'Group/D/H/i', # 0
 ]
 
 def aux_mistika_object_path(level_names):
         return '/'.join(level_names)
 
-class load:
+def print_progress(progress_float):
+    progress_percent = progress_float * 100.0
+    print "%5.2f%%" % progress_percent
+class MistikaObject:
     def __init__(self, file_path, verbose=False):
         self.read_path(file_path, verbose)
     def read_path(self, file_path, verbose=False):
@@ -50,7 +61,7 @@ class load:
                 if time_now - last_progress_update_time > 0.1:
                     last_progress_update_time = time_now
                     progress_float = float(env_bytes_read) / float(env_size)
-                    #print progress_float
+                    print_progress(progress_float)
                 if char == '(':
                     #print ''
                     #level += 1
@@ -103,4 +114,4 @@ if __name__ == "__main__":
     for file_path in sys.argv[1:]:
         print file_path
         #render = 
-        load(file_path, True)
+        MistikaObject(file_path, True)
