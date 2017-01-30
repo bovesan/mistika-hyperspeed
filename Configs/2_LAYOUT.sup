@@ -1,8 +1,10 @@
+# Flopped 2-monitor layout
+
 TimeEditor		0	yR-345	xR	    	345	    	1	1
 TimeEditor		xL	yR-345	xL	    	345	    	1	2
 
-SourceMonitor		x-xm	yL-345	xm	    	345	    	1	1
-SourceMonitor		x-xm	yL-345	xm	    	345	    	1	2
+SourceMonitor		xR+xL-xm	yL-345	xm	    	345	    	1	1
+SourceMonitor		xR+xL-xm	yL-345	xm	    	345	    	1	2
 SourceMonitor		0      0       xR              yR            	1       5
 SourceMonitor		0      0       xR              yR-1            1       6
 
@@ -20,7 +22,7 @@ Reel			xL	0	xL	    	yL-345-35	1	1
 ReelPanel		xL	yL-345	xL	    	345	    	1	1
 ReelPanelImport        	xL       yL-345  xL-xm           345             1       1
 
-Monitor			0-xm  	yL-345  xm              345             1       1
+Monitor			xR+xL-xm  	yL-345  xm              345             1       1
 Monitor                 0      0       xR              yR              1       5
 Monitor                 0      0       xR              yR-1            1       6
 
