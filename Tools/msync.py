@@ -751,11 +751,16 @@ class MainThread(threading.Thread):
         tree = self.projectsTreeStore
         file_path = path
         #print 'gui_refresh_path(%s)' % path
-        if path.startswith('/'): # Absolute path, child of a MISTIKA_EXTENSIONS object
-            basename = path
+        if path.startswith('/'): # Absolute path, real file and child of a MISTIKA_EXTENSIONS object
+            #basename = path
+            parent_dir, basename = path.rsplit('/', 1) # parent_dir will not have trailing slash (unless child is absolute)
             parents = self.buffer[path]['parent_paths']
         elif '/' in path:
-            parent_dir, basename = path.rsplit('/', 1) # parent_dir will not have trailing slash
+            parent_dir, basename = path.rsplit('/', 1) # parent_dir will not have trailing slash (unless child is absolute)
+            if parent_dir.endswith('/'):
+                parent_dir = parent_dir[:-1]
+                basename = '/' + basename
+            #print 'DEBUG: %s base: %s' % (parent_dir, basename)
             parents = self.buffer[path]['parent_paths']
             #print 'Parents: ' + repr(parents)
             #print 'Parent: %s %s' % (parent_dir, parent)
@@ -991,14 +996,15 @@ class MainThread(threading.Thread):
                     parent_dir, basename = path.rsplit('/', 1) # parent_dir will not have trailing slash
                     #parent_path += parent_dir
             if parent_path != '':
-                parent_path_to_store = parent_path + '/' + parent_dir.lstrip('/')
+                #parent_path_to_store = parent_path + '/' + parent_dir.lstrip('/')
+                parent_path_to_store = parent_path + '/' + parent_dir
             elif path == '': # Skip root item
                 continue
             else:
-                parent_path_to_store = parent_dir
+                parent_path_to_store = parent_dir.rstrip('/')
             if parent_path_to_store != '' and not parent_path_to_store in self.buffer:
                 print 'parent_path_to_store: ' + parent_path_to_store
-                time.sleep(1)
+                #time.sleep(1)
                 self.buffer_add(['0 d 0 0 %s' % parent_path_to_store], host, root)
             if f_time == 0:
                 virtual = True
