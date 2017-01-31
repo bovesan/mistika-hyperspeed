@@ -17,6 +17,8 @@ import sys
 import Queue
 
 MISTIKA_EXTENSIONS = ['env', 'grp', 'rnd', 'fx']
+CFG_DIR = os.path.expanduser('~/.mistika-hyperspeed/msync/')
+CFG_HOSTS_PATH = os.path.join(CFG_DIR, 'hosts.json')
 
 gobject.threads_init()
 def print_str(self, str):
@@ -36,7 +38,6 @@ class MainThread(threading.Thread):
         self.is_mac = False
         self.is_mamba = False
         self.transfer_queue = {}
-        self.cfgdir = os.path.expanduser('~/.mistika-hyperspeed/sync/')
 
         self.window = gtk.Window()
         window = self.window
@@ -49,6 +50,7 @@ class MainThread(threading.Thread):
         if 'darwin' in platform.system().lower():
             self.is_mac = True
             self.window.set_resizable(False) # Because resizing crashes the app on Mac
+            self.window.maximize()
 
 
         self.icon_connect = gtk.image_new_from_stock(gtk.STOCK_CONNECT,  gtk.ICON_SIZE_BUTTON)
@@ -400,7 +402,6 @@ class MainThread(threading.Thread):
         model.set_value(selected_row_iter, 2, self.entry_user.get_text())
         model.set_value(selected_row_iter, 3, self.entry_port.get_value_as_int())
         model.set_value(selected_row_iter, 4, self.entry_projects_path.get_text())
-        cfg_path = os.path.expanduser('~/.mistika-hyperspeed/sync/hosts.json')
         hosts = {}
         # i = model.get_iter(0)
         # row = model[i]
@@ -1302,31 +1303,28 @@ class MainThread(threading.Thread):
                     gobject.idle_add(self.gui_refresh_path, f_path)
 
     def io_hosts_populate(self, tree):
-        cfg_path = os.path.expanduser('~/.mistika-hyperspeed/sync/hosts.json')
         try:
-            hosts = json.loads(open(cfg_path).read())
+            hosts = json.loads(open(CFG_HOSTS_PATH).read())
         except IOError as e:
-            return
+            hosts = {}
         #print repr(hosts)
             #row_iter = tree.append(None, [host, hosts[host]['address'], hosts[host]['user'], hosts[host]['port'], hosts[host]['path']])
         gobject.idle_add(self.gui_host_add, None, hosts)
 
     def io_hosts_store(self, hosts):
-        cfg_path = os.path.expanduser('~/.mistika-hyperspeed/sync/hosts.json')
-        cfg_path_parent = os.path.dirname(cfg_path)
-        if not os.path.isdir(cfg_path_parent):
+        if not os.path.isdir(CFG_DIR):
             try:
-                os.makedirs(cfg_path_parent)
+                os.makedirs(CFG_DIR)
             except IOError as e:
-                gobject.idle_add(self.gui_show_error, 'Could not create config folder:\n'+cfg_path_parent)
+                gobject.idle_add(self.gui_show_error, 'Could not create config folder:\n'+CFG_DIR)
                 return
         try:
-            open(cfg_path, 'w').write(json.dumps(hosts, sort_keys=True, indent=4, separators=(',', ': ')))
-            status = 'Wrote to %s' % cfg_path
+            open(CFG_HOSTS_PATH, 'w').write(json.dumps(hosts, sort_keys=True, indent=4, separators=(',', ': ')))
+            status = 'Wrote to %s' % CFG_HOSTS_PATH
             print status
-            gobject.idle_add(self.status_bar.push, self.context_id, status)
+            #gobject.idle_add(self.status_bar.push, self.context_id, status)
         except IOError as e:
-            gobject.idle_add(self.gui_show_error, 'Could not write to file:\n'+cfg_path)
+            gobject.idle_add(self.gui_show_error, 'Could not write to file:\n'+CFG_HOSTS_PATH)
         except:
             raise
 
