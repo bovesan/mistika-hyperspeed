@@ -60,10 +60,11 @@ class MainThread(threading.Thread):
         self.pixbuf_search = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/search.png', 16, 16)
         self.icon_bullet = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/bullet.png', 16, 16)
         print repr(self.icon_folder)
-        self.spinner = gtk.Spinner()
-        self.spinner.start()
-        self.spinner.set_size_request(20, 20)
-
+        #self.spinner = gtk.Spinner()
+        #self.spinner.start()
+        #self.spinner.set_size_request(20, 20)
+        self.spinner = gtk.Image()
+        self.spinner.set_from_file('../res/img/spinner01.gif')
 
         vpane = gtk.VPaned()
         vbox = gtk.VBox(False, 10)
@@ -158,17 +159,21 @@ class MainThread(threading.Thread):
         hbox.pack_start(button, False, False)
 
         # Remote status
-        self.spinner_remote = gtk.Spinner()
-        self.spinner_remote.start()
-        self.spinner_remote.set_size_request(20, 20)
+        self.spinner_remote = gtk.Image()
+        self.spinner_remote.set_from_file('../res/img/spinner01.gif')
+        #self.spinner_remote = gtk.Spinner()
+        #self.spinner_remote.start()
+        #self.spinner_remote.set_size_request(20, 20)
         hbox.pack_start(self.spinner_remote, False, False)
         self.remote_status_label = gtk.Label()
         hbox.pack_start(self.remote_status_label, False, False)
 
         # Local status
-        self.spinner_local = gtk.Spinner()
-        self.spinner_local.start()
-        self.spinner_local.set_size_request(20, 20)
+        self.spinner_local = gtk.Image()
+        self.spinner_local.set_from_file('../res/img/spinner01.gif')
+        #self.spinner_local = gtk.Spinner()
+        #self.spinner_local.start()
+        #self.spinner_local.set_size_request(20, 20)
         hbox.pack_start(self.spinner_local, False, False)
         self.local_status_label = gtk.Label()
         hbox.pack_start(self.local_status_label, False, False)
@@ -211,13 +216,13 @@ class MainThread(threading.Thread):
         column = gtk.TreeViewColumn('Path', gtk.CellRendererText(), text=11)
         column.set_resizable(True)
         column.set_expand(True)
-        #column.set_visible(False)
+        #column.set_property('visible', False)
         self.projectsTree.append_column(column)
 
         column = gtk.TreeViewColumn('Tree path', gtk.CellRendererText(), text=1)
         column.set_resizable(True)
         column.set_expand(True)
-        #column.set_visible(False)
+        #column.set_property('visible', False)
         self.projectsTree.append_column(column)
 
         column = gtk.TreeViewColumn('Local', gtk.CellRendererPixbuf(), stock_id=2)
@@ -295,9 +300,9 @@ class MainThread(threading.Thread):
         window.connect("destroy", self.on_quit)
         self.window.connect("key-press-event",self.on_key_press_event)
         self.quit = False
-        self.button_disconnect.set_visible(False)
-        self.spinner_remote.set_visible(False)
-        self.spinner_local.set_visible(False)
+        self.button_disconnect.set_property('visible', False)
+        self.spinner_remote.set_property('visible', False)
+        self.spinner_local.set_property('visible', False)
 
     def run(self):
         self.io_hosts_populate(self.hostsTreeStore)
@@ -863,7 +868,7 @@ class MainThread(threading.Thread):
     def io_list_files_local(self, find_cmd, parent_path=False):
         #loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
         #gobject.idle_add(self.button_load_local_projects.set_image, loader)
-        gobject.idle_add(self.spinner_local.set_visible, True)
+        gobject.idle_add(self.spinner_local.set_property, 'visible', True)
         gobject.idle_add(self.local_status_label.set_label, 'Listing local files')
         projects_path_file = os.path.expanduser('~/MISTIKA-ENV/MISTIKA_WORK')
         if not os.path.isfile(projects_path_file):
@@ -895,14 +900,14 @@ class MainThread(threading.Thread):
                 return
         except:
             raise
-        gobject.idle_add(self.spinner_local.set_visible, False)
+        gobject.idle_add(self.spinner_local.set_property, 'visible', False)
         gobject.idle_add(self.local_status_label.set_label, '')
         #gobject.idle_add(loader.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
 
     def io_list_files_remote(self, find_cmd):
         #loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
         #gobject.idle_add(self.button_load_remote_projects.set_image, loader)
-        gobject.idle_add(self.spinner_remote.set_visible, True)
+        gobject.idle_add(self.spinner_remote.set_property, 'visible', True)
         gobject.idle_add(self.remote_status_label.set_label, 'Listing remote files')
         cmd = find_cmd.replace('<root>', self.remote['projects_path'])
         if self.remote['is_mac']:
@@ -923,13 +928,14 @@ class MainThread(threading.Thread):
             raise
             gobject.idle_add(self.gui_show_error, stderr)
             return
-        gobject.idle_add(self.spinner_remote.set_visible, False)
+        gobject.idle_add(self.spinner_remote.set_property, 'visible', False)
         gobject.idle_add(self.remote_status_label.set_label, '')
         #self.project_cell.set_property('foreground', '#000000')
         #self.project_cell.set_property('style', 'normal')
         #gobject.idle_add(loader.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
 
     def buffer_add(self, lines, host, root, parent_path=''):
+    	#time.sleep(0.1)
         root = root.rstrip('/')
         if not root == '':
             root += '/'
@@ -949,7 +955,7 @@ class MainThread(threading.Thread):
             debug_line = ''
             for var in ['f_inode', 'f_type', 'f_size', 'f_time', 'full_path', 'host', 'root', 'parent_path']:
                 debug_line += var +': ' + repr(vars()[var]) + ' '
-            #print debug_line
+            print debug_line
             if full_path.startswith(root): # Relative path
                 path = full_path.replace(root, '', 1).strip('/')
                 #print 'Relative path: '
@@ -969,8 +975,9 @@ class MainThread(threading.Thread):
                 continue
             else:
                 parent_path_to_store = parent_dir
-            #print 'parent_path_to_store: ' + parent_path_to_store
             if parent_path_to_store != '' and not parent_path_to_store in self.buffer:
+            	print 'parent_path_to_store: ' + parent_path_to_store
+                time.sleep(1)
                 self.buffer_add(['0 d 0 0 %s' % parent_path_to_store], host, root)
             if f_time == 0:
                 virtual = True
@@ -1091,7 +1098,7 @@ class MainThread(threading.Thread):
                 item = q.get(True, 10)
                 #self.loader_remote = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
                 #gobject.idle_add(self.button_connect.set_image, self.spinner)
-                self.spinner_remote.set_visible(True)
+                self.spinner_remote.set_property('visible', True)
                 item_len = len(item)
                 try:
                     if item_len == 1:
@@ -1101,9 +1108,9 @@ class MainThread(threading.Thread):
                     #gobject.idle_add(self.button_connect.set_image, self.icon_connected)
                     #gobject.idle_add(self.loader_remote.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
                     q.task_done()
-                    self.spinner_remote.set_visible(False)
+                    self.spinner_remote.set_property('visible', False)
                 except Exception as e:
-                    self.spinner_remote.set_visible(False)
+                    self.spinner_remote.set_property('visible', False)
                     print 'Error:'
                     print repr(e)
                     #gobject.idle_add(self.button_connect.set_image, self.icon_stop)
@@ -1179,13 +1186,13 @@ class MainThread(threading.Thread):
         self.queue_buffer.put_nowait([self.buffer_clear])
         self.daemon_remote_active = False
         gobject.idle_add(self.gui_disconnected)
-        #self.spinner_remote.set_visible(False)
+        #self.spinner_remote.set_property('visible', False)
 
     def remote_connect(self):
         #gobject.idle_add(self.button_connect.set_image, self.spinner)
         #selection = self.hostsTree.get_selection()
         #(model, iter) = selection.get_selected()
-        #self.spinner_remote.set_visible(True)
+        #self.spinner_remote.set_property('visible', True)
         self.remote['alias'] = self.entry_host.get_active_text()
         self.remote_status_label.set_markup('Connecting')
         self.remote['address'] = self.entry_address.get_text()
@@ -1228,8 +1235,8 @@ class MainThread(threading.Thread):
             self.entry_user.set_sensitive(False)
             self.entry_port.set_sensitive(False)
             self.entry_projects_path.set_sensitive(False)
-            gobject.idle_add(self.button_connect.set_visible, False)
-            gobject.idle_add(self.button_disconnect.set_visible, True)
+            gobject.idle_add(self.button_connect.set_property, 'visible', False)
+            gobject.idle_add(self.button_disconnect.set_property, 'visible', True)
             # gobject.idle_add(self.label_active_host.set_markup,
             #     '<span foreground="#888888">Connected to host:</span> %s <span foreground="#888888">(%s)</span>'
             #     % (self.remote['alias'], self.remote['address']))
@@ -1241,9 +1248,9 @@ class MainThread(threading.Thread):
         self.entry_user.set_sensitive(True)
         self.entry_port.set_sensitive(True)
         self.entry_projects_path.set_sensitive(True)
-        self.button_disconnect.set_visible(False)
-        self.button_connect.set_visible(True)
-        self.spinner_remote.set_visible(False)
+        self.button_disconnect.set_property('visible', False)
+        self.button_connect.set_property('visible', True)
+        self.spinner_remote.set_property('visible', False)
 
     def buffer_list_files(self, paths=[''], parent_path='', sync=False, maxdepth = 2):
         #print 'buffer_list_files()'
