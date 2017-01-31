@@ -2,6 +2,7 @@
 #-*- coding:utf-8 -*-
 
 import cgi
+import datetime
 import json
 import glob
 import gobject
@@ -40,6 +41,37 @@ def string_format_to_wildcard(raw_str, wrapping=''):
 
     return output
 
+def human_size(num, suffix='B'):
+    for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
+        if abs(num) < 1024.0:
+            return "%3.1f%s%s" % (num, unit, suffix)
+        num /= 1024.0
+    return "%.1f%s%s" % (num, 'Yi', suffix)
+
+def human_time(d):
+    if type(d) is int:
+        d = datetime.datetime.fromtimestamp(d)
+    diff = datetime.datetime.utcnow() - d
+    s = diff.seconds
+    if diff.days > 7 or diff.days < 0:
+        return d.strftime('%d %b %y')
+    elif diff.days == 1:
+        return '1 day ago'
+    elif diff.days > 1:
+        return '{} days ago'.format(diff.days)
+    elif s <= 1:
+        return 'just now'
+    elif s < 60:
+        return '{} seconds ago'.format(s)
+    elif s < 120:
+        return '1 minute ago'
+    elif s < 3600:
+        return '{} minutes ago'.format(s/60)
+    elif s < 7200:
+        return '1 hour ago'
+    else:
+        return '{} hours ago'.format(s/3600)
+
 class MainThread(threading.Thread):
     def __init__(self):
         super(MainThread, self).__init__()
@@ -77,6 +109,7 @@ class MainThread(threading.Thread):
         self.icon_folder = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/folder.png', 16, 16)
         self.icon_list = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/list.png', 16, 16)
         self.pixbuf_search = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/search.png', 16, 16)
+        self.pixbuf_equal = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/equal.png', 16, 16)
         self.icon_bullet = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/bullet.png', 16, 16)
         print repr(self.icon_folder)
         #self.spinner = gtk.Spinner()
@@ -204,7 +237,7 @@ class MainThread(threading.Thread):
         vpane.add1(vbox)
         vbox = gtk.VBox(False, 10)
 
-        self.projectsTreeStore = gtk.TreeStore(str, str, str, str, str, int, str, bool, str, bool, gtk.gdk.Pixbuf, str) # Basename, Tree Path, Local, Direction, Remote, Progress int, Progress text, Progress visibility, remote_address, no_reload, icon, File path
+        self.projectsTreeStore = gtk.TreeStore(str, str, str, gtk.gdk.Pixbuf, str, int, str, bool, str, bool, gtk.gdk.Pixbuf, str, str) # Basename, Tree Path, Local time, Direction, Remote time, Progress int, Progress text, Progress visibility, remote_address, no_reload, icon, Local size, Remote size
         self.projectsTree = gtk.TreeView()
         #self.project_cell = gtk.CellRendererText()
         #project_cell = self.project_cell
@@ -232,29 +265,33 @@ class MainThread(threading.Thread):
 
         self.projectsTree.append_column(column)
 
-        column = gtk.TreeViewColumn('Path', gtk.CellRendererText(), text=11)
-        column.set_resizable(True)
-        column.set_expand(True)
-        #column.set_property('visible', False)
-        self.projectsTree.append_column(column)
-
         column = gtk.TreeViewColumn('Tree path', gtk.CellRendererText(), text=1)
         column.set_resizable(True)
         column.set_expand(True)
-        #column.set_property('visible', False)
+        column.set_property('visible', False)
         self.projectsTree.append_column(column)
 
-        column = gtk.TreeViewColumn('Local', gtk.CellRendererPixbuf(), stock_id=2)
+        column = gtk.TreeViewColumn('Local size', gtk.CellRendererText(), text=11)
         column.set_resizable(True)
         column.set_expand(False)
         self.projectsTree.append_column(column)
 
-        column = gtk.TreeViewColumn('Action', gtk.CellRendererPixbuf(), stock_id=3)
+        column = gtk.TreeViewColumn('Local time', gtk.CellRendererText(), text=2)
         column.set_resizable(True)
         column.set_expand(False)
         self.projectsTree.append_column(column)
 
-        column = gtk.TreeViewColumn('Remote', gtk.CellRendererPixbuf(), stock_id=4)
+        column = gtk.TreeViewColumn('Action', gtk.CellRendererPixbuf(), pixbuf=3)
+        column.set_resizable(True)
+        column.set_expand(False)
+        self.projectsTree.append_column(column)
+
+        column = gtk.TreeViewColumn('Remote size', gtk.CellRendererText(), text=12)
+        column.set_resizable(True)
+        column.set_expand(False)
+        self.projectsTree.append_column(column)
+
+        column = gtk.TreeViewColumn('Remote time', gtk.CellRendererText(), text=4)
         column.set_resizable(True)
         column.set_expand(False)
         self.projectsTree.append_column(column)
@@ -769,6 +806,10 @@ class MainThread(threading.Thread):
             basename = path
             parents = [None]
         markup = basename
+        mtime_local_str = human_time(self.buffer[path]['mtime_local'])
+        mtime_remote_str = human_time(self.buffer[path]['mtime_remote'])
+        size_local_str = human_size(self.buffer[path]['size_local'])
+        size_remote_str = human_size(self.buffer[path]['size_remote'])
         if self.buffer[path]['row_references'] == []:
             local = None
             direction = None
@@ -813,10 +854,10 @@ class MainThread(threading.Thread):
                 parent_row_iter = None
             if append_to_this_parent:
                 #print 'Appending to parent: ' + repr(parent)
-                row_iter = tree.append(parent_row_iter, [basename, path, local, direction, remote, progress, progress_str, progress_visibility, remote_address, no_reload, icon, file_path])
+                row_iter = tree.append(parent_row_iter, [basename, path, mtime_local_str, direction, mtime_remote_str, progress, progress_str, progress_visibility, remote_address, no_reload, icon, size_local_str, size_remote_str])
                 self.buffer[path]['row_references'].append(gtk.TreeRowReference(tree, tree.get_path(row_iter)))
                 if basename.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS and not 'placeholder_child_row_reference' in self.buffer[path]:
-                    placeholder_child_iter = tree.append(row_iter, ['<i>Getting associated files ...</i>', '', '', '', '', 0, '0%', True, '', True, self.pixbuf_search, file_path+'/.'])
+                    placeholder_child_iter = tree.append(row_iter, ['<i>Getting associated files ...</i>', '', '', None, '', 0, '0%', True, '', True, self.pixbuf_search, '', ''])
                     self.buffer[path]['placeholder_child_row_reference'] = gtk.TreeRowReference(tree, tree.get_path(placeholder_child_iter))
                 # if parent.split('.', 1)[-1] in MISTIKA_EXTENSIONS:
                 #     tree.expand_row(parent_row_path)
@@ -863,9 +904,9 @@ class MainThread(threading.Thread):
         for row_reference in self.buffer[path]['row_references']:
             row_iter = tree.get_iter(row_reference.get_path())
             tree.set_value(row_iter, 0, markup)
-            tree.set_value(row_iter, 2, local)
+            #tree.set_value(row_iter, 2, local)
             tree.set_value(row_iter, 3, direction)
-            tree.set_value(row_iter, 4, remote)   
+            #tree.set_value(row_iter, 4, remote)   
             tree.set_value(row_iter, 10, icon)      
 
         #if sync:
