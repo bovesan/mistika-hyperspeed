@@ -23,6 +23,23 @@ CFG_HOSTS_PATH = os.path.join(CFG_DIR, 'hosts.json')
 gobject.threads_init()
 def print_str(self, str):
     print str
+
+def string_format_to_wildcard(raw_str, wrapping=''):
+    #H( d(Disk.dev) p(/Volumes/SLOW_HF/PROJECTS/18438_IFA/CENTRAL/Graphics/Unprocessed/packshots/packshots/) n(pakning.%02d.jpg) f((641x747)) )
+    output = ''
+    formatting = False
+    for char in raw_str:
+        if char == '%':
+            formatting = True
+        elif formatting:
+            if char == 'd':
+                output += wrapping+'*'+wrapping
+                formatting = False
+        else:
+            output += char
+
+    return output
+
 class MainThread(threading.Thread):
     def __init__(self):
         super(MainThread, self).__init__()
@@ -535,8 +552,11 @@ class MainThread(threading.Thread):
                             f_path = char_buffer
                         if f_path:
                             if '%' in f_path:
-                                for i in range(CdIs, CdIe+1):
-                                    files_chunk.append(f_path.replace(self.projects_path_local+'/', '') % i)
+                                f_tuple = ( f_path.replace(self.projects_path_local+'/', ''), CdIs, CdIe)
+                                files_chunk.append(f_tuple)
+                                # find . -regex '.*hill_0004_000[0-9][0-9][0-1].tif'
+                                # for i in range(CdIs, CdIe+1):
+                                #     files_chunk.append(f_path.replace(self.projects_path_local+'/', '') % i)
                             else:
                                 files_chunk.append(f_path.replace(self.projects_path_local+'/', ''))
                             if len(files_chunk) >= files_chunk_max_size:
@@ -1262,13 +1282,20 @@ class MainThread(threading.Thread):
 
         search_paths = ''
         for path in paths:
-            if path in self.buffer and self.buffer[path]['virtual']:
+            if type(path) is tuple:
+                f_path, start, end = path
+            else:
+                f_path = path
+            if f_path in self.buffer and self.buffer[f_path]['virtual']:
                 continue
-            if path.startswith('/'):
+            if f_path.startswith('/'):
                 root = ''
             else:
                 root = '<root>/'
-            search_paths += ' "%s%s"' % (root, path)
+            if '%' in f_path:
+                search_paths += ' "%s%s"' % (root, string_format_to_wildcard(f_path, wrapping='"'))
+            else:
+                search_paths += ' "%s%s"' % (root, f_path)
         if search_paths == '':
             return
         if maxdepth:
@@ -1297,6 +1324,9 @@ class MainThread(threading.Thread):
         self.buffer_add(self.buffer_remote, self.remote['alias'], self.remote['projects_path'], parent_path)
         #print 'Adding files to GUI'
         for path in paths:
+            if type(path) is tuple:
+                path, start, end = path
+                path = path.split('%', 1)[0]
             for f_path in sorted(self.buffer):
                 #print 'f_path: ' + f_path + ' path: ' + path
                 if f_path.startswith(path):
