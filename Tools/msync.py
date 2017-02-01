@@ -77,6 +77,7 @@ class MainThread(threading.Thread):
         super(MainThread, self).__init__()
         self.threads = []
         self.buffer = {}
+        self.directions = {} # Controlled by GUI
         self.buffer_lock = threading.Lock()
         self.buffer_local = []
         self.buffer_local = []
@@ -101,6 +102,7 @@ class MainThread(threading.Thread):
             self.window.set_resizable(False) # Because resizing crashes the app on Mac
             self.window.maximize()
 
+        tooltips = gtk.Tooltips()
 
         self.icon_connect = gtk.image_new_from_stock(gtk.STOCK_CONNECT,  gtk.ICON_SIZE_BUTTON)
         self.icon_disconnect = gtk.image_new_from_stock(gtk.STOCK_DISCONNECT,  gtk.ICON_SIZE_BUTTON)
@@ -113,6 +115,11 @@ class MainThread(threading.Thread):
         self.icon_file = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/file.png', 16, 16)
         self.icon_left = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/left.png', 16, 16)
         self.icon_right = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/right.png', 16, 16)
+        self.icon_info = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/info.png', 16, 16)
+        self.pixbuf_plus = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/plus.png', 16, 16)
+        self.pixbuf_minus = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/minus.png', 16, 16)
+        self.pixbuf_cancel = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/cancel.png', 16, 16)
+        self.pixbuf_reset = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/reset.png', 16, 16)
         print repr(self.icon_folder)
         #self.spinner = gtk.Spinner()
         #self.spinner.start()
@@ -314,24 +321,51 @@ class MainThread(threading.Thread):
 
         hbox = gtk.HBox(False, 0)
         
-        self.button_queue_add = gtk.Button(stock=gtk.STOCK_ADD)
-        self.button_queue_add.connect("clicked", self.on_sync_selected)
-        hbox.pack_start(self.button_queue_add, False, False, 0)
+        button = gtk.Button()
+        button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_plus))
+        button.connect("clicked", self.on_sync_selected)
+        tooltips.set_tip(button, 'Sync selected file(s)')
+        hbox.pack_start(button, False, False, 0)
         
-        self.button_queue_remove = gtk.Button(stock=gtk.STOCK_REMOVE)
-        self.button_queue_remove.connect("clicked", self.on_sync_selected_abort)
-        hbox.pack_start(self.button_queue_remove, False, False, 0)
-
-        self.button_sync_files = gtk.Button('Sync selected files')
-        #self.button_sync_files.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
-        self.button_sync_files.connect("clicked", self.on_sync_selected)
-        #hbox.pack_start(self.button_sync_files, False, False, 0)
-
-        button = gtk.Button('Unqueue selected files')
-        #self.button_sync_files.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
+        button = gtk.Button()
+        button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_minus))
         button.connect("clicked", self.on_sync_selected_abort)
-        #hbox.pack_start(button, False, False, 0)
+        tooltips.set_tip(button, 'Remove selected file(s) from sync queue')
+        hbox.pack_start(button, False, False, 0)
 
+        button = gtk.Button()
+        #self.button_sync_files.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
+        button.connect("clicked", self.on_file_info)
+        button.set_image(gtk.image_new_from_pixbuf(self.icon_info))
+        tooltips.set_tip(button, 'Show more information on selected file(s)')
+        hbox.pack_start(button, False, False, 0)
+
+        hbox.pack_start(gtk.Label('Override action:'), False, False, 5)
+
+        button = gtk.Button()
+        button.connect("clicked", self.on_force_action, 'pull')
+        button.set_image(gtk.image_new_from_pixbuf(self.icon_left))
+        tooltips.set_tip(button, 'Remote to local (pull)')
+        hbox.pack_start(button, False, False, 0)
+
+        button = gtk.Button()
+        button.connect("clicked", self.on_force_action, 'nothing')
+        button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_cancel))
+        tooltips.set_tip(button, 'Do not sync selected file(s)')
+        hbox.pack_start(button, False, False, 0)
+
+
+        button = gtk.Button()
+        button.connect("clicked", self.on_force_action, 'push')
+        button.set_image(gtk.image_new_from_pixbuf(self.icon_right))
+        tooltips.set_tip(button, 'Local to remote (push)')
+        hbox.pack_start(button, False, False, 0)
+
+        button = gtk.Button()
+        button.connect("clicked", self.on_force_action, 'reset')
+        button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_reset))
+        tooltips.set_tip(button, 'Reset selected file(s) to default action')
+        hbox.pack_start(button, False, False, 0)
         vbox.pack_start(hbox, False, False, 0)
 
 
@@ -785,7 +819,7 @@ class MainThread(threading.Thread):
             pass
 
     def gui_refresh_path(self, path):
-        #print 'Refreshing ' + path
+        print 'Refreshing ' + path
         tree = self.projectsTreeStore
         file_path = path
         #print 'gui_refresh_path(%s)' % path
@@ -817,7 +851,9 @@ class MainThread(threading.Thread):
             if self.buffer[path]['size_remote'] >= 0: size_remote_str = human_size(self.buffer[path]['size_remote'])
         if self.buffer[path]['row_references'] == []: # Create new entry
             local = None
-            direction = None
+            self.directions[path] = {}
+            self.directions[path]['direction'] = None
+            self.directions[path]['forced'] = False
             remote = None
             progress = 0
             progress_str = ''
@@ -832,7 +868,7 @@ class MainThread(threading.Thread):
             row_reference = self.buffer[path]['row_references'][0]
             markup = tree[row_reference.get_path()][0]
             local = tree[row_reference.get_path()][2]
-            direction = tree[row_reference.get_path()][3]
+            direction = self.directions[path]['direction']
             remote = tree[row_reference.get_path()][4]
             progress = tree[row_reference.get_path()][5]
             progress_str = tree[row_reference.get_path()][6]
@@ -862,7 +898,7 @@ class MainThread(threading.Thread):
                 parent_row_iter = None
             if append_to_this_parent:
                 #print 'Appending to parent: ' + repr(parent)
-                row_iter = tree.append(parent_row_iter, [basename, path, mtime_local_str, direction, mtime_remote_str, progress, progress_str, progress_visibility, remote_address, no_reload, icon, size_local_str, size_remote_str, fg_color])
+                row_iter = tree.append(parent_row_iter, [basename, path, mtime_local_str, self.directions[path]['direction'], mtime_remote_str, progress, progress_str, progress_visibility, remote_address, no_reload, icon, size_local_str, size_remote_str, fg_color])
                 self.buffer[path]['row_references'].append(gtk.TreeRowReference(tree, tree.get_path(row_iter)))
                 if basename.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS and not 'placeholder_child_row_reference' in self.buffer[path]:
                     placeholder_child_iter = tree.append(row_iter, ['<i>Getting associated files ...</i>', '', '', None, '', 0, '0%', True, '', True, self.pixbuf_search, '', '', ''])
@@ -872,48 +908,43 @@ class MainThread(threading.Thread):
         if self.buffer[path]['size_remote'] == self.buffer[path]['size_local']:
             #markup = '<span foreground="#888888">%s</span>' % basename
             fg_color = "#888888"
-            if self.buffer[path]['size_remote'] == 0:
-                local = None
-                direction = None
-                remote = None
-            else:
-                local = gtk.STOCK_YES
-                direction = None
-                remote = gtk.STOCK_YES
+            self.directions[path]['direction'] = None
+        elif self.buffer[path]['virtual']:
+            fg_color = "#888888"
         else:
             markup = basename
-            if self.buffer[path]['mtime_remote'] > self.buffer[path]['mtime_local']:
-                if self.buffer[path]['mtime_local'] < 0:
-                    local = None
+            if not self.directions[path]['forced']:
+                if self.buffer[path]['mtime_remote'] > self.buffer[path]['mtime_local']:
+                    if self.buffer[path]['mtime_local'] < 0:
+                        local = None
+                    else:
+                        local = gtk.STOCK_NO
+                    self.directions[path]['direction'] = self.icon_left
+                    remote = gtk.STOCK_YES
                 else:
-                    local = gtk.STOCK_NO
-                direction = self.icon_left
-                remote = gtk.STOCK_YES
-            else:
-                local = gtk.STOCK_YES
-                direction = self.icon_right
-                if self.buffer[path]['mtime_remote'] < 0:
-                    remote = None
-                else:
-                    remote = gtk.STOCK_NO
-                #gtk.STOCK_STOP
+                    local = gtk.STOCK_YES
+                    self.directions[path]['direction'] = self.icon_right
+                    if self.buffer[path]['mtime_remote'] < 0:
+                        remote = None
+                    else:
+                        remote = gtk.STOCK_NO
+                    #gtk.STOCK_STOP
             for row_reference in self.buffer[path]['row_references']:
                 row_iter = tree.get_iter(row_reference.get_path())
-                self.gui_parent_modified(row_iter, direction)
+                self.gui_parent_modified(row_iter, self.directions[path]['direction'])
         if basename.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS:
             #markup = '<span foreground="#00cc00">%s</span>' % basename
             icon = self.icon_list
         if basename == 'PRIVATE':
             local = None
-            direction = None
+            self.directions[path]['direction'] = None
             remote = None
 
-        self.buffer[path]['direction'] = direction
         for row_reference in self.buffer[path]['row_references']:
             row_path = row_reference.get_path()
             tree[row_path][0] = markup
             #tree.set_value(row_iter, 2, local)
-            tree[row_path][3] = direction
+            tree[row_path][3] = self.directions[path]['direction']
             #tree.set_value(row_iter, 4, remote)   
             tree[row_path][10] = icon
             tree[row_path][13] = fg_color  
@@ -939,6 +970,93 @@ class MainThread(threading.Thread):
                             buttons=gtk.BUTTONS_NONE, 
                             message_format=None)
         dialog.set_markup(message)
+        dialog.run()
+
+    def on_force_action(self, widget, action, row_path=None):
+        print 'Force action: ' + action
+        file_infos = []
+        if row_path == None:
+            selection = self.projectsTree.get_selection()
+            (model, pathlist) = selection.get_selected_rows()
+        else:
+            model = self.projectsTreeStore
+            pathlist = [row_path]
+        for row_path in pathlist:
+            row_iter = model.get_iter(row_path)
+            path = model[row_path][1]
+            print path
+            if action == 'pull':
+                self.directions[path]['direction'] = self.icon_left
+            elif action == 'push':
+                self.directions[path]['direction'] = self.icon_left
+            elif action == 'nothing':
+                self.directions[path]['direction'] = None
+            if action == 'reset':
+                self.directions[path]['forced'] = False
+            else:
+                self.directions[path]['forced'] = True
+            self.gui_refresh_path(path)
+            child_iter = model.iter_children(row_iter)
+            while child_iter != None:
+                row_path_child = model.get_path(child_iter)
+                path_str_child = model[row_path_child][1]
+                print 'Child: ' + path_str_child
+                if not path_str_child == '': self.on_force_action(None, action, row_path_child) # Avoid placeholders
+                child_iter = model.iter_next(child_iter)
+
+    def on_force_push(self, widget):
+        print 'Force push'
+        file_infos = []
+        selection = self.projectsTree.get_selection()
+        (model, pathlist) = selection.get_selected_rows()
+        for row_path in pathlist:
+            path = model[row_path][1]
+            print path
+            self.directions[path]['direction'] = self.icon_right
+            self.directions[path]['forced'] = True
+            self.gui_refresh_path(path)
+
+    def on_force_no_action(self, widget):
+        print 'Force no action'
+        file_infos = []
+        selection = self.projectsTree.get_selection()
+        (model, pathlist) = selection.get_selected_rows()
+        for row_path in pathlist:
+            path = model[row_path][1]
+            print path
+            self.directions[path]['direction'] = None
+            self.directions[path]['forced'] = True
+            self.gui_refresh_path(path)
+
+    def on_force_reset(self, widget):
+        print 'Force no action'
+        file_infos = []
+        selection = self.projectsTree.get_selection()
+        (model, pathlist) = selection.get_selected_rows()
+        for row_path in pathlist:
+            path = model[row_path][1]
+            print path
+            self.directions[path]['forced'] = False
+            self.gui_refresh_path(path)
+
+    def on_file_info(self, widget):
+        file_infos = []
+        selection = self.projectsTree.get_selection()
+        (model, pathlist) = selection.get_selected_rows()
+        paths = []
+        for row_path in pathlist:
+            path = model[row_path][1]
+            file_info = 'File path: ' + path + '\n'
+            for key in self.buffer[path].keys():
+                file_info += '* %s: %s\n' % (key, cgi.escape(repr(self.buffer[path][key])))
+            file_infos.append(file_info)
+            #file_infos.append('File path: path + cgi.escape(pprint.pformat(self.buffer[path])))
+        dialog = gtk.MessageDialog(parent=self.window, 
+                            #flags=gtk.DIALOG_MODAL, 
+                            type=gtk.MESSAGE_INFO, 
+                            buttons=gtk.BUTTONS_NONE, 
+                            message_format=None)
+        dialog.set_markup('\n'.join(file_infos))
         dialog.run()
 
     def io_list_files_local(self, find_cmd, parent_path=False):
