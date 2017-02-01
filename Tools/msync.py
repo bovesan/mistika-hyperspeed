@@ -17,7 +17,7 @@ import time
 import sys
 import Queue
 
-MISTIKA_EXTENSIONS = ['env', 'grp', 'rnd', 'fx']
+MISTIKA_EXTENSIONS = ['env', 'grp', 'rnd', 'fx', 'lnk']
 CFG_DIR = os.path.expanduser('~/.mistika-hyperspeed/msync/')
 CFG_HOSTS_PATH = os.path.join(CFG_DIR, 'hosts.json')
 
@@ -110,7 +110,9 @@ class MainThread(threading.Thread):
         self.icon_list = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/list.png', 16, 16)
         self.pixbuf_search = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/search.png', 16, 16)
         self.pixbuf_equal = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/equal.png', 16, 16)
-        self.icon_bullet = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/bullet.png', 16, 16)
+        self.icon_file = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/file.png', 16, 16)
+        self.icon_left = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/left.png', 16, 16)
+        self.icon_right = gtk.gdk.pixbuf_new_from_file_at_size('../res/img/right.png', 16, 16)
         print repr(self.icon_folder)
         #self.spinner = gtk.Spinner()
         #self.spinner.start()
@@ -237,18 +239,9 @@ class MainThread(threading.Thread):
         vpane.add1(vbox)
         vbox = gtk.VBox(False, 10)
 
-        self.projectsTreeStore = gtk.TreeStore(str, str, str, gtk.gdk.Pixbuf, str, int, str, bool, str, bool, gtk.gdk.Pixbuf, str, str) # Basename, Tree Path, Local time, Direction, Remote time, Progress int, Progress text, Progress visibility, remote_address, no_reload, icon, Local size, Remote size
+        self.projectsTreeStore = gtk.TreeStore(str, str, str, gtk.gdk.Pixbuf, str, int, str, bool, str, bool, gtk.gdk.Pixbuf, str, str, str) # Basename, Tree Path, Local time, Direction, Remote time, Progress int, Progress text, Progress visibility, remote_address, no_reload, icon, Local size, Remote size, Color(str)
         self.projectsTree = gtk.TreeView()
-        #self.project_cell = gtk.CellRendererText()
-        #project_cell = self.project_cell
-        #project_cell.set_property('foreground', '#cccccc')
-        #project_cell.set_property('style', 'italic')
-        #cell.connect('edited', self.on_host_edit, (self.projectsTreeStore, 0))
-        cell = gtk.CellRendererText()
-        column = gtk.TreeViewColumn('', cell, markup=0)
-        column.set_resizable(True)
-        column.set_expand(True)
-        column.set_sort_column_id(0)
+        self.projectsTree.set_rules_hint(True)
 
         column = gtk.TreeViewColumn()
         column.set_title('')
@@ -262,21 +255,22 @@ class MainThread(threading.Thread):
         renderer = gtk.CellRendererText()
         column.pack_start(renderer, expand=True)
         column.add_attribute(renderer, 'markup', 0)
+        column.add_attribute(renderer, 'foreground', 13)
 
         self.projectsTree.append_column(column)
 
-        column = gtk.TreeViewColumn('Tree path', gtk.CellRendererText(), text=1)
+        column = gtk.TreeViewColumn('Tree path', gtk.CellRendererText(), text=1, foreground=13)
         column.set_resizable(True)
         column.set_expand(True)
         column.set_property('visible', False)
         self.projectsTree.append_column(column)
 
-        column = gtk.TreeViewColumn('Local size', gtk.CellRendererText(), text=11)
+        column = gtk.TreeViewColumn('Local size', gtk.CellRendererText(), text=11, foreground=13)
         column.set_resizable(True)
         column.set_expand(False)
         self.projectsTree.append_column(column)
 
-        column = gtk.TreeViewColumn('Local time', gtk.CellRendererText(), text=2)
+        column = gtk.TreeViewColumn('Local time', gtk.CellRendererText(), text=2, foreground=13)
         column.set_resizable(True)
         column.set_expand(False)
         self.projectsTree.append_column(column)
@@ -286,12 +280,12 @@ class MainThread(threading.Thread):
         column.set_expand(False)
         self.projectsTree.append_column(column)
 
-        column = gtk.TreeViewColumn('Remote size', gtk.CellRendererText(), text=12)
+        column = gtk.TreeViewColumn('Remote size', gtk.CellRendererText(), text=12, foreground=13)
         column.set_resizable(True)
         column.set_expand(False)
         self.projectsTree.append_column(column)
 
-        column = gtk.TreeViewColumn('Remote time', gtk.CellRendererText(), text=4)
+        column = gtk.TreeViewColumn('Remote time', gtk.CellRendererText(), text=4, foreground=13)
         column.set_resizable(True)
         column.set_expand(False)
         self.projectsTree.append_column(column)
@@ -772,14 +766,21 @@ class MainThread(threading.Thread):
 
         #self.hostsTreeStore.append(None, ['New host', '', 'mistika', 22, ''])
 
-    def gui_parent_modified(self, row_iter):
+    def gui_parent_modified(self, row_iter, direction):
         #print 'Modified parent of: %s' % self.projectsTreeStore.get_value(row_iter, 1)
         try:
             parent = self.projectsTreeStore.iter_parent(row_iter)
-            self.projectsTreeStore.set_value(parent, 2, None)
-            self.projectsTreeStore.set_value(parent, 3, gtk.STOCK_REFRESH)
-            self.projectsTreeStore.set_value(parent, 4, None)
-            self.gui_parent_modified(parent)
+            parent_direction = self.projectsTreeStore.get_value(parent, 3)
+            if parent_direction != direction:
+                if parent_direction == None:
+                    parent_direction = direction
+                else:
+                    parent_direction = self.icon_bidirectional
+                self.projectsTreeStore.set_value(parent, 2, None)
+                self.projectsTreeStore.set_value(parent, 3, parent_direction)
+                self.projectsTreeStore.set_value(parent, 4, None)
+                self.projectsTreeStore.set_value(parent, 13, '#000')
+            self.gui_parent_modified(parent, parent_direction)
         except: # Reached top level
             pass
 
@@ -805,12 +806,16 @@ class MainThread(threading.Thread):
             parent_dir = None
             basename = path
             parents = [None]
+        is_folder = self.buffer[path]['size_local'] == 0 or self.buffer[path]['size_remote'] == 0
         markup = basename
-        mtime_local_str = human_time(self.buffer[path]['mtime_local'])
-        mtime_remote_str = human_time(self.buffer[path]['mtime_remote'])
-        size_local_str = human_size(self.buffer[path]['size_local'])
-        size_remote_str = human_size(self.buffer[path]['size_remote'])
-        if self.buffer[path]['row_references'] == []:
+        fg_color = "#000"
+        mtime_local_str = mtime_remote_str = size_local_str = size_remote_str = ''
+        if not is_folder:
+            if self.buffer[path]['mtime_local'] >= 0: mtime_local_str = human_time(self.buffer[path]['mtime_local'])
+            if self.buffer[path]['mtime_remote'] >= 0: mtime_remote_str = human_time(self.buffer[path]['mtime_remote'])
+            if self.buffer[path]['size_local'] >= 0: size_local_str = human_size(self.buffer[path]['size_local'])
+            if self.buffer[path]['size_remote'] >= 0: size_remote_str = human_size(self.buffer[path]['size_remote'])
+        if self.buffer[path]['row_references'] == []: # Create new entry
             local = None
             direction = None
             remote = None
@@ -819,8 +824,11 @@ class MainThread(threading.Thread):
             progress_visibility = False
             no_reload = False
             remote_address = str(self.remote['address'])
-            icon = self.icon_bullet
-        else:
+            if is_folder:
+                icon = self.icon_folder
+            else:
+                icon = self.icon_file
+        else: # Read existing entry
             row_reference = self.buffer[path]['row_references'][0]
             markup = tree[row_reference.get_path()][0]
             local = tree[row_reference.get_path()][2]
@@ -854,15 +862,16 @@ class MainThread(threading.Thread):
                 parent_row_iter = None
             if append_to_this_parent:
                 #print 'Appending to parent: ' + repr(parent)
-                row_iter = tree.append(parent_row_iter, [basename, path, mtime_local_str, direction, mtime_remote_str, progress, progress_str, progress_visibility, remote_address, no_reload, icon, size_local_str, size_remote_str])
+                row_iter = tree.append(parent_row_iter, [basename, path, mtime_local_str, direction, mtime_remote_str, progress, progress_str, progress_visibility, remote_address, no_reload, icon, size_local_str, size_remote_str, fg_color])
                 self.buffer[path]['row_references'].append(gtk.TreeRowReference(tree, tree.get_path(row_iter)))
                 if basename.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS and not 'placeholder_child_row_reference' in self.buffer[path]:
-                    placeholder_child_iter = tree.append(row_iter, ['<i>Getting associated files ...</i>', '', '', None, '', 0, '0%', True, '', True, self.pixbuf_search, '', ''])
+                    placeholder_child_iter = tree.append(row_iter, ['<i>Getting associated files ...</i>', '', '', None, '', 0, '0%', True, '', True, self.pixbuf_search, '', '', ''])
                     self.buffer[path]['placeholder_child_row_reference'] = gtk.TreeRowReference(tree, tree.get_path(placeholder_child_iter))
                 # if parent.split('.', 1)[-1] in MISTIKA_EXTENSIONS:
                 #     tree.expand_row(parent_row_path)
         if self.buffer[path]['size_remote'] == self.buffer[path]['size_local']:
-            markup = '<span foreground="#888888">%s</span>' % basename
+            #markup = '<span foreground="#888888">%s</span>' % basename
+            fg_color = "#888888"
             if self.buffer[path]['size_remote'] == 0:
                 local = None
                 direction = None
@@ -873,26 +882,24 @@ class MainThread(threading.Thread):
                 remote = gtk.STOCK_YES
         else:
             markup = basename
-            for row_reference in self.buffer[path]['row_references']:
-                row_iter = tree.get_iter(row_reference.get_path())
-                self.gui_parent_modified(row_iter) # More confusing than informative?
             if self.buffer[path]['mtime_remote'] > self.buffer[path]['mtime_local']:
                 if self.buffer[path]['mtime_local'] < 0:
                     local = None
                 else:
                     local = gtk.STOCK_NO
-                direction = gtk.STOCK_GO_BACK
+                direction = self.icon_left
                 remote = gtk.STOCK_YES
             else:
                 local = gtk.STOCK_YES
-                direction = gtk.STOCK_GO_FORWARD
+                direction = self.icon_right
                 if self.buffer[path]['mtime_remote'] < 0:
                     remote = None
                 else:
                     remote = gtk.STOCK_NO
                 #gtk.STOCK_STOP
-        if self.buffer[path]['size_local'] == 0 or self.buffer[path]['size_remote'] == 0: # folder
-            icon = self.icon_folder
+            for row_reference in self.buffer[path]['row_references']:
+                row_iter = tree.get_iter(row_reference.get_path())
+                self.gui_parent_modified(row_iter, direction)
         if basename.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS:
             #markup = '<span foreground="#00cc00">%s</span>' % basename
             icon = self.icon_list
@@ -900,14 +907,16 @@ class MainThread(threading.Thread):
             local = None
             direction = None
             remote = None
+
         self.buffer[path]['direction'] = direction
         for row_reference in self.buffer[path]['row_references']:
-            row_iter = tree.get_iter(row_reference.get_path())
-            tree.set_value(row_iter, 0, markup)
+            row_path = row_reference.get_path()
+            tree[row_path][0] = markup
             #tree.set_value(row_iter, 2, local)
-            tree.set_value(row_iter, 3, direction)
+            tree[row_path][3] = direction
             #tree.set_value(row_iter, 4, remote)   
-            tree.set_value(row_iter, 10, icon)      
+            tree[row_path][10] = icon
+            tree[row_path][13] = fg_color  
 
         #if sync:
             #self.do_sync_item([path], False)
