@@ -1,23 +1,21 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# ZetCode PyGTK tutorial 
-#
-# This is a more complicated layout
-# example
-#
-# author: jan bodnar
-# website: zetcode.com 
-# last edited: February 2009
-
 import gtk
-import sys, platform
+import json
+import os
+import sys
+import platform
 
+CONFIG_FOLDER = '/home/mistika/.mistika-hyperspeed/'
+CONFIG_FILE = 'hyperspeed.cfg'
 
 class PyApp(gtk.Window):
 
     def __init__(self):
         super(PyApp, self).__init__()
+        self.config_rw()
+        self.files_update()
         screen = self.get_screen()
         self.set_title("Hyperspeed")
         self.set_size_request(800, screen.get_height()-200)
@@ -376,6 +374,72 @@ class PyApp(gtk.Window):
         self.show_all()
         self.set_keep_above(True)
         #self.present()
+    def files_update(self):
+        if not 'files' in self.config:
+            self.config['files'] = {}
+        files_ref = self.config['files']
+        file_types = {
+            'Tools': {
+                'Autorun' : 'Never',
+                'Show in Mistika' : False,
+            },
+            'Afterscripts': {
+                'Show in Mistika' : False,
+            },
+            'Configs': {
+                'Active' : False,
+            },
+            'Links': {
+            }
+        }
+        for file_type, file_type_defaults in file_types.iteritems():
+            if not file_type in files_ref:
+                files_ref[file_type] = {}
+            for root, dirs, files in os.walk(os.path.join(self.config['app_folder'], file_type)):
+                for name in dirs:
+                    path = os.path.join(root, name)
+                    if not path in files_ref[file_type]:
+                        files_ref[file_type][path] = {'isdir' : True}
+                for name in files:
+                    path = os.path.join(root, name)
+                    if not path in files_ref[file_type]:
+                        files_ref[file_type][path] = {'isdir' : False}
+            for path in files_ref[file_type]:
+                if not files_ref[file_type][path]['isdir']:
+                    for key in file_type_defaults:
+                        if not key in files_ref[file_type][path]:
+                            files_ref[file_type][path][key] = file_type_defaults[key]
+        self.config_rw(write=True)
+
+    def error(self, msg):
+        print msg
+    def config_rw(self, write=False):
+        config_defaults = {
+            'app_folder' : os.path.dirname(os.path.realpath(sys.argv[0]))
+        }
+        try:
+            self.config
+        except AttributeError:
+            self.config = {}
+        config_path = os.path.join(CONFIG_FOLDER, CONFIG_FILE) 
+        try:
+            stored_config = json.loads(open(config_path).read())
+        except IOError as e:
+            stored_config = {}
+        if write:
+            if stored_config != self.config:
+                try:
+                    open(config_path, 'w').write(json.dumps(self.config, sort_keys=True, indent=4, separators=(',', ': ')))
+                    stored_config = self.config
+                except IOError as e:
+                    error('Could not write config file')
+        else:
+            if stored_config != self.config:
+                self.config = stored_config
+        for config_item in config_defaults:
+            if not config_item in self.config.keys():
+                self.config[config_item] = config_defaults[config_item]
+                self.config_rw(write=True)
 
     def on_combo_changed(self, widget, path, text):
         self.toolsTreestore[path][3] = text
