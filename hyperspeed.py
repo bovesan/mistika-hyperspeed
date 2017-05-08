@@ -80,7 +80,9 @@ class PyApp(gtk.Window):
         cell3.set_property("has-entry", False)
         cell3.set_property("text-column", 0)
         cell3.set_property("model", autorunStates)
-        cell3.connect("edited", self.on_combo_changed)
+        cell3.connect('changed', self.on_combo_changed)
+        cell3.connect('editing-started', self.on_editing_started)
+        cell3.connect("edited", self.on_autorun_set)
         toolsTreeAutorunColumn = gtk.TreeViewColumn("Autorun", cell3, text=3)
         toolsTreeAutorunColumn.set_resizable(True)
         #toolsTreeInMistikaColumn.set_cell_data_func(cell3, self.hide_if_parent)
@@ -125,7 +127,7 @@ class PyApp(gtk.Window):
         afterscriptsTreeInMistikaColumn.set_expand(False)
         self.afterscriptsTree.append_column(afterscriptsTreeInMistikaColumn)
 
-        self.afterscriptsTreestore = gtk.TreeStore(str, bool, bool) # Name, show in Mistika, is folder
+        self.afterscriptsTreestore = gtk.TreeStore(str, bool, bool, str) # Name, show in Mistika, is folder, file path
         afterscriptsFilter = self.afterscriptsTreestore.filter_new();
         self.gui_update_afterscripts()
 
@@ -359,7 +361,10 @@ class PyApp(gtk.Window):
         self.connect("destroy", self.on_quit)
         self.show_all()
         self.set_keep_above(True)
+
+        self.comboEditable = None
         #self.present()
+
     def gui_update_tools(self):
         tree_store = self.toolsTreestore # Name, show in Mistika, is folder, autorun, file path
         iters = self.iters
@@ -390,9 +395,9 @@ class PyApp(gtk.Window):
             if not dir_name in iters:
                 iters[dir_name] = None
             if item['isdir']:
-                iters[item_path] = tree_store.append(iters[dir_name], [base_name, False, True])
+                iters[item_path] = tree_store.append(iters[dir_name], [base_name, False, True, item_path])
             else:
-                tree_store.append(iters[dir_name], [base_name, item['Show in Mistika'], True])
+                tree_store.append(iters[dir_name], [base_name, item['Show in Mistika'], True, item_path])
 
     def gui_update_configs(self):
         tree_store = self.sharedTreestore # Name, show in Mistika, is folder
@@ -482,9 +487,6 @@ class PyApp(gtk.Window):
                 self.config[config_item] = config_defaults[config_item]
                 self.config_rw(write=True)
 
-    def on_combo_changed(self, widget, path, text):
-        self.toolsTreestore[path][3] = text
-
     def on_quit(self, widget):
         print 'Closed by: ' + repr(widget)
         gtk.main_quit()
@@ -551,11 +553,12 @@ class PyApp(gtk.Window):
             cell.set_property('visible', True)
 
     def on_tools_toggle(self, cellrenderertoggle, path, *ignore):
-        activated = not self.toolsTreestore[path][1]
+        tree_store = self.toolsTreestore
         config_path = os.path.expanduser('~/MISTIKA-SHARED/config/LinuxMistikaTools')
         new_config = ''
-        file_path = self.toolsTreestore[path][4]
-        alias = self.toolsTreestore[path][0]
+        alias = tree_store[path][0]
+        activated = not tree_store[path][1]
+        file_path = tree_store[path][4]
         stored = False
         for line in open(config_path):
             line_alias, line_path = line.strip().split(' ', 1)
@@ -565,20 +568,96 @@ class PyApp(gtk.Window):
                     stored = True
                 else:
                     continue
-            elif not os.path.exists(file_path):
+            elif not os.path.exists(line_path):
                 continue
             new_config += line
         if activated and not stored:
             new_config += '%s %s\n' % (alias, file_path)
         open(config_path, 'w').write(new_config)
         self.toolsTreestore[path][1] = activated
-        #print self.toolsTreestore[path][0]
 
+    def on_autorun_set(self, widget, path, text):
+        temp_config_path = '/tmp/mistika-hyperspeed-crontab'
+        tree_store = self.toolsTreestore
+        alias = tree_store[path][0]
+        autorun = text # Never, On startup, Hourly, Daily, Weekly, Monthly
+        file_path = tree_store[path][4]
+        stored = False
+        new_config = ''
+        if autorun in ['Never', 'On startup']:
+            cron_line = ''
+        elif autorun == 'Hourly':
+            cron_line = '0 * * * * %s\n' % file_path
+        elif autorun == 'Daily':
+            cron_line = '0 4 * * * %s\n' % file_path
+        elif autorun == 'Weekly':
+            cron_line = '0 4 * * 7 %s\n' % file_path
+        elif autorun == 'Monthly':
+            cron_line = '0 4 1 * * %s\n' % file_path
+        try:
+            for line in subprocess.check_output(['crontab', '-l']).splitlines():
+                fields = line.split(' ', 5)
+                if len(fields) == 6:
+                    minute, hour, date, month, weekday, cmd = fields
+                    if cmd == file_path:
+                        continue
+                new_config += line + '\n'
+            if cron_line != '':
+                new_config += cron_line
+        except:
+            raise
+        open(temp_config_path, 'w').write(new_config)
+        subprocess.Popen(['crontab', temp_config_path])
+        print new_config
+        self.toolsTreestore[path][3] = text
+
+    def on_editing_started(self, cell, editable, path):
+        self.comboEditable = editable
+        
+    def on_combo_changed(self, cell, path, newiter):
+      e = gtk.gdk.Event(gtk.gdk.FOCUS_CHANGE)
+      e.window = self.window
+      e.send_event = True
+      e.in_ = False
+      self.comboEditable.emit('focus-out-event', e)
 
     def on_afterscripts_toggle(self, cellrenderertoggle, path, *ignore):
-        name = self.afterscriptsTreestore[path][0]
-        state = not self.afterscriptsTreestore[path][1]
-        self.afterscriptsTreestore[path][1] = state
+        config_path = os.path.expanduser('~/MISTIKA-ENV/etc/setup/RenderEndScript.cfg')
+        links_folder = os.path.expanduser('~/MISTIKA-ENV/bin/scripts/')
+        tree_store = self.afterscriptsTreestore
+        alias = tree_store[path][0]
+        activated = not tree_store[path][1]
+        file_path = tree_store[path][3]
+        linked = False
+        for link in os.listdir(links_folder):
+            link_path = os.path.join(links_folder, link)
+            print os.path.realpath(link_path),
+            print os.path.realpath(file_path)
+            if os.path.realpath(link_path) == os.path.realpath(file_path):
+                if activated:
+                    linked = True
+        if activated and not linked:
+            link_path = os.path.join(links_folder, alias)
+            if os.path.islink(link_path):
+                os.remove(link_path)
+            os.symlink(file_path, link_path)
+        stored = False
+        new_config = 'None\n'
+        for line in open(config_path):
+            line_alias = line.strip()
+            line_path = os.path.join(links_folder, line_alias)
+            if alias == line_alias:
+                if activated:
+                    stored = True
+                else:
+                    continue
+            elif not os.path.exists(line_path):
+                continue
+            new_config += line
+        if activated and not stored:
+            new_config += '%s\n' % alias
+        open(config_path, 'w').write(new_config)
+        self.afterscriptsTreestore[path][1] = activated
         #print name + ' ' + repr(state)
 
     def on_shared_toggle(self, cellrenderertoggle, path, *ignore):
