@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import platform
+import subprocess
 
 CONFIG_FOLDER = '/home/mistika/.mistika-hyperspeed/'
 CONFIG_FILE = 'hyperspeed.cfg'
@@ -32,6 +33,7 @@ class PyApp(gtk.Window):
 
         #halign = gtk.Alignment(0, 0, 0, 0)
         #halign.add(title)
+        self.iters = {}
         toolbarBox = gtk.HBox(False, 10)
 
         filterBox = gtk.HBox(False, 10)
@@ -92,22 +94,16 @@ class PyApp(gtk.Window):
         toolsTreeInMistikaColumn.set_expand(False)
         toolsTreeInMistikaColumn.set_resizable(True)
         self.toolsTree.append_column(toolsTreeInMistikaColumn)
-        self.toolsTreestore = gtk.TreeStore(str, bool, bool, str) # Name, show in Mistika, is folder, autorun
+        self.toolsTreestore = gtk.TreeStore(str, bool, bool, str, str) # Name, show in Mistika, is folder, autorun, file_path
         toolsTreestore = self.toolsTreestore
-        it = toolsTreestore.append(None, ["Conform", False, True, ''])
-        toolsTreestore.append(it, ["tcSwap.py", True, False, 'Never'])
-        toolsTreestore.append(it, ["empConform.py", False, False, 'Never'])
-        it = toolsTreestore.append(None, ["VFX", False, True, ''])
-        toolsTreestore.append(it, ["some vfx tool", False, False, 'Never'])
-        itit = toolsTreestore.append(it, ["folder", False, True, ''])
-        toolsTreestore.append(itit, ["bar.py", False, False, 'Never'])
-        toolsTreestore.append(None, ["font_parse.py", False, False, 'Hourly'])
+        self.gui_update_tools()
 
         toolsFilter = toolsTreestore.filter_new();
         self.toolsFilter = toolsFilter
         toolsFilter.set_visible_func(self.FilterTree, (filterEntry, self.toolsTree));
         self.toolsTree.set_model(toolsFilter)
         self.toolsTree.expand_all()
+        self.toolsTree.connect('row-activated', self.on_tools_run, self.toolsTree)
 
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
@@ -130,17 +126,9 @@ class PyApp(gtk.Window):
         self.afterscriptsTree.append_column(afterscriptsTreeInMistikaColumn)
 
         self.afterscriptsTreestore = gtk.TreeStore(str, bool, bool) # Name, show in Mistika, is folder
-        afterscriptsTreestore = self.afterscriptsTreestore
-        it = afterscriptsTreestore.append(None, ["Conform", False, True])
-        afterscriptsTreestore.append(it, ["tcSwap.py", True, False])
-        afterscriptsTreestore.append(it, ["empConform.py", False, False])
+        afterscriptsFilter = self.afterscriptsTreestore.filter_new();
+        self.gui_update_afterscripts()
 
-        it = afterscriptsTreestore.append(None, ["VFX", False, True])
-        afterscriptsTreestore.append(it, ["some vfx tool", False, False])
-        itit = afterscriptsTreestore.append(it, ["folder", False, True])
-        afterscriptsTreestore.append(itit, ["bar.py", False, False])
-
-        afterscriptsFilter = afterscriptsTreestore.filter_new();
         self.afterscriptsFilter = afterscriptsFilter
         afterscriptsFilter.set_visible_func(self.FilterTree, (filterEntry, self.afterscriptsTree));
         self.afterscriptsTree.set_model(afterscriptsFilter)
@@ -166,10 +154,8 @@ class PyApp(gtk.Window):
         sharedTreeInMistikaColumn.set_expand(False)
         self.sharedTree.append_column(sharedTreeInMistikaColumn)
         self.sharedTreestore = gtk.TreeStore(str, bool, bool) # Name, active, is folder
-        sharedTreestore = self.sharedTreestore
-        it = sharedTreestore.append(None, ["Shared items", False, True])
-        sharedTreestore.append(it, ["hotKeys.cfg", False, False])
-        sharedFilter = sharedTreestore.filter_new();
+        self.gui_update_configs()
+        sharedFilter = self.sharedTreestore.filter_new();
         self.sharedFilter = sharedFilter
         sharedFilter.set_visible_func(self.FilterTree, (filterEntry, self.sharedTree));
         self.sharedTree.set_model(sharedFilter)
@@ -374,6 +360,58 @@ class PyApp(gtk.Window):
         self.show_all()
         self.set_keep_above(True)
         #self.present()
+    def gui_update_tools(self):
+        tree_store = self.toolsTreestore # Name, show in Mistika, is folder, autorun, file path
+        iters = self.iters
+        items = self.config['files']['Tools']
+        for item_path in sorted(items):
+            item = items[item_path]
+            dir_name = os.path.dirname(item_path)
+            base_name = os.path.basename(item_path)
+            print item_path,
+            print dir_name
+            if not dir_name in iters:
+                iters[dir_name] = None
+            if item['isdir']:
+                iters[item_path] = tree_store.append(iters[dir_name], [base_name, False, True, '', item_path])
+            else:
+                tree_store.append(iters[dir_name], [base_name, item['Show in Mistika'], True, item['Autorun'], item_path])
+
+    def gui_update_afterscripts(self):
+        tree_store = self.afterscriptsTreestore # Name, show in Mistika, is folder
+        iters = self.iters
+        items = self.config['files']['Afterscripts']
+        for item_path in sorted(items):
+            item = items[item_path]
+            dir_name = os.path.dirname(item_path)
+            base_name = os.path.basename(item_path)
+            print item_path,
+            print dir_name
+            if not dir_name in iters:
+                iters[dir_name] = None
+            if item['isdir']:
+                iters[item_path] = tree_store.append(iters[dir_name], [base_name, False, True])
+            else:
+                tree_store.append(iters[dir_name], [base_name, item['Show in Mistika'], True])
+
+    def gui_update_configs(self):
+        tree_store = self.sharedTreestore # Name, show in Mistika, is folder
+        iters = self.iters
+        items = self.config['files']['Configurations']
+        for item_path in sorted(items):
+            item = items[item_path]
+            dir_name = os.path.dirname(item_path)
+            base_name = os.path.basename(item_path)
+            print item_path,
+            print dir_name
+            if not dir_name in iters:
+                iters[dir_name] = None
+            if item['isdir']:
+                iters[item_path] = tree_store.append(iters[dir_name], [base_name, False, True])
+            else:
+                tree_store.append(iters[dir_name], [base_name, item['Active'], True])
+
+
     def files_update(self):
         if not 'files' in self.config:
             self.config['files'] = {}
@@ -386,7 +424,7 @@ class PyApp(gtk.Window):
             'Afterscripts': {
                 'Show in Mistika' : False,
             },
-            'Configs': {
+            'Configurations': {
                 'Active' : False,
             },
             'Links': {
@@ -404,7 +442,10 @@ class PyApp(gtk.Window):
                     path = os.path.join(root, name)
                     if not path in files_ref[file_type]:
                         files_ref[file_type][path] = {'isdir' : False}
-            for path in files_ref[file_type]:
+            for path in files_ref[file_type].keys():
+                if not os.path.exists(path):
+                    del files_ref[file_type][path]
+                    continue
                 if not files_ref[file_type][path]['isdir']:
                     for key in file_type_defaults:
                         if not key in files_ref[file_type][path]:
@@ -505,26 +546,44 @@ class PyApp(gtk.Window):
         #is_folder = model[iter][2]
         if has_child:
             cell.set_property('visible', False)
-            print model[iter][0] + ' ' + model[model.iter_children(iter)][0]
+            #print model[iter][0] + ' ' + model[model.iter_children(iter)][0]
         else:
             cell.set_property('visible', True)
 
     def on_tools_toggle(self, cellrenderertoggle, path, *ignore):
         self.toolsTreestore[path][1] = not self.toolsTreestore[path][1]
-        print self.toolsTreestore[path][0]
+        #print self.toolsTreestore[path][0]
 
 
     def on_afterscripts_toggle(self, cellrenderertoggle, path, *ignore):
         name = self.afterscriptsTreestore[path][0]
         state = not self.afterscriptsTreestore[path][1]
         self.afterscriptsTreestore[path][1] = state
-        print name + ' ' + repr(state)
+        #print name + ' ' + repr(state)
 
     def on_shared_toggle(self, cellrenderertoggle, path, *ignore):
         name = self.sharedTreestore[path][0]
         state = not self.sharedTreestore[path][1]
         self.sharedTreestore[path][1] = state
-        print name + ' ' + repr(state)
+        #print name + ' ' + repr(state)
+    def on_tools_run(self, treeview, path, view_column, *ignore):
+
+        file_path = self.toolsTreestore[path][4]
+        print file_path
+        try:
+            subprocess.Popen(['konsole', '-e', os.path.join(self.config['app_folder'], 'res/scripts/bash_wrapper.sh'), file_path])
+            return
+        except OSError as e:
+            try:
+                subprocess.Popen(['xterm', '-e', os.path.join(self.config['app_folder'], 'res/scripts/bash_wrapper.sh'), file_path])
+                return
+            except OSError as e:
+                try:
+                    subprocess.Popen([file_path])
+                    return
+                except:
+                    pass
+        print 'Failed to execute %s' % file_path
 
 
 PyApp()
