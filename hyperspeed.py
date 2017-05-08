@@ -551,7 +551,27 @@ class PyApp(gtk.Window):
             cell.set_property('visible', True)
 
     def on_tools_toggle(self, cellrenderertoggle, path, *ignore):
-        self.toolsTreestore[path][1] = not self.toolsTreestore[path][1]
+        activated = not self.toolsTreestore[path][1]
+        config_path = os.path.expanduser('~/MISTIKA-SHARED/config/LinuxMistikaTools')
+        new_config = ''
+        file_path = self.toolsTreestore[path][4]
+        alias = self.toolsTreestore[path][0]
+        stored = False
+        for line in open(config_path):
+            line_alias, line_path = line.strip().split(' ', 1)
+            if file_path == line_path:
+                if activated:
+                    new_config += '%s %s\n' % (alias, file_path)
+                    stored = True
+                else:
+                    continue
+            elif not os.path.exists(file_path):
+                continue
+            new_config += line
+        if activated and not stored:
+            new_config += '%s %s\n' % (alias, file_path)
+        open(config_path, 'w').write(new_config)
+        self.toolsTreestore[path][1] = activated
         #print self.toolsTreestore[path][0]
 
 
