@@ -738,7 +738,7 @@ class MainThread(threading.Thread):
             child_iter = model.iter_next(child_iter)
         #self.gui_refresh_progress(row_reference)
         # Parents
-        if is_folder: # Is folder. Size needs to be summarized
+        if model.iter_children(row_iter) != None: # Has children. Size needs to be summarized
             self.gui_progress_refresh(row_reference, walk_parent) # Starts by updating this
         else:
             self.gui_refresh_progress(row_reference) # Is not a folder. Size is already set
@@ -749,8 +749,15 @@ class MainThread(threading.Thread):
         model = self.projectsTreeStore
         row_path = row_reference.get_path()
         row_iter = model.get_iter(row_path)
-        print 'Path: ' + model[row_path][1]
+        f_path = model[row_path][1]
+        print 'Path: ' + f_path
         size = 0
+        if self.buffer[f_path]['size_local'] > 0 or self.buffer[f_path]['size_remote'] > 0:
+            print 'Parent has size'
+            if self.directions[f_path]['direction'] == self.icon_left: # pull
+                size = self.buffer[f_path]['size_remote']
+            elif self.directions[f_path]['direction'] == self.icon_right: # push
+                size = self.buffer[f_path]['size_local']
         # Sum children
         child_iter = model.iter_children(row_iter)
         print 'Child iter: ' + repr(child_iter)
@@ -961,7 +968,7 @@ class MainThread(threading.Thread):
                 #print 'Appending to parent: ' + repr(parent)
                 row_iter = tree.append(parent_row_iter, [basename, path, mtime_local_str, self.directions[path]['direction'], mtime_remote_str, progress, progress_str, progress_visibility, remote_address, no_reload, icon, size_local_str, size_remote_str, fg_color, bytes_done, bytes_total])
                 self.buffer[path]['row_references'].append(gtk.TreeRowReference(tree, tree.get_path(row_iter)))
-                if basename.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS and not 'placeholder_child_row_reference' in self.buffer[path]:
+                if self.buffer[path]['mtime_local'] >= self.buffer[path]['mtime_remote'] and basename.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS and not 'placeholder_child_row_reference' in self.buffer[path]:
                     placeholder_child_iter = tree.append(row_iter, ['<i>Getting associated files ...</i>', '', '', None, '', 0, '0%', True, '', True, self.pixbuf_search, '', '', '', 0, 0])
                     self.buffer[path]['placeholder_child_row_reference'] = gtk.TreeRowReference(tree, tree.get_path(placeholder_child_iter))
                 # if parent.split('.', 1)[-1] in MISTIKA_EXTENSIONS:
