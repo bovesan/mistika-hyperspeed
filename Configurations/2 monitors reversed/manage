@@ -1,6 +1,6 @@
 #!/bin/env python
 
-import imp
+import os
 import sys
 
 USAGE = '''Usage:
@@ -11,19 +11,20 @@ manage detect'''
 
 if len(sys.argv) < 2:
 	print USAGE
+	sys.exit(1)
 
 mode = sys.argv[1]
-
-ITEM_PATH = '2_LAYOUT.sup'
-LINK_PATH = '~/MISTIKA-SHARED/config/2_LAYOUT.sup'
-
-LINK_PATH = os.path.expanduser(LINK_PATH)
 os.chdir(os.path.dirname(sys.argv[0]))
+
+ITEM_PATH = os.path.abspath('2_LAYOUT.sup')
+LINK_PATH = os.path.expanduser('~/MISTIKA-ENV/config/2_LAYOUT.sup')
+BACKUP_PATH = os.path.expanduser('~/MISTIKA-ENV/config/2_LAYOUT.sup.stock')
+DESC = '%s -> %s' % (LINK_PATH, ITEM_PATH)
 
 def detect():
 	try:
-		if not os.path.realpath(LINK_PATH) == os.path.realpath(ITEM_PATH):
-			return False
+		if os.path.realpath(LINK_PATH) == os.path.realpath(ITEM_PATH):
+			return True
 	except OSError:
 		return False
 
@@ -34,18 +35,45 @@ if mode == 'install':
 		print 'This configuration is already installed.'
 		sys.exit(0)
 	else:
-		# install
+		try:
+			os.rename(LINK_PATH, BACKUP_PATH)
+			print 'Moved %s to %s' % (LINK_PATH, BACKUP_PATH)
+			os.symlink(ITEM_PATH, LINK_PATH)
+			print 'Created link: %s' % DESC
+			sys.exit(0)
+		except OSError:
+			print 'Could not create link: %s' % DESC
+			sys.exit(1)
 
 if mode == 'remove':
 	if not detected:
 		print 'This configuration is not installed.'
 		sys.exit(0)
 	else:
-		# uninstall
+		if not os.path.islink(LINK_PATH):
+			print 'Cannot remove link: %s' % LINK_PATH
+			sys.exit(1)
+		if not os.path.exists(BACKUP_PATH):
+			print 'Backup file not found: %s' % BACKUP_PATH
+			print 'Cannot remove link: %s' % LINK_PATH
+			sys.exit(1)
+		try:
+			os.unlink(LINK_PATH)
+			print 'Removed link: %s' % LINK_PATH
+		except OSError:
+			print 'Cannot remove link: %s' % LINK_PATH
+			sys.exit(1)
+		try:
+			os.rename(BACKUP_PATH, LINK_PATH)
+			print 'Moved %s to %s' % (BACKUP_PATH, LINK_PATH)
+			sys.exit(0)
+		except OSError:
+			print 'Cannot restore backup: %s' % BACKUP_PATH
+			sys.exit(1)
 
 if mode == 'detect':
 	if detected:
-		print 'This configuration is installed.'
+		print 'This configuration is installed:\n%s' % DESC
 		sys.exit(0)
 	else:
 		print 'This configuration is not installed.'
