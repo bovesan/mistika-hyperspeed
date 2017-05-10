@@ -187,6 +187,7 @@ class MainThread(threading.Thread):
 
         self.projectsTreeStore = gtk.TreeStore(str, str, str, str, str, int, str, bool, str, bool, gtk.gdk.Pixbuf, str) # Basename, Tree Path, Local, Direction, Remote, Progress int, Progress text, Progress visibility, remote_address, no_reload, icon, File path
         self.projectsTree = gtk.TreeView()
+        self.projectsTree.set_property('rules-hint', True)
         #self.project_cell = gtk.CellRendererText()
         #project_cell = self.project_cell
         #project_cell.set_property('foreground', '#cccccc')
@@ -498,6 +499,7 @@ class MainThread(threading.Thread):
             env_bytes_read = 0
             last_progress_update_time = 0
             env_size = os.path.getsize(path_str)
+            escape = False
             for line in open(path_str):
                 for char in line:
                     env_bytes_read += 1
@@ -506,7 +508,11 @@ class MainThread(threading.Thread):
                         last_progress_update_time = time_now
                         progress_float = float(env_bytes_read) / float(env_size)
                         gobject.idle_add(self.gui_refresh_progress, self.buffer[parent_file_path]['placeholder_child_row_reference'], progress_float)
-                    if char == '(':
+                    if escape:
+                        char_buffer += char
+                        print 'Last char was escaped. Buffer: %s' % char_buffer
+                        escape = False
+                    elif char == '(':
                         #print ''
                         #level += 1
                         char_buffer = char_buffer.replace('\n', '').strip()
@@ -559,7 +565,11 @@ class MainThread(threading.Thread):
                     elif len(level_names) > 0 and level_names[-1] == 'Shape':
                         continue
                     elif char:
-                        char_buffer += char
+                        if char == '\\':
+                            print 'Escape char found (buffer: %s)' % char_buffer
+                            escape = True
+                        else:
+                            char_buffer += char
             if len(files_chunk) > 0:
                 self.queue_buffer.put_nowait([self.buffer_list_files, {
                                     'paths' : files_chunk,
@@ -714,14 +724,19 @@ class MainThread(threading.Thread):
 
         #self.hostsTreeStore.append(None, ['New host', '', 'mistika', 22, ''])
 
-    def gui_parent_modified(self, row_iter):
+    def gui_parent_modified(self, row_reference, direction):
         #print 'Modified parent of: %s' % self.projectsTreeStore.get_value(row_iter, 1)
+        model = self.projectsTreeStore
+        row_path = row_reference.get_path()
+        row_iter = model.get_iter(row_reference.get_path())
         try:
+            #self.projectsTreeStore.set_value(parent, 2, None)
+            if model[row_path][3] != direction:
+                model[row_path][3] = gtk.STOCK_REFRESH
+            #self.projectsTreeStore.set_value(parent, 3, gtk.STOCK_REFRESH)
+            #self.projectsTreeStore.set_value(parent, 4, None)
             parent = self.projectsTreeStore.iter_parent(row_iter)
-            self.projectsTreeStore.set_value(parent, 2, None)
-            self.projectsTreeStore.set_value(parent, 3, gtk.STOCK_REFRESH)
-            self.projectsTreeStore.set_value(parent, 4, None)
-            self.gui_parent_modified(parent)
+            self.gui_parent_modified(parent, direction)
         except: # Reached top level
             pass
 
@@ -729,7 +744,7 @@ class MainThread(threading.Thread):
         #print 'Refreshing ' + path
         tree = self.projectsTreeStore
         file_path = path
-        #print 'gui_refresh_path(%s)' % path
+        print 'gui_refresh_path(%s)' % path
         if path.startswith('/'): # Absolute path, child of a MISTIKA_EXTENSIONS object
             basename = path
             parents = self.buffer[path]['parent_paths']
@@ -766,7 +781,7 @@ class MainThread(threading.Thread):
             no_reload = tree[row_reference.get_path()][9]
             icon = tree[row_reference.get_path()][10]
         for parent in parents:
-            #print 'parent: ' + repr(parent)
+            print 'parent: ' + repr(parent)
             if parent == None and len(self.buffer[path]['row_references']) > 0:
                 continue
             append_to_this_parent = True
@@ -801,31 +816,35 @@ class MainThread(threading.Thread):
                 direction = None
                 remote = None
             else:
-                local = gtk.STOCK_YES
-                direction = None
-                remote = gtk.STOCK_YES
+                local = None
+                direction = gtk.STOCK_YES
+                remote = None
         else:
-            markup = basename
+            markup = '<span foreground="#cc6600">%s</span>' % basename
             for row_reference in self.buffer[path]['row_references']:
                 row_iter = tree.get_iter(row_reference.get_path())
-                self.gui_parent_modified(row_iter) # More confusing than informative?
+                self.gui_parent_modified(row_reference, direction) # More confusing than informative?
             if self.buffer[path]['mtime_remote'] > self.buffer[path]['mtime_local']:
                 if self.buffer[path]['mtime_local'] < 0:
                     local = None
                 else:
-                    local = gtk.STOCK_NO
+                    local = None
                 direction = gtk.STOCK_GO_BACK
-                remote = gtk.STOCK_YES
+                remote = None
             else:
-                local = gtk.STOCK_YES
+                local = None
                 direction = gtk.STOCK_GO_FORWARD
                 if self.buffer[path]['mtime_remote'] < 0:
                     remote = None
                 else:
-                    remote = gtk.STOCK_NO
+                    remote = None
                 #gtk.STOCK_STOP
         if self.buffer[path]['size_local'] == 0 or self.buffer[path]['size_remote'] == 0: # folder
             icon = self.icon_folder
+        if self.buffer[path]['size_local'] == -1 or self.buffer[path]['size_remote'] == -1: # Missing from one end
+            markup = '<span foreground="#000000">%s</span>' % basename
+        if self.buffer[path]['size_local'] == -1 and self.buffer[path]['size_remote'] == -1: # Missing from both ends
+            markup = '<span foreground="#cc0000">%s</span>' % basename
         if basename.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS:
             #markup = '<span foreground="#00cc00">%s</span>' % basename
             icon = self.icon_list
@@ -835,12 +854,18 @@ class MainThread(threading.Thread):
             remote = None
         self.buffer[path]['direction'] = direction
         for row_reference in self.buffer[path]['row_references']:
-            row_iter = tree.get_iter(row_reference.get_path())
-            tree.set_value(row_iter, 0, markup)
-            tree.set_value(row_iter, 2, local)
-            tree.set_value(row_iter, 3, direction)
-            tree.set_value(row_iter, 4, remote)   
-            tree.set_value(row_iter, 10, icon)      
+            row_path = row_reference.get_path()
+            #row_iter = tree.get_iter()
+            tree[row_path][0] = markup
+            tree[row_path][2] = local
+            tree[row_path][3] = direction
+            tree[row_path][4] = remote
+            tree[row_path][10] = icon
+            # tree.set_value(row_iter, 0, markup)
+            # tree.set_value(row_iter, 2, local)
+            # tree.set_value(row_iter, 3, direction)
+            # tree.set_value(row_iter, 4, remote)   
+            # tree.set_value(row_iter, 10, icon)      
 
         #if sync:
             #self.do_sync_item([path], False)
@@ -940,8 +965,7 @@ class MainThread(threading.Thread):
         if not root == '':
             root += '/'
         for file_line in lines:
-            parent_path_to_store = parent_path
-            #print file_line
+            tree_parent_path = parent_path
             f_inode, f_type, f_size, f_time, full_path = file_line.strip().split(' ', 4)
             f_time = int(f_time.split('.')[0])
             f_size = int(f_size)
@@ -958,7 +982,6 @@ class MainThread(threading.Thread):
             print debug_line
             if full_path.startswith(root): # Relative path
                 path = full_path.replace(root, '', 1).strip('/')
-                #print 'Relative path: '
                 if '/' in path.strip('/'):
                     parent_dir, basename = path.rsplit('/', 1) # parent_dir will not have trailing slash
                 else:
@@ -969,16 +992,29 @@ class MainThread(threading.Thread):
                 if '/' in path.strip('/'):
                     parent_dir, basename = path.rsplit('/', 1) # parent_dir will not have trailing slash
                     #parent_path += parent_dir
-            if parent_path != '':
-                parent_path_to_store = parent_path + '/' + parent_dir.lstrip('/')
+                else:
+                    parent_dir = ''
+                    basename = path.rstrip('/')
+            if parent_path != '' and full_path.startswith('/'): # Real file, child of object
+                tree_parent_path = parent_path + '/' + parent_dir.lstrip('/')
             elif path == '': # Skip root item
                 continue
             else:
+<<<<<<< HEAD
                 parent_path_to_store = parent_dir
             if parent_path_to_store != '' and not parent_path_to_store in self.buffer:
             	print 'parent_path_to_store: ' + parent_path_to_store
                 time.sleep(1)
                 self.buffer_add(['0 d 0 0 %s' % parent_path_to_store], host, root)
+=======
+                tree_parent_path = parent_dir
+            #print 'tree_parent_path: ' + tree_parent_path
+            tree_parent_path = tree_parent_path.rstrip('/')
+            print 'tree_parent_path:' + tree_parent_path
+            if tree_parent_path != '' and not tree_parent_path in self.buffer:
+                time.sleep(0.1)
+                self.buffer_add(['0 d 0 0 %s' % tree_parent_path], host, root, parent_path )
+>>>>>>> 31f5b4ea5a5a7cad33f96b36da6f5c280f7f624e
             if f_time == 0:
                 virtual = True
             else:
@@ -987,7 +1023,7 @@ class MainThread(threading.Thread):
                 #print 'Buffer add: %s "%s" %s %s virtual: %s' % (host, path, f_type, f_time, virtual)
                 self.buffer[path] = {}
                 self.buffer[path]['row_references'] = []
-                self.buffer[path]['parent_paths'] = [parent_path_to_store]
+                self.buffer[path]['parent_paths'] = [tree_parent_path]
                 self.buffer[path]['mtime_remote'] = -1
                 self.buffer[path]['mtime_local'] = -1
                 self.buffer[path]['size_remote'] = -1
@@ -999,8 +1035,8 @@ class MainThread(threading.Thread):
             #     self.buffer[path]['parent_paths'].append(parent_path)
             #     print 'parent_path: ' + parent_path
             #     gobject.idle_add(self.gui_refresh_path, parent_path)
-            if not parent_path_to_store in self.buffer[path]['parent_paths']:
-                self.buffer[path]['parent_paths'].append(parent_path_to_store)
+            if not tree_parent_path in self.buffer[path]['parent_paths']:
+                self.buffer[path]['parent_paths'].append(tree_parent_path)
             if host == 'localhost':
                 self.buffer[path]['type_local'] = f_type
                 self.buffer[path]['size_local'] = f_size
@@ -1324,7 +1360,7 @@ class MainThread(threading.Thread):
             open(cfg_path, 'w').write(json.dumps(hosts, sort_keys=True, indent=4, separators=(',', ': ')))
             status = 'Wrote to %s' % cfg_path
             print status
-            gobject.idle_add(self.status_bar.push, self.context_id, status)
+            #gobject.idle_add(self.status_bar.push, self.context_id, status)
         except IOError as e:
             gobject.idle_add(self.gui_show_error, 'Could not write to file:\n'+cfg_path)
         except:
