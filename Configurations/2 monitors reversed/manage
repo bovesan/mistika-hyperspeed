@@ -51,17 +51,17 @@ if mode == 'remove':
 		sys.exit(0)
 	else:
 		if not os.path.islink(LINK_PATH):
-			print 'Cannot remove link: %s' % LINK_PATH
+			print 'Not a link: %s' % LINK_PATH
 			sys.exit(1)
 		if not os.path.exists(BACKUP_PATH):
 			print 'Backup file not found: %s' % BACKUP_PATH
-			print 'Cannot remove link: %s' % LINK_PATH
+			print 'Aborting'
 			sys.exit(1)
 		try:
 			os.unlink(LINK_PATH)
 			print 'Removed link: %s' % LINK_PATH
 		except OSError:
-			print 'Cannot remove link: %s' % LINK_PATH
+			print 'Error: Cannot remove link: %s' % LINK_PATH
 			sys.exit(1)
 		try:
 			os.rename(BACKUP_PATH, LINK_PATH)
