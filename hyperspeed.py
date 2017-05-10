@@ -402,7 +402,7 @@ class PyApp(gtk.Window):
     def gui_update_configs(self):
         tree_store = self.sharedTreestore # Name, show in Mistika, is folder
         iters = self.iters
-        items = self.config['files']['Configurations']
+        items = self.config['files']['Misc']
         for item_path in sorted(items):
             item = items[item_path]
             dir_name = os.path.dirname(item_path)
@@ -423,26 +423,45 @@ class PyApp(gtk.Window):
         files_ref = self.config['files']
         file_types = {
             'Tools': {
-                'Autorun' : 'Never',
-                'Show in Mistika' : False,
+                'defaults': {
+                    'Autorun' : 'Never',
+                    'Show in Mistika' : False,
+                }
             },
             'Afterscripts': {
-                'Show in Mistika' : False,
+                'defaults': {
+                    'Show in Mistika' : False,
+                }
             },
-            'Configurations': {
-                'Active' : False,
+            'Misc': {
+                'required files' : [
+                    'manage'
+                ],
+                'defaults': {
+                    'Active' : False,
+                }
             },
             'Links': {
+                'defaults': {
+                }
             }
         }
-        for file_type, file_type_defaults in file_types.iteritems():
+        for file_type, file_type_meta in file_types.iteritems():
+            file_type_defaults = file_type_meta['defaults']
             if not file_type in files_ref:
                 files_ref[file_type] = {}
             for root, dirs, files in os.walk(os.path.join(self.config['app_folder'], file_type)):
                 for name in dirs:
                     path = os.path.join(root, name)
                     if not path in files_ref[file_type]:
-                        files_ref[file_type][path] = {'isdir' : True}
+                        if 'required files' in file_type_meta:
+                            files_ref[file_type][path] = {'isdir' : False}
+                            for required_file in file_type_meta['required files']:
+                                if not required_file in os.listdir(path):
+                                    files_ref[file_type][path] = {'isdir' : True}
+                            continue
+                        else:
+                            files_ref[file_type][path] = {'isdir' : True}
                 for name in files:
                     path = os.path.join(root, name)
                     if not path in files_ref[file_type]:
