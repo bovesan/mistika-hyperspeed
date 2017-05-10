@@ -13,10 +13,16 @@ if len(sys.argv) < 2:
 	print USAGE
 
 mode = sys.argv[1]
-	
+
+ITEM_PATH = '2_LAYOUT.sup'
+LINK_PATH = '~/MISTIKA-SHARED/config/2_LAYOUT.sup'
+
+LINK_PATH = os.path.expanduser(LINK_PATH)
+os.chdir(os.path.dirname(sys.argv[0]))
+
 def detect():
 	try:
-		if not os.path.realpath(link_path) == os.path.realpath(item_path):
+		if not os.path.realpath(LINK_PATH) == os.path.realpath(ITEM_PATH):
 			return False
 	except OSError:
 		return False
@@ -27,3 +33,20 @@ if mode == 'install':
 	if detected:
 		print 'This configuration is already installed.'
 		sys.exit(0)
+	else:
+		# install
+
+if mode == 'remove':
+	if not detected:
+		print 'This configuration is not installed.'
+		sys.exit(0)
+	else:
+		# uninstall
+
+if mode == 'detect':
+	if detected:
+		print 'This configuration is installed.'
+		sys.exit(0)
+	else:
+		print 'This configuration is not installed.'
+		sys.exit(1)

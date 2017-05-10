@@ -167,7 +167,7 @@ class PyApp(gtk.Window):
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(self.sharedTree)
         #vbox.pack_start(scrolled_window)
-        notebook.append_page(scrolled_window, gtk.Label('Shared items'))
+        notebook.append_page(scrolled_window, gtk.Label('Misc.'))
 
         #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
         self.linksTree = gtk.TreeView()
@@ -474,6 +474,8 @@ class PyApp(gtk.Window):
             stored_config = {}
         if write:
             if stored_config != self.config:
+                if not os.path.isdir(CONFIG_FOLDER):
+                    os.makedirs(CONFIG_FOLDER)
                 try:
                     open(config_path, 'w').write(json.dumps(self.config, sort_keys=True, indent=4, separators=(',', ': ')))
                     stored_config = self.config
