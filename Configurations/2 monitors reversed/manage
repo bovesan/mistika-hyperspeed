@@ -1,0 +1,29 @@
+#!/bin/env python
+
+import imp
+import sys
+
+USAGE = '''Usage:
+manage install
+manage remove
+manage detect'''
+
+
+if len(sys.argv) < 2:
+	print USAGE
+
+mode = sys.argv[1]
+	
+def detect():
+	try:
+		if not os.path.realpath(link_path) == os.path.realpath(item_path):
+			return False
+	except OSError:
+		return False
+
+detected = detect()
+
+if mode == 'install':
+	if detected:
+		print 'This configuration is already installed.'
+		sys.exit(0)
