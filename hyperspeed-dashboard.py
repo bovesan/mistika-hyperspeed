@@ -8,7 +8,6 @@ import os
 import sys
 import platform
 import subprocess
-import pango
 
 CONFIG_FOLDER = '/home/mistika/.mistika-hyperspeed/'
 CONFIG_FILE = 'hyperspeed.cfg'
@@ -161,6 +160,34 @@ class "*" style "theme-fixes"''' % (screen.get_width()/200)
         scrolled_window.add(self.afterscriptsTree)
         #vbox.pack_start(scrolled_window)
         notebook.append_page(scrolled_window, gtk.Label('Afterscripts'))
+
+        #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
+        self.stacksTree = gtk.TreeView()
+        tree_view = self.stacksTree
+        cell = gtk.CellRendererText()
+        column = gtk.TreeViewColumn('', cell, text=0)
+        column.set_resizable(True)
+        column.set_expand(True)
+        tree_view.append_column(column)
+        cell = gtk.CellRendererToggle()
+        cell.connect("toggled", self.on_stacks_toggle, self.stacksTree)
+        column = gtk.TreeViewColumn("Installed", cell, active=1)
+        column.set_cell_data_func(cell, self.hide_if_parent)
+        column.set_expand(False)
+        tree_view.append_column(column)
+
+        self.stacksTreestore = gtk.TreeStore(str, bool, bool, str) # Name, show in Mistika, is folder, file path
+        self.stacksFilter = self.stacksTreestore.filter_new();
+        self.stacksFilter.set_visible_func(self.FilterTree, (filterEntry, self.stacksTree));
+        self.stacksTree.set_model(self.stacksFilter)
+        self.stacksTree.expand_all()
+        self.gui_update_stacks()
+
+        scrolled_window = gtk.ScrolledWindow()
+        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+        scrolled_window.add(self.stacksTree)
+        #vbox.pack_start(scrolled_window)
+        notebook.append_page(scrolled_window, gtk.Label('Stacks'))
 
         #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
         self.sharedTree = gtk.TreeView()
@@ -419,6 +446,23 @@ class "*" style "theme-fixes"''' % (screen.get_width()/200)
             else:
                 tree_store.append(iters[dir_name], [base_name, item['Show in Mistika'], True, item_path])
 
+    def gui_update_stacks(self):
+        tree_store = self.afterscriptsTreestore # Name, show in Mistika, is folder
+        iters = self.iters
+        items = self.files['Stacks']
+        for item_path in sorted(items):
+            item = items[item_path]
+            dir_name = os.path.dirname(item_path)
+            base_name = os.path.basename(item_path)
+            print item_path,
+            print dir_name
+            if not dir_name in iters:
+                iters[dir_name] = None
+            if item['isdir']:
+                iters[item_path] = tree_store.append(iters[dir_name], [base_name, False, True, item_path])
+            else:
+                tree_store.append(iters[dir_name], [base_name, item['Show in Mistika'], True, item_path])
+
     def gui_update_configs(self):
         tree_store = self.sharedTreestore # Name, show in Mistika, is folder
         iters = self.iters
@@ -451,6 +495,14 @@ class "*" style "theme-fixes"''' % (screen.get_width()/200)
             'Afterscripts': {
                 'defaults': {
                     'Show in Mistika' : False,
+                }
+            },
+            'Stacks': {
+                'required files' : [
+                    'config.json'
+                ],
+                'defaults': {
+                    'Dependencies installed' : True,
                 }
             },
             'Misc': {
@@ -719,6 +771,9 @@ class "*" style "theme-fixes"''' % (screen.get_width()/200)
         open(config_path, 'w').write(new_config)
         self.afterscriptsTreestore[path][1] = activated
         #print name + ' ' + repr(state)
+
+    def on_stacks_toggle(self, cellrenderertoggle, path, *ignore):
+        pass
 
     def on_shared_toggle(self, cellrenderertoggle, path, *ignore):
         name = self.sharedTreestore[path][0]
