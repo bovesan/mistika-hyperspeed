@@ -8,6 +8,7 @@ import os
 import sys
 import platform
 import subprocess
+import pango
 
 CONFIG_FOLDER = '/home/mistika/.mistika-hyperspeed/'
 CONFIG_FILE = 'hyperspeed.cfg'
@@ -17,19 +18,32 @@ sys.path.append('res/modules/')
 
 import hyperspeed.manage
 
+
 class PyApp(gtk.Window):
 
     def __init__(self):
+
+
         super(PyApp, self).__init__()
+
         self.config_rw()
         self.files_update()
         screen = self.get_screen()
         self.set_title("Hyperspeed")
-        self.set_size_request(800, screen.get_height()-200)
+        self.set_size_request(screen.get_width()/2, screen.get_height()-200)
         self.set_border_width(20)
         self.set_position(gtk.WIN_POS_CENTER)
         if 'darwin' in platform.system().lower():
             self.set_resizable(False) # Because resizing crashes the app on Mac
+
+        gtkrc = '''
+style "theme-fixes" {
+    font_name = "sans normal %i"
+}
+class "*" style "theme-fixes"''' % (screen.get_width()/200)
+        gtk.rc_parse_string(gtkrc)
+        # gtk.rc_add_default_file(gtkrc)
+        # gtk.rc_reparse_all()
 
         vbox = gtk.VBox(False, 10)
 
