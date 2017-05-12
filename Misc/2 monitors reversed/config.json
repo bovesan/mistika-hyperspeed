@@ -1,0 +1,8 @@
+{
+	"alias" : "Flopped 2 monitor layout",
+	"description" : "Puts the timeline on the right and the composer on the left.",
+	"manage" : false,
+	"links" : {
+		"2_LAYOUT.sup" : "~/MISTIKA-ENV/config/2_LAYOUT.sup"
+	}
+}

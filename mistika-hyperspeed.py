@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import gtk
+import imp
 import json
 import os
 import sys
@@ -10,6 +11,11 @@ import subprocess
 
 CONFIG_FOLDER = '/home/mistika/.mistika-hyperspeed/'
 CONFIG_FILE = 'hyperspeed.cfg'
+
+os.chdir(os.path.dirname(sys.argv[0]))
+sys.path.append('res/modules/')
+
+import hyperspeed.manage
 
 class PyApp(gtk.Window):
 
@@ -368,7 +374,7 @@ class PyApp(gtk.Window):
     def gui_update_tools(self):
         tree_store = self.toolsTreestore # Name, show in Mistika, is folder, autorun, file path
         iters = self.iters
-        items = self.config['files']['Tools']
+        items = self.files['Tools']
         for item_path in sorted(items):
             item = items[item_path]
             dir_name = os.path.dirname(item_path)
@@ -385,7 +391,7 @@ class PyApp(gtk.Window):
     def gui_update_afterscripts(self):
         tree_store = self.afterscriptsTreestore # Name, show in Mistika, is folder
         iters = self.iters
-        items = self.config['files']['Afterscripts']
+        items = self.files['Afterscripts']
         for item_path in sorted(items):
             item = items[item_path]
             dir_name = os.path.dirname(item_path)
@@ -402,7 +408,7 @@ class PyApp(gtk.Window):
     def gui_update_configs(self):
         tree_store = self.sharedTreestore # Name, show in Mistika, is folder
         iters = self.iters
-        items = self.config['files']['Misc']
+        items = self.files['Misc']
         for item_path in sorted(items):
             item = items[item_path]
             dir_name = os.path.dirname(item_path)
@@ -418,9 +424,9 @@ class PyApp(gtk.Window):
 
 
     def files_update(self):
-        if not 'files' in self.config:
-            self.config['files'] = {}
-        files_ref = self.config['files']
+        if not hasattr(self, 'files'):
+            self.files = {}
+        files_ref = self.files
         file_types = {
             'Tools': {
                 'defaults': {
@@ -435,7 +441,7 @@ class PyApp(gtk.Window):
             },
             'Misc': {
                 'required files' : [
-                    'manage'
+                    'config.json'
                 ],
                 'defaults': {
                     'Active' : False,
@@ -459,10 +465,29 @@ class PyApp(gtk.Window):
                             for required_file in file_type_meta['required files']:
                                 if not required_file in os.listdir(path):
                                     files_ref[file_type][path] = {'isdir' : True}
+                            if files_ref[file_type][path]['isdir'] == False:
+                                if file_type == 'Misc':
+                                    print path
+                                    print os.path.join(path, 'config.json')
+                                    file_config = json.loads(open(os.path.join(path, 'config.json')).read())
+                                    detected = True
+                                    if file_config['manage']:
+                                        try:
+                                            if subprocess.call([os.path.join(path, 'manage'), 'detect']) > 0:
+                                                detected = False
+                                        except OSError as e:
+                                            detected = False
+                                    if 'links' in file_config:
+                                        for link_target, link in file_config['links'].iteritems():
+                                            if not hyperspeed.manage.detect(link_target, link):
+                                                detected = False
+                                    files_ref[file_type][path]['Active'] = detected
                             continue
                         else:
                             files_ref[file_type][path] = {'isdir' : True}
                 for name in files:
+                    if 'required files' in file_type_meta:
+                        continue
                     path = os.path.join(root, name)
                     if not path in files_ref[file_type]:
                         files_ref[file_type][path] = {'isdir' : False}
