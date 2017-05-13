@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import gtk
+import hashlib
 import imp
 import json
 import os
@@ -17,6 +18,23 @@ sys.path.append('res/modules/')
 
 import hyperspeed.manage
 
+def md5(fname):
+    hash_md5 = hashlib.md5()
+    if os.path.isdir(fname):
+        fnames = []
+        for root, dirs, files in os.walk(fname):
+            for fname in files:
+                fnames.append(os.path.join(root, fname))
+    else:
+        fnames = [fname]
+    for fname in fnames:
+        try:
+            with open(fname, "rb") as f:
+                for chunk in iter(lambda: f.read(4096), b""):
+                    hash_md5.update(chunk)
+        except OSError:
+            pass
+    return hash_md5.hexdigest()
 
 class PyApp(gtk.Window):
 
@@ -532,6 +550,8 @@ class "*" style "theme-fixes"''' % (screen.get_width()/200)
                                 if not required_file in os.listdir(path):
                                     files_ref[file_type][path] = {'isdir' : True}
                             if files_ref[file_type][path]['isdir'] == False:
+                                file_md5 = md5(path)
+                                files_ref[file_type][path]['md5'] = file_md5
                                 if file_type == 'Misc':
                                     print path
                                     print os.path.join(path, 'config.json')
@@ -555,8 +575,12 @@ class "*" style "theme-fixes"''' % (screen.get_width()/200)
                     if 'required files' in file_type_meta:
                         continue
                     path = os.path.join(root, name)
-                    if not path in files_ref[file_type]:
-                        files_ref[file_type][path] = {'isdir' : False}
+                    file_md5 = md5(path)
+                    if not path in files_ref[file_type] or file_md5 != files_ref[file_type][path]['md5']:
+                        files_ref[file_type][path] = {
+                            'isdir' : False,
+                            'md5' : file_md5
+                        }
             for path in files_ref[file_type].keys():
                 if not os.path.exists(path):
                     del files_ref[file_type][path]
