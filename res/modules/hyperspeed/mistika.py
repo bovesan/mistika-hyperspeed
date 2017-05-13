@@ -32,27 +32,36 @@ def get_current_project(mistika_shared_path, user):
             pass
     return project
 
-mistika_env_path = os.path.realpath(os.path.expanduser("~/MISTIKA-ENV"))
-mistika_shared_path = os.path.expanduser("~/MISTIKA-SHARED")
+def reload():
+    global mistika_env_path, mistika_shared_path, version, project, user, settings
+    mistika_env_path = os.path.realpath(os.path.expanduser("~/MISTIKA-ENV"))
+    mistika_shared_path = os.path.expanduser("~/MISTIKA-SHARED")
 
-version = LooseVersion('.'.join(re.findall(r'\d+', os.path.basename(mistika_env_path))[:3]))
+    version = LooseVersion('.'.join(re.findall(r'\d+', os.path.basename(mistika_env_path))[:3]))
 
-if version < LooseVersion('8.6'):
-    project = open(os.path.join(mistika_env_path, '/MISTIKA_PRJ')).readline().splitlines()[0]
-    user = False
-else:
-    try:
-        user = ElementTree.parse(os.path.join(mistika_shared_path, "users/login.xml")).getroot().find('autoLogin/lastUser').text
-    except:
-        user = 'MistikaUser'
-    project = get_current_project(mistika_shared_path, user)
+    if version < LooseVersion('8.6'):
+        project = open(os.path.join(mistika_env_path, '/MISTIKA_PRJ')).readline().splitlines()[0]
+        user = False
+    else:
+        try:
+            user = ElementTree.parse(os.path.join(mistika_shared_path, "users/login.xml")).getroot().find('autoLogin/lastUser').text
+        except:
+            user = 'MistikaUser'
+        project = get_current_project(mistika_shared_path, user)
 
 
 
-mistikarc_path = get_mistikarc_path(mistika_env_path)
-settings = {}
-for line in open(mistikarc_path):
-    if line.strip() == '':
-        continue
-    key, value = line.strip().split(' ', 1)
-    settings[key] = value
+    mistikarc_path = get_mistikarc_path(mistika_env_path)
+    settings = {}
+    for line in open(mistikarc_path):
+        if line.strip() == '':
+            continue
+        key, value = line.strip().split(' ', 1)
+        value = value.strip()
+        if value.lower() == 'true':
+            value = True
+        elif value.lower() == 'false':
+            value = False
+        settings[key] = value
+
+reload()
