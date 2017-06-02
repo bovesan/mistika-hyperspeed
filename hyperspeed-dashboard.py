@@ -2,13 +2,16 @@
 # -*- coding: utf-8 -*-
 
 import gtk
+import gobject
 import hashlib
 import imp
 import json
 import os
 import sys
 import platform
+import Queue
 import subprocess
+import threading
 
 CONFIG_FOLDER = '/home/mistika/.mistika-hyperspeed/'
 CONFIG_FILE = 'hyperspeed.cfg'
@@ -44,6 +47,9 @@ class PyApp(gtk.Window):
 
         self.config_rw()
         # self.files_update()
+        self.threads = []
+        self.queue_io = Queue.Queue()
+        self.files = {}
         screen = self.get_screen()
         self.set_title("Hyperspeed")
         self.set_size_request(screen.get_width()/2, screen.get_height()-200)
@@ -53,10 +59,10 @@ class PyApp(gtk.Window):
             self.set_resizable(False) # Because resizing crashes the app on Mac
 
         gtkrc = '''
-style "theme-fixes" {
-    font_name = "sans normal %i"
-}
-class "*" style "theme-fixes"''' % (screen.get_width()/300)
+        style "theme-fixes" {
+            font_name = "sans normal %i"
+        }
+        class "*" style "theme-fixes"''' % (screen.get_width()/300)
         gtk.rc_parse_string(gtkrc)
         # gtk.rc_add_default_file(gtkrc)
         # gtk.rc_reparse_all()
@@ -114,7 +120,7 @@ class "*" style "theme-fixes"''' % (screen.get_width()/300)
 
         self.afterscriptsTreestore = gtk.TreeStore(str, bool, bool, str) # Name, show in Mistika, is folder, file path
         afterscriptsFilter = self.afterscriptsTreestore.filter_new();
-        self.gui_update_afterscripts()
+        # self.gui_update_afterscripts()
 
         self.afterscriptsFilter = afterscriptsFilter
         afterscriptsFilter.set_visible_func(self.FilterTree, (filterEntry, self.afterscriptsTree));
@@ -147,7 +153,7 @@ class "*" style "theme-fixes"''' % (screen.get_width()/300)
         self.stacksFilter.set_visible_func(self.FilterTree, (filterEntry, self.stacksTree));
         self.stacksTree.set_model(self.stacksFilter)
         self.stacksTree.expand_all()
-        self.gui_update_stacks()
+        # self.gui_update_stacks()
 
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
@@ -169,7 +175,7 @@ class "*" style "theme-fixes"''' % (screen.get_width()/300)
         sharedTreeInMistikaColumn.set_expand(False)
         self.sharedTree.append_column(sharedTreeInMistikaColumn)
         self.sharedTreestore = gtk.TreeStore(str, bool, bool) # Name, active, is folder
-        self.gui_update_configs()
+        # self.gui_update_configs()
         sharedFilter = self.sharedTreestore.filter_new();
         self.sharedFilter = sharedFilter
         sharedFilter.set_visible_func(self.FilterTree, (filterEntry, self.sharedTree));
@@ -394,7 +400,6 @@ class "*" style "theme-fixes"''' % (screen.get_width()/300)
         autorunStates.append(['Weekly'])
         autorunStates.append(['Monthly'])
         cell = gtk.CellRendererCombo()
-        #cell3.connect("toggled", self.on_tools_toggle, self.toolsTree)
         cell.set_property("editable", True)
         cell.set_property("has-entry", False)
         cell.set_property("text-column", 0)
@@ -404,7 +409,6 @@ class "*" style "theme-fixes"''' % (screen.get_width()/300)
         cell.connect("edited", self.on_autorun_set)
         toolsTreeAutorunColumn = gtk.TreeViewColumn("Autorun", cell, text=3)
         toolsTreeAutorunColumn.set_resizable(True)
-        #toolsTreeInMistikaColumn.set_cell_data_func(cell3, self.hide_if_parent)
         toolsTreeAutorunColumn.set_expand(False)
         toolsTreeAutorunColumn.set_cell_data_func(cell, self.hide_if_parent)
         tree.append_column(toolsTreeAutorunColumn)
@@ -415,17 +419,52 @@ class "*" style "theme-fixes"''' % (screen.get_width()/300)
         toolsTreeInMistikaColumn.set_expand(False)
         toolsTreeInMistikaColumn.set_resizable(True)
         tree.append_column(toolsTreeInMistikaColumn)
-
         tree_filter.set_visible_func(self.FilterTree, (self.filterEntry, tree));
         tree.set_model(tree_filter)
         tree.expand_all()
         tree.connect('row-activated', self.on_tools_run, tree)
-
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(tree)
-        
+        t = threading.Thread(target=self.io_populate_tools)
+        self.threads.append(t)
+        t.setDaemon(True)
+        t.start()
         return scrolled_window
+
+    def io_populate_tools(self):
+        print 'This is io_populate_tools'
+        file_type = 'Tools'
+        if not file_type in self.files:
+            self.files[file_type] = {}
+        files = self.files[file_type]
+        file_defaults = {
+            'Autorun' : 'Never',
+            'Show in Mistika' : False
+        }
+        for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
+            for name in dirs:
+                path = os.path.join(root, name)
+                if not path in files:
+                    files[path] = {'isdir' : True}
+            for name in filenames:
+                path = os.path.join(root, name)
+                file_md5 = md5(path)
+                if not path in files or file_md5 != files[path]['md5']:
+                    files[path] = {
+                        'isdir' : False,
+                        'md5' : file_md5
+                        }
+            for path in files.keys():
+                if not os.path.exists(path):
+                    del files[path]
+                    continue
+                if not files[path]['isdir']:
+                    for key in file_defaults:
+                        if not key in files[path]:
+                            files[path][key] = file_defaults[key]
+        print 'Queuing gui_update_tools()'
+        gobject.idle_add(self.gui_update_tools)
 
     def gui_update_tools(self):
         treestore = self.tools_treestore # Name, show in Mistika, is folder, autorun, file path
@@ -830,5 +869,6 @@ class "*" style "theme-fixes"''' % (screen.get_width()/300)
         print 'Failed to execute %s' % file_path
 
 
+gobject.threads_init()
 PyApp()
 gtk.main()
