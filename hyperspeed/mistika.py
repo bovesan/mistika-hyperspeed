@@ -19,10 +19,10 @@ def get_mistikarc_path(mistika_env_path):
         return False
     return mistikarc_paths[0]
 
-def get_current_project(mistika_shared_path, user):
+def get_current_project(shared_path, user):
     project = None
     latest_project_time = 0
-    for line in open(os.path.join(mistika_shared_path, "users/%s/projects.cfg" % user)).readlines():
+    for line in open(os.path.join(shared_path, "users/%s/projects.cfg" % user)).readlines():
         try:
             project_name, project_time = line.split()
             if project_time > latest_project_time:
@@ -33,9 +33,9 @@ def get_current_project(mistika_shared_path, user):
     return project
 
 def reload():
-    global mistika_env_path, mistika_shared_path, version, project, user, settings
+    global mistika_env_path, shared_path, version, project, user, settings
     mistika_env_path = os.path.realpath(os.path.expanduser("~/MISTIKA-ENV"))
-    mistika_shared_path = os.path.expanduser("~/MISTIKA-SHARED")
+    shared_path = os.path.expanduser("~/MISTIKA-SHARED")
 
     version = LooseVersion('.'.join(re.findall(r'\d+', os.path.basename(mistika_env_path))[:3]))
 
@@ -44,10 +44,10 @@ def reload():
         user = False
     else:
         try:
-            user = ElementTree.parse(os.path.join(mistika_shared_path, "users/login.xml")).getroot().find('autoLogin/lastUser').text
+            user = ElementTree.parse(os.path.join(shared_path, "users/login.xml")).getroot().find('autoLogin/lastUser').text
         except:
             user = 'MistikaUser'
-        project = get_current_project(mistika_shared_path, user)
+        project = get_current_project(shared_path, user)
 
 
 

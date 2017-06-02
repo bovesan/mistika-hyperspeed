@@ -433,7 +433,11 @@ class PyApp(gtk.Window):
         return scrolled_window
 
     def io_populate_tools(self):
-        print 'This is io_populate_tools'
+        config_path = os.path.expanduser(hyperspeed.mistika.shared_path + '/config/LinuxMistikaTools')
+        tools_installed = []
+        for line in open(config_path):
+            line_alias, line_path = line.strip().split(' ', 1)
+            tools_installed.append(line_path)
         file_type = 'Tools'
         if not file_type in self.files:
             self.files[file_type] = {}
@@ -455,14 +459,16 @@ class PyApp(gtk.Window):
                         'isdir' : False,
                         'md5' : file_md5
                         }
-            for path in files.keys():
-                if not os.path.exists(path):
-                    del files[path]
-                    continue
-                if not files[path]['isdir']:
-                    for key in file_defaults:
-                        if not key in files[path]:
-                            files[path][key] = file_defaults[key]
+                if path in tools_installed:
+                    files[path]['Show in Mistika'] = True
+        for path in files.keys():
+            if not os.path.exists(path):
+                del files[path]
+                continue
+            if not files[path]['isdir']:
+                for key in file_defaults:
+                    if not key in files[path]:
+                        files[path][key] = file_defaults[key]
         print 'Queuing gui_update_tools()'
         gobject.idle_add(self.gui_update_tools)
 
@@ -730,7 +736,7 @@ class PyApp(gtk.Window):
             treestore = treestore.get_model()
         except AttributeError:
             pass
-        config_path = os.path.expanduser('~/MISTIKA-SHARED/config/LinuxMistikaTools')
+        config_path = os.path.expanduser(hyperspeed.mistika.shared_path + '/config/LinuxMistikaTools')
         new_config = ''
         alias = treestore[path][0]
         activated = not treestore[path][1]
