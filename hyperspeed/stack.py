@@ -7,12 +7,14 @@ class Stack:
     def __init__(self, path):
         self.path = path
         self.size = os.path.getsize(self.path)
-        self._dependencies = None
     @property
     def dependencies(self):
-        if self._dependencies == None:
+        try:
+            self._dependencies
+        except AttributeError:
             self._dependencies = list(self.iter_dependencies())
         return self._dependencies
+
     def iter_dependencies(self):
         self.dependencies = []
         try:
