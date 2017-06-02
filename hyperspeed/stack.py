@@ -3,18 +3,17 @@
 import os
 import time
 
-
 class Stack:
     def __init__(self, path):
         self.path = path
         self.size = os.path.getsize(self.path)
-        self.dependencies = False
-
-    def get_dependencies(self):
-        if self.dependencies:
-            for dep in self.dependencies:
-                yield dep
-            return
+        self._dependencies = None
+    @property
+    def dependencies(self):
+        if self._dependencies == None:
+            self._dependencies = list(self.iter_dependencies())
+        return self._dependencies
+    def iter_dependencies(self):
         self.dependencies = []
         try:
             level_names = []
