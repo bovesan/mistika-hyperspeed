@@ -14,7 +14,6 @@ CONFIG_FOLDER = '/home/mistika/.mistika-hyperspeed/'
 CONFIG_FILE = 'hyperspeed.cfg'
 
 os.chdir(os.path.dirname(sys.argv[0]))
-sys.path.append('res/modules/')
 
 import hyperspeed.manage
 
@@ -57,7 +56,7 @@ class PyApp(gtk.Window):
 style "theme-fixes" {
     font_name = "sans normal %i"
 }
-class "*" style "theme-fixes"''' % (screen.get_width()/200)
+class "*" style "theme-fixes"''' % (screen.get_width()/300)
         gtk.rc_parse_string(gtkrc)
         # gtk.rc_add_default_file(gtkrc)
         # gtk.rc_reparse_all()
@@ -709,6 +708,8 @@ class "*" style "theme-fixes"''' % (screen.get_width()/200)
             new_config += line
         if activated and not stored:
             new_config += '%s %s\n' % (alias, file_path)
+        print '\nNew config:'
+        print new_config
         open(config_path, 'w').write(new_config)
         self.toolsTreestore[path][1] = activated
 
@@ -742,6 +743,8 @@ class "*" style "theme-fixes"''' % (screen.get_width()/200)
                 new_config += cron_line
         except:
             raise
+        print 'New crontab:'
+        print new_config
         open(temp_config_path, 'w').write(new_config)
         subprocess.Popen(['crontab', temp_config_path])
         print new_config
@@ -767,8 +770,6 @@ class "*" style "theme-fixes"''' % (screen.get_width()/200)
         linked = False
         for link in os.listdir(links_folder):
             link_path = os.path.join(links_folder, link)
-            print os.path.realpath(link_path),
-            print os.path.realpath(file_path)
             if os.path.realpath(link_path) == os.path.realpath(file_path):
                 if activated:
                     linked = True
@@ -792,11 +793,14 @@ class "*" style "theme-fixes"''' % (screen.get_width()/200)
             new_config += line
         if activated and not stored:
             new_config += '%s\n' % alias
+        print '\nNew config:'
+        print new_config
         open(config_path, 'w').write(new_config)
         self.afterscriptsTreestore[path][1] = activated
         #print name + ' ' + repr(state)
 
     def on_stacks_toggle(self, cellrenderertoggle, path, *ignore):
+        print 'Not yet implemented'
         pass
 
     def on_shared_toggle(self, cellrenderertoggle, path, *ignore):
