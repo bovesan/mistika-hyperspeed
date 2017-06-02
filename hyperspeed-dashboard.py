@@ -15,7 +15,7 @@ CONFIG_FILE = 'hyperspeed.cfg'
 
 os.chdir(os.path.dirname(sys.argv[0]))
 
-import hyperspeed.manage
+import hyperspeed
 
 def md5(fname):
     hash_md5 = hashlib.md5()
@@ -96,59 +96,8 @@ class "*" style "theme-fixes"''' % (screen.get_width()/300)
         vbox.pack_start(toolbarBox, False, False, 10)
 
         notebook = gtk.Notebook()
-        #vbox.pack_start(gtk.Label('Tools'), False, False, 5)
-        self.toolsTree = gtk.TreeView()
-        cell = gtk.CellRendererText()
-        toolsTreeNameColumn = gtk.TreeViewColumn('', cell, text=0)
-        toolsTreeNameColumn.set_resizable(True)
-        toolsTreeNameColumn.set_expand(True)
-        self.toolsTree.append_column(toolsTreeNameColumn)
-        autorunStates = gtk.ListStore(str)
-        autorunStates.append(['Never'])
-        autorunStates.append(['On startup'])
-        autorunStates.append(['Hourly'])
-        autorunStates.append(['Daily'])
-        autorunStates.append(['Weekly'])
-        autorunStates.append(['Monthly'])
-        cell3 = gtk.CellRendererCombo()
-        #cell3.connect("toggled", self.on_tools_toggle, self.toolsTree)
-        cell3.set_property("editable", True)
-        cell3.set_property("has-entry", False)
-        cell3.set_property("text-column", 0)
-        cell3.set_property("model", autorunStates)
-        cell3.connect('changed', self.on_combo_changed)
-        cell3.connect('editing-started', self.on_editing_started)
-        cell3.connect("edited", self.on_autorun_set)
-        toolsTreeAutorunColumn = gtk.TreeViewColumn("Autorun", cell3, text=3)
-        toolsTreeAutorunColumn.set_resizable(True)
-        #toolsTreeInMistikaColumn.set_cell_data_func(cell3, self.hide_if_parent)
-        toolsTreeAutorunColumn.set_expand(False)
-        toolsTreeAutorunColumn.set_cell_data_func(cell3, self.hide_if_parent)
-        self.toolsTree.append_column(toolsTreeAutorunColumn)
-        cell2 = gtk.CellRendererToggle()
-        cell2.connect("toggled", self.on_tools_toggle, self.toolsTree)
-        toolsTreeInMistikaColumn = gtk.TreeViewColumn("Show in Mistika", cell2, active=1)
-        toolsTreeInMistikaColumn.set_cell_data_func(cell2, self.hide_if_parent)
-        toolsTreeInMistikaColumn.set_expand(False)
-        toolsTreeInMistikaColumn.set_resizable(True)
-        self.toolsTree.append_column(toolsTreeInMistikaColumn)
-        self.toolsTreestore = gtk.TreeStore(str, bool, bool, str, str) # Name, show in Mistika, is folder, autorun, file_path
-        toolsTreestore = self.toolsTreestore
-        self.gui_update_tools()
 
-        toolsFilter = toolsTreestore.filter_new();
-        self.toolsFilter = toolsFilter
-        toolsFilter.set_visible_func(self.FilterTree, (filterEntry, self.toolsTree));
-        self.toolsTree.set_model(toolsFilter)
-        self.toolsTree.expand_all()
-        self.toolsTree.connect('row-activated', self.on_tools_run, self.toolsTree)
-
-        scrolled_window = gtk.ScrolledWindow()
-        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
-        scrolled_window.add(self.toolsTree)
-        #vbox.pack_start(scrolled_window)
-        notebook.append_page(scrolled_window, gtk.Label('Tools'))
-
+        notebook.append_page(self.init_tools_window(), gtk.Label('Tools'))
         #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
         self.afterscriptsTree = gtk.TreeView()
         cell = gtk.CellRendererText()
@@ -428,9 +377,58 @@ class "*" style "theme-fixes"''' % (screen.get_width()/300)
 
         self.comboEditable = None
         #self.present()
+    def init_tools_window(self):
+        tree        = self.tools_tree      = gtk.TreeView()
+        treestore   = self.tools_treestore = gtk.TreeStore(str, bool, bool, str, str) # Name, show in Mistika, is folder, autorun, file_path
+        tree_filter = self.tools_filter    = treestore.filter_new();
+        cell = gtk.CellRendererText()
+        column = gtk.TreeViewColumn('', cell, text=0)
+        column.set_resizable(True)
+        column.set_expand(True)
+        tree.append_column(column)
+        autorunStates = gtk.ListStore(str)
+        autorunStates.append(['Never'])
+        autorunStates.append(['On startup'])
+        autorunStates.append(['Hourly'])
+        autorunStates.append(['Daily'])
+        autorunStates.append(['Weekly'])
+        autorunStates.append(['Monthly'])
+        cell = gtk.CellRendererCombo()
+        #cell3.connect("toggled", self.on_tools_toggle, self.toolsTree)
+        cell.set_property("editable", True)
+        cell.set_property("has-entry", False)
+        cell.set_property("text-column", 0)
+        cell.set_property("model", autorunStates)
+        cell.connect('changed', self.on_combo_changed)
+        cell.connect('editing-started', self.on_editing_started)
+        cell.connect("edited", self.on_autorun_set)
+        toolsTreeAutorunColumn = gtk.TreeViewColumn("Autorun", cell, text=3)
+        toolsTreeAutorunColumn.set_resizable(True)
+        #toolsTreeInMistikaColumn.set_cell_data_func(cell3, self.hide_if_parent)
+        toolsTreeAutorunColumn.set_expand(False)
+        toolsTreeAutorunColumn.set_cell_data_func(cell, self.hide_if_parent)
+        tree.append_column(toolsTreeAutorunColumn)
+        cell = gtk.CellRendererToggle()
+        cell.connect("toggled", self.on_tools_toggle, tree)
+        toolsTreeInMistikaColumn = gtk.TreeViewColumn("Show in Mistika", cell, active=1)
+        toolsTreeInMistikaColumn.set_cell_data_func(cell, self.hide_if_parent)
+        toolsTreeInMistikaColumn.set_expand(False)
+        toolsTreeInMistikaColumn.set_resizable(True)
+        tree.append_column(toolsTreeInMistikaColumn)
+        self.gui_update_tools()
+
+        tree_filter.set_visible_func(self.FilterTree, (self.filterEntry, tree));
+        tree.set_model(tree_filter)
+        tree.expand_all()
+        tree.connect('row-activated', self.on_tools_run, tree)
+
+        scrolled_window = gtk.ScrolledWindow()
+        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+        scrolled_window.add(tree)
+        return scrolled_window
 
     def gui_update_tools(self):
-        tree_store = self.toolsTreestore # Name, show in Mistika, is folder, autorun, file path
+        treestore = self.tools_treestore # Name, show in Mistika, is folder, autorun, file path
         iters = self.iters
         items = self.files['Tools']
         for item_path in sorted(items):
@@ -442,9 +440,9 @@ class "*" style "theme-fixes"''' % (screen.get_width()/300)
             if not dir_name in iters:
                 iters[dir_name] = None
             if item['isdir']:
-                iters[item_path] = tree_store.append(iters[dir_name], [base_name, False, True, '', item_path])
+                iters[item_path] = treestore.append(iters[dir_name], [base_name, False, True, '', item_path])
             else:
-                tree_store.append(iters[dir_name], [base_name, item['Show in Mistika'], True, item['Autorun'], item_path])
+                treestore.append(iters[dir_name], [base_name, item['Show in Mistika'], True, item['Autorun'], item_path])
 
     def gui_update_afterscripts(self):
         tree_store = self.afterscriptsTreestore # Name, show in Mistika, is folder
@@ -687,13 +685,17 @@ class "*" style "theme-fixes"''' % (screen.get_width()/300)
         else:
             cell.set_property('visible', True)
 
-    def on_tools_toggle(self, cellrenderertoggle, path, *ignore):
-        tree_store = self.toolsTreestore
+    def on_tools_toggle(self, cellrenderertoggle, path, treeview, *ignore):
+        treestore = treeview.get_model()
+        try: # If there is a filter in the middle
+            treestore = treestore.get_model()
+        except AttributeError:
+            pass
         config_path = os.path.expanduser('~/MISTIKA-SHARED/config/LinuxMistikaTools')
         new_config = ''
-        alias = tree_store[path][0]
-        activated = not tree_store[path][1]
-        file_path = tree_store[path][4]
+        alias = treestore[path][0]
+        activated = not treestore[path][1]
+        file_path = treestore[path][4]
         stored = False
         for line in open(config_path):
             line_alias, line_path = line.strip().split(' ', 1)
@@ -711,7 +713,7 @@ class "*" style "theme-fixes"''' % (screen.get_width()/300)
         print '\nNew config:'
         print new_config
         open(config_path, 'w').write(new_config)
-        self.toolsTreestore[path][1] = activated
+        treestore[path][1] = activated
 
     def on_autorun_set(self, widget, path, text):
         temp_config_path = '/tmp/mistika-hyperspeed-crontab'
