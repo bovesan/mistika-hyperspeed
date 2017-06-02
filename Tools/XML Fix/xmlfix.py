@@ -95,9 +95,16 @@ class xmlfix:
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print USAGE
-        sys.exit(1)
-    for file_path in sys.argv[1:]:
+        import subprocess
+        try:
+            zenityArgs = ["zenity", "--title=Select .xml files", "--file-selection", "--multiple", "--separator=|", '--file-filter=*.xml']
+            input_files = subprocess.Popen(zenityArgs, stdout=subprocess.PIPE).communicate()[0].splitlines()[0].split("|")
+        except:
+            print USAGE
+            sys.exit(1)
+    else:
+        input_files = sys.argv[1:]
+    for file_path in input_files:
         print file_path
         #render = 
         xmlfix(file_path, verbose=True).write(file_path+'.fix.xml', verbose=True)
