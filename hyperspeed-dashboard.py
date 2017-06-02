@@ -441,6 +441,10 @@ class PyApp(gtk.Window):
 
     def io_populate_tools(self):
         file_type = 'Tools'
+        file_type_defaults = {
+            'Autorun' : 'Never',
+            'Show in Mistika' : False,
+        }
         if not file_type in self.files:
             self.files[file_type] = {}
         files = self.files[file_type]
@@ -455,24 +459,22 @@ class PyApp(gtk.Window):
         for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
             for name in dirs:
                 path = os.path.join(root, name)
-                if not path in files:
+                if 'config.json' in os.listdir(path):
+                    file_config = json.loads(open(os.path.join(path, 'config.json')).read())
+                    path = os.path.join(path, file_config['executable'])
+                    files[path] = {'isdir' : False}
+                    files[path].update(file_config)
+                else:
                     files[path] = {'isdir' : True}
-            for name in filenames:
-                path = os.path.join(root, name)
-                file_md5 = md5(path)
-                if not path in files or file_md5 != files[path]['md5']:
-                    files[path] = {
-                        'isdir' : False,
-                        'md5' : file_md5
-                    }
-        for path in files.keys():
+        for path in files:
             if not os.path.exists(path):
                 del files[path]
                 continue
             if files[path]['isdir']:
                 continue
-            files[path]['Show in Mistika'] = False
-            files[path]['Autorun'] = 'Never'
+            for key in file_type_defaults:
+                if not key in files[path]:
+                    files[path][key] = file_type_defaults[key]
             if path in tools_installed:
                 files[path]['Show in Mistika'] = True
             for line in crontab:
@@ -492,13 +494,17 @@ class PyApp(gtk.Window):
         for item_path in sorted(items):
             item = items[item_path]
             dir_name = os.path.dirname(item_path)
-            base_name = os.path.basename(item_path)
+            alias = os.path.basename(item_path)
+            try:
+                alias = items[item_path]['alias']
+            except KeyError:
+                pass
             if not dir_name in iters:
                 iters[dir_name] = None
             if item['isdir']:
-                iters[item_path] = treestore.append(iters[dir_name], [base_name, False, True, '', item_path])
+                iters[item_path] = treestore.append(iters[dir_name], [alias, False, True, '', item_path])
             else:
-                treestore.append(iters[dir_name], [base_name, item['Show in Mistika'], True, item['Autorun'], item_path])
+                treestore.append(iters[dir_name], [alias, item['Show in Mistika'], True, item['Autorun'], item_path])
 
     def gui_update_afterscripts(self):
         tree_store = self.afterscriptsTreestore # Name, show in Mistika, is folder

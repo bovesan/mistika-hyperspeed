@@ -8,6 +8,7 @@ import time
 USAGE = '''Attempts to fix certain problems with mixed framerate projects from Adobe Premiere.
 Writes the new sequence to a separate file.
 Usage: %s sequence.xml [sequence2.xml ...]''' % os.path.basename(sys.argv[0])
+
 def tc2frames(tc, Framerate):
     frames = int(tc.split(':')[3])
     frames += int(tc.split(':')[2]) * Framerate
