@@ -43,7 +43,7 @@ class PyApp(gtk.Window):
         super(PyApp, self).__init__()
 
         self.config_rw()
-        self.files_update()
+        # self.files_update()
         screen = self.get_screen()
         self.set_title("Hyperspeed")
         self.set_size_request(screen.get_width()/2, screen.get_height()-200)
@@ -415,7 +415,6 @@ class "*" style "theme-fixes"''' % (screen.get_width()/300)
         toolsTreeInMistikaColumn.set_expand(False)
         toolsTreeInMistikaColumn.set_resizable(True)
         tree.append_column(toolsTreeInMistikaColumn)
-        self.gui_update_tools()
 
         tree_filter.set_visible_func(self.FilterTree, (self.filterEntry, tree));
         tree.set_model(tree_filter)
@@ -425,6 +424,7 @@ class "*" style "theme-fixes"''' % (screen.get_width()/300)
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(tree)
+        
         return scrolled_window
 
     def gui_update_tools(self):
