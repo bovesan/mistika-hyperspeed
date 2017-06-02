@@ -16,6 +16,14 @@ import threading
 CONFIG_FOLDER = '/home/mistika/.mistika-hyperspeed/'
 CONFIG_FILE = 'hyperspeed.cfg'
 
+AUTORUN_TIMES = {
+    'Never' : False,
+    'Hourly' :  '0 * * * *',
+    'Daily' :   '0 4 * * *',
+    'Weekly' :  '0 4 * * 7',
+    'Monthly' : '0 4 1 * *'
+}
+
 os.chdir(os.path.dirname(sys.argv[0]))
 
 import hyperspeed
@@ -394,7 +402,6 @@ class PyApp(gtk.Window):
         tree.append_column(column)
         autorunStates = gtk.ListStore(str)
         autorunStates.append(['Never'])
-        autorunStates.append(['On startup'])
         autorunStates.append(['Hourly'])
         autorunStates.append(['Daily'])
         autorunStates.append(['Weekly'])
@@ -433,19 +440,18 @@ class PyApp(gtk.Window):
         return scrolled_window
 
     def io_populate_tools(self):
+        file_type = 'Tools'
+        if not file_type in self.files:
+            self.files[file_type] = {}
+        files = self.files[file_type]
+        # Installed tools
         config_path = os.path.expanduser(hyperspeed.mistika.shared_path + '/config/LinuxMistikaTools')
         tools_installed = []
         for line in open(config_path):
             line_alias, line_path = line.strip().split(' ', 1)
             tools_installed.append(line_path)
-        file_type = 'Tools'
-        if not file_type in self.files:
-            self.files[file_type] = {}
-        files = self.files[file_type]
-        file_defaults = {
-            'Autorun' : 'Never',
-            'Show in Mistika' : False
-        }
+        # Crontab
+        crontab = subprocess.check_output(['crontab', '-l']).splitlines()
         for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
             for name in dirs:
                 path = os.path.join(root, name)
@@ -458,18 +464,25 @@ class PyApp(gtk.Window):
                     files[path] = {
                         'isdir' : False,
                         'md5' : file_md5
-                        }
-                if path in tools_installed:
-                    files[path]['Show in Mistika'] = True
+                    }
         for path in files.keys():
             if not os.path.exists(path):
                 del files[path]
                 continue
-            if not files[path]['isdir']:
-                for key in file_defaults:
-                    if not key in files[path]:
-                        files[path][key] = file_defaults[key]
-        print 'Queuing gui_update_tools()'
+            if files[path]['isdir']:
+                continue
+            files[path]['Show in Mistika'] = False
+            files[path]['Autorun'] = 'Never'
+            if path in tools_installed:
+                files[path]['Show in Mistika'] = True
+            for line in crontab:
+                line = line.strip()
+                if line.endswith(path):
+                    for autorun_alias, autorun_value in AUTORUN_TIMES.iteritems():
+                        if autorun_value == '':
+                            continue
+                        if line.startswith(autorun_value):
+                            files[path]['Autorun'] = autorun_alias
         gobject.idle_add(self.gui_update_tools)
 
     def gui_update_tools(self):
@@ -480,8 +493,6 @@ class PyApp(gtk.Window):
             item = items[item_path]
             dir_name = os.path.dirname(item_path)
             base_name = os.path.basename(item_path)
-            print item_path,
-            print dir_name
             if not dir_name in iters:
                 iters[dir_name] = None
             if item['isdir']:
@@ -694,6 +705,9 @@ class PyApp(gtk.Window):
         tree.expand_all()
         if not filter:
             filter = widget.get_text().lower()
+        row = model.get_value(iter, 0)
+        if row == None:
+            return False
         name = model.get_value(iter, 0).lower()
         parent = model.iter_parent(iter)
         has_child = model.iter_has_child(iter)
@@ -762,22 +776,17 @@ class PyApp(gtk.Window):
 
     def on_autorun_set(self, widget, path, text):
         temp_config_path = '/tmp/mistika-hyperspeed-crontab'
-        tree_store = self.toolsTreestore
-        alias = tree_store[path][0]
-        autorun = text # Never, On startup, Hourly, Daily, Weekly, Monthly
-        file_path = tree_store[path][4]
+        treestore = self.tools_treestore
+        alias = treestore[path][0]
+        autorun = text # Never, Hourly, Daily, Weekly, Monthly
+        file_path = treestore[path][4]
         stored = False
         new_config = ''
-        if autorun in ['Never', 'On startup']:
+        cron_time = AUTORUN_TIMES[autorun]
+        if cron_time:
+            cron_line = '%s %s\n' % (cron_time, file_path)
+        else:
             cron_line = ''
-        elif autorun == 'Hourly':
-            cron_line = '0 * * * * %s\n' % file_path
-        elif autorun == 'Daily':
-            cron_line = '0 4 * * * %s\n' % file_path
-        elif autorun == 'Weekly':
-            cron_line = '0 4 * * 7 %s\n' % file_path
-        elif autorun == 'Monthly':
-            cron_line = '0 4 1 * * %s\n' % file_path
         try:
             for line in subprocess.check_output(['crontab', '-l']).splitlines():
                 fields = line.split(' ', 5)
@@ -790,12 +799,12 @@ class PyApp(gtk.Window):
                 new_config += cron_line
         except:
             raise
-        print 'New crontab:'
+        print '\nNew crontab:'
         print new_config
         open(temp_config_path, 'w').write(new_config)
         subprocess.Popen(['crontab', temp_config_path])
         print new_config
-        self.toolsTreestore[path][3] = text
+        treestore[path][3] = text
 
     def on_editing_started(self, cell, editable, path):
         self.comboEditable = editable
