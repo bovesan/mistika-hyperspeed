@@ -1,0 +1,49 @@
+Group(
+groupType(1)
+trimDesc( head(0) speed(1) )
+ungroup(1)
+p(
+    n((Empty))
+    X(-16873) Y(32) W(1293) F(0)
+)
+F(
+T(146)
+p(
+    n(SyLens)
+    X(-16873) Y(32) W(1293) F(1056)
+    L(31)
+    c(Distorts or undistorts footage based on the Syntheyes Lens Distortion Algorithm.
+
+Important: The values from Syntheyes must be multiplied by 100 when set here. 0.01100 in Syntheyes equals 1.100 in this effect.
+
+Mistika version and subsampling by bengt@bovesan.com, with some code from from the Matchbox version written by Julik Tarkhanov.
+
+Requires SyLens_Mistika.glsl)
+s(
+    T(n() C(16) t(1))
+    Folders(133333)
+    NamingRules(2)
+    c(n($SECRET$/$SECRET$)  m(0)    M(63)   d(0)        c(etc/GLSL) p(m(4)s(SyLens_Mistika.glsl)))
+    c(n(Controls/Quartic)    m(-100000000.0)  M(100000000.0)   d(0) p(m(0)v(10)))
+    c(n(Controls/Cubic)    m(-100000000.0)  M(100000000.0)   d(0.0))
+    c(n(Controls/Mode)    m(0)  M(1)   d(0) s(Undistort) s(Distort))
+    c(n(Controls/H Off-Centre)    m(-100000000.0)  M(100000000.0)   d(0.0))
+    c(n(Controls/V Off-Centre)    m(-100000000.0)  M(100000000.0)   d(0.0))
+    c(n(Controls/Red)    m(-100000000.0)  M(100000000.0)   d(0.0))
+    c(n(Controls/Green)    m(-100000000.0)  M(100000000.0)   d(0.0))
+    c(n(Controls/Blue)    m(-100000000.0)  M(100000000.0)   d(0.0))
+    c(n($SECRET$/$SECRET$)    m(0)  M(100000)   d(0))
+    c(n($SECRET$/$SECRET$)    m(0)  M(100000)   d(0))
+    c(n($SECRET$/adsk_input1_aspect)    m(-10000)  M(10000)   d(0))
+    c(n(Settings/Samples)    m(0)  M(7)   d(5) s(1x) s(2x) s(3x) s(4x) s(8x) s(15x) s(24x) s(66x))
+    c(n($SECRET$/$SECRET$)    m(-100000)  M(100000)   d(0))
+    c(n($SECRET$/$SECRET$)    m(-100000)  M(100000)   d(0))
+    c(n($SECRET$/$SECRET$)    m(-100000)  M(100000)   d(0))
+    c(n($SECRET$/$SECRET$)    m(-100000)  M(100000)   d(0))
+    c(n($SECRET$/$SECRET$)    m(-100000)  M(100000)   d(0))
+
+)
+)
+)
+
+)
