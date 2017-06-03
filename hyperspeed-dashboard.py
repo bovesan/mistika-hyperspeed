@@ -13,7 +13,7 @@ import Queue
 import subprocess
 import threading
 
-CONFIG_FOLDER = '/home/mistika/.mistika-hyperspeed/'
+CONFIG_FOLDER = '~/.mistika-hyperspeed/'
 CONFIG_FILE = 'hyperspeed.cfg'
 
 AUTORUN_TIMES = {
@@ -24,6 +24,7 @@ AUTORUN_TIMES = {
     'Monthly' : '0 4 1 * *'
 }
 
+CONFIG_FOLDER = os.path.expanduser(CONFIG_FOLDER)
 os.chdir(os.path.dirname(sys.argv[0]))
 
 import hyperspeed
