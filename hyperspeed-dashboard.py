@@ -17,7 +17,7 @@ CONFIG_FOLDER = '~/.mistika-hyperspeed/'
 CONFIG_FILE = 'hyperspeed.cfg'
 
 AUTORUN_TIMES = {
-    'Never' : False,
+    'Never' :   False,
     'Hourly' :  '0 * * * *',
     'Daily' :   '0 4 * * *',
     'Weekly' :  '0 4 * * 7',
@@ -46,6 +46,13 @@ def md5(fname):
         except OSError:
             pass
     return hash_md5.hexdigest()
+
+def get_crontab_lines():
+    try:
+        crontab = subprocess.check_output(['crontab', '-l']).splitlines()
+    except subprocess.CalledProcessError:
+        crontab = []
+    return crontab
 
 class PyApp(gtk.Window):
 
@@ -420,13 +427,14 @@ class PyApp(gtk.Window):
         toolsTreeAutorunColumn.set_expand(False)
         toolsTreeAutorunColumn.set_cell_data_func(cell, self.hide_if_parent)
         tree.append_column(toolsTreeAutorunColumn)
-        cell = gtk.CellRendererToggle()
-        cell.connect("toggled", self.on_tools_toggle, tree)
-        toolsTreeInMistikaColumn = gtk.TreeViewColumn("Show in Mistika", cell, active=1)
-        toolsTreeInMistikaColumn.set_cell_data_func(cell, self.hide_if_parent)
-        toolsTreeInMistikaColumn.set_expand(False)
-        toolsTreeInMistikaColumn.set_resizable(True)
-        tree.append_column(toolsTreeInMistikaColumn)
+        if hyperspeed.mistika.product == 'Mistika':
+            cell = gtk.CellRendererToggle()
+            cell.connect("toggled", self.on_tools_toggle, tree)
+            toolsTreeInMistikaColumn = gtk.TreeViewColumn("Show in Mistika", cell, active=1)
+            toolsTreeInMistikaColumn.set_cell_data_func(cell, self.hide_if_parent)
+            toolsTreeInMistikaColumn.set_expand(False)
+            toolsTreeInMistikaColumn.set_resizable(True)
+            tree.append_column(toolsTreeInMistikaColumn)
         tree_filter.set_visible_func(self.FilterTree, (self.filterEntry, tree));
         tree.set_model(tree_filter)
         tree.expand_all()
@@ -450,13 +458,14 @@ class PyApp(gtk.Window):
             self.files[file_type] = {}
         files = self.files[file_type]
         # Installed tools
-        config_path = os.path.expanduser(hyperspeed.mistika.shared_path + '/config/LinuxMistikaTools')
         tools_installed = []
-        for line in open(config_path):
-            line_alias, line_path = line.strip().split(' ', 1)
-            tools_installed.append(line_path)
+        if hyperspeed.mistika.product == 'Mistika':
+            config_path = os.path.expanduser(hyperspeed.mistika.shared_path + '/config/LinuxMistikaTools')
+            for line in open(config_path):
+                line_alias, line_path = line.strip().split(' ', 1)
+                tools_installed.append(line_path)
         # Crontab
-        crontab = subprocess.check_output(['crontab', '-l']).splitlines()
+        crontab = get_crontab_lines()
         for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
             for name in dirs:
                 path = os.path.join(root, name)
@@ -479,10 +488,11 @@ class PyApp(gtk.Window):
             if path in tools_installed:
                 files[path]['Show in Mistika'] = True
             for line in crontab:
+                print repr(line)
                 line = line.strip()
                 if line.endswith(path):
                     for autorun_alias, autorun_value in AUTORUN_TIMES.iteritems():
-                        if autorun_value == '':
+                        if autorun_value == False:
                             continue
                         if line.startswith(autorun_value):
                             files[path]['Autorun'] = autorun_alias
@@ -795,7 +805,7 @@ class PyApp(gtk.Window):
         else:
             cron_line = ''
         try:
-            for line in subprocess.check_output(['crontab', '-l']).splitlines():
+            for line in get_crontab_lines():
                 fields = line.split(' ', 5)
                 if len(fields) == 6:
                     minute, hour, date, month, weekday, cmd = fields
@@ -891,6 +901,8 @@ class PyApp(gtk.Window):
         print 'Failed to execute %s' % file_path
 
 
+os.environ['LC_CTYPE'] = 'en_US.utf8'
+os.environ['LC_ALL'] = 'en_US.utf8'
 gobject.threads_init()
 PyApp()
 gtk.main()
