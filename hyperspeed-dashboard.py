@@ -482,7 +482,7 @@ class PyApp(gtk.Window):
             if item['isdir']:
                 iters[item_path] = treestore.append(iters[dir_name], [alias, False, True, '', item_path])
             else:
-                treestore.append(iters[dir_name], [alias, item['Show in Mistika'], True, item['Autorun'], item_path])
+                treestore.append(iters[dir_name], [alias, item['Show in Mistika'], False, item['Autorun'], item_path])
 
     def init_afterscripts_window(self):
         tree        = self.afterscripts_tree      = gtk.TreeView()
@@ -566,7 +566,7 @@ class PyApp(gtk.Window):
             if item['isdir']:
                 iters[item_path] = tree_store.append(iters[dir_name], [base_name, False, True, item_path])
             else:
-                tree_store.append(iters[dir_name], [base_name, item['Show in Mistika'], True, item_path])
+                tree_store.append(iters[dir_name], [base_name, item['Show in Mistika'], False, item_path])
 
     def gui_update_stacks(self):
         tree_store = self.afterscriptsTreestore # Name, show in Mistika, is folder
@@ -788,8 +788,8 @@ class PyApp(gtk.Window):
 
     def hide_if_parent(self, column, cell, model, iter):
         has_child = model.iter_has_child(iter)
-        #is_folder = model[iter][2]
-        if has_child:
+        is_folder = model[iter][2]
+        if is_folder:
             cell.set_property('visible', False)
             #print model[iter][0] + ' ' + model[model.iter_children(iter)][0]
         else:
