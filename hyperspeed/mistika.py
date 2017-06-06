@@ -76,7 +76,17 @@ def reload():
         settings[key] = value
     tools_path = os.path.join(shared_folder, 'config/LinuxMistikaTools')
     afterscripts_path = os.path.join(env_folder, 'etc/setup/RenderEndScript.cfg')
+    if not os.path.isfile(afterscripts_path):
+        try:
+            open(afterscripts_path, 'a').write('None')
+        except OSError:
+            print 'Afterscripts config not available: %s' % afterscripts_path
     scripts_folder = os.path.join(env_folder, 'bin/scripts/')
+    if not os.path.exists(scripts_folder):
+        bin_folder_mac = '/Applications/SGOMambaFX.app/Contents/MacOS/'
+        scripts_folder_mac = '/Applications/SGOMambaFX.app/Contents/MacOS/scripts/'
+        if os.path.exists(bin_folder_mac):
+            scripts_folder = scripts_folder_mac
     glsl_folder = os.path.join(env_folder, 'etc/GLSL')
 
 reload()
