@@ -379,7 +379,7 @@ class PyApp(gtk.Window):
         if hyperspeed.mistika.product == 'Mistika':
             cell = gtk.CellRendererToggle()
             cell.connect("toggled", self.on_tools_toggle, tree)
-            toolsTreeInMistikaColumn = gtk.TreeViewColumn("Show in Mistika", cell, active=1)
+            toolsTreeInMistikaColumn = gtk.TreeViewColumn("Show in %s" % mistika.product, cell, active=1)
             toolsTreeInMistikaColumn.set_cell_data_func(cell, self.hide_if_parent)
             toolsTreeInMistikaColumn.set_expand(False)
             toolsTreeInMistikaColumn.set_resizable(True)
@@ -477,7 +477,7 @@ class PyApp(gtk.Window):
         tree.append_column(column)
         cell = gtk.CellRendererToggle()
         cell.connect("toggled", self.on_afterscripts_toggle, tree)
-        toolsTreeInMistikaColumn = gtk.TreeViewColumn("Show in Mistika", cell, active=1)
+        toolsTreeInMistikaColumn = gtk.TreeViewColumn("Show in %s" % mistika.product, cell, active=1)
         toolsTreeInMistikaColumn.set_cell_data_func(cell, self.hide_if_parent)
         toolsTreeInMistikaColumn.set_expand(False)
         toolsTreeInMistikaColumn.set_resizable(True)
