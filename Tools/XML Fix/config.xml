@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<tool>
+    <alias>XML Fix</alias>
+    <description>Attempts to fix certain problems with mixed framerate projects from Adobe Premiere.
+    Writes the new sequence to a separate file.</description>
+    <executable>xmlfix.py</executable>
+</tool>

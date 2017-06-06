@@ -12,9 +12,11 @@ import platform
 import Queue
 import subprocess
 import threading
+import xml.etree.ElementTree as ET
 
 CONFIG_FOLDER = '~/.mistika-hyperspeed/'
 CONFIG_FILE = 'hyperspeed.cfg'
+STACK_EXTENSIONS = ['.grp', '.fx', '.env']
 
 AUTORUN_TIMES = {
     'Never' :   False,
@@ -27,7 +29,8 @@ AUTORUN_TIMES = {
 CONFIG_FOLDER = os.path.expanduser(CONFIG_FOLDER)
 os.chdir(os.path.dirname(sys.argv[0]))
 
-import hyperspeed
+import hyperspeed.manage
+from hyperspeed import mistika
 
 def md5(fname):
     hash_md5 = hashlib.md5()
@@ -115,67 +118,13 @@ class PyApp(gtk.Window):
         #versionBox.pack_start(updateButton, False, False, 5)
         toolbarBox.pack_end(versionBox, False, False)
 
-        vbox.pack_start(toolbarBox, False, False, 10)
+        # vbox.pack_start(toolbarBox, False, False, 10)
 
         notebook = gtk.Notebook()
 
         notebook.append_page(self.init_tools_window(), gtk.Label('Tools'))
-        #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
-        self.afterscriptsTree = gtk.TreeView()
-        cell = gtk.CellRendererText()
-        afterscriptsTreeNameColumn = gtk.TreeViewColumn('', cell, text=0)
-        afterscriptsTreeNameColumn.set_resizable(True)
-        afterscriptsTreeNameColumn.set_expand(True)
-        self.afterscriptsTree.append_column(afterscriptsTreeNameColumn)
-        cell2 = gtk.CellRendererToggle()
-        cell2.connect("toggled", self.on_afterscripts_toggle, self.afterscriptsTree)
-        afterscriptsTreeInMistikaColumn = gtk.TreeViewColumn("Show in Mistika", cell2, active=1)
-        afterscriptsTreeInMistikaColumn.set_cell_data_func(cell2, self.hide_if_parent)
-        afterscriptsTreeInMistikaColumn.set_expand(False)
-        self.afterscriptsTree.append_column(afterscriptsTreeInMistikaColumn)
-
-        self.afterscriptsTreestore = gtk.TreeStore(str, bool, bool, str) # Name, show in Mistika, is folder, file path
-        afterscriptsFilter = self.afterscriptsTreestore.filter_new();
-        # self.gui_update_afterscripts()
-
-        self.afterscriptsFilter = afterscriptsFilter
-        afterscriptsFilter.set_visible_func(self.FilterTree, (filterEntry, self.afterscriptsTree));
-        self.afterscriptsTree.set_model(afterscriptsFilter)
-        self.afterscriptsTree.expand_all()
-
-        scrolled_window = gtk.ScrolledWindow()
-        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
-        scrolled_window.add(self.afterscriptsTree)
-        #vbox.pack_start(scrolled_window)
-        notebook.append_page(scrolled_window, gtk.Label('Afterscripts'))
-
-        #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
-        self.stacksTree = gtk.TreeView()
-        tree_view = self.stacksTree
-        cell = gtk.CellRendererText()
-        column = gtk.TreeViewColumn('', cell, text=0)
-        column.set_resizable(True)
-        column.set_expand(True)
-        tree_view.append_column(column)
-        cell = gtk.CellRendererToggle()
-        cell.connect("toggled", self.on_stacks_toggle, self.stacksTree)
-        column = gtk.TreeViewColumn("Installed", cell, active=1)
-        column.set_cell_data_func(cell, self.hide_if_parent)
-        column.set_expand(False)
-        tree_view.append_column(column)
-
-        self.stacksTreestore = gtk.TreeStore(str, bool, bool, str) # Name, show in Mistika, is folder, file path
-        self.stacksFilter = self.stacksTreestore.filter_new();
-        self.stacksFilter.set_visible_func(self.FilterTree, (filterEntry, self.stacksTree));
-        self.stacksTree.set_model(self.stacksFilter)
-        self.stacksTree.expand_all()
-        # self.gui_update_stacks()
-
-        scrolled_window = gtk.ScrolledWindow()
-        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
-        scrolled_window.add(self.stacksTree)
-        #vbox.pack_start(scrolled_window)
-        notebook.append_page(scrolled_window, gtk.Label('Stacks'))
+        notebook.append_page(self.init_afterscripts_window(), gtk.Label('Afterscripts'))
+        notebook.append_page(self.init_stacks_window(), gtk.Label('Stacks'))
 
         #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
         self.sharedTree = gtk.TreeView()
@@ -283,16 +232,16 @@ class PyApp(gtk.Window):
         cell2 = gtk.CellRendererToggle()
         self.queueTreestore = gtk.TreeStore(str, str, str, str, str, int, str)
         queueTreestore = self.queueTreestore
-        it = queueTreestore.append(None, ["Private (6)", '', '', '', '', 0, ''])
-        queueTreestore.append(it, ["RnD", 'test_0001', 'Rendering on gaia', 'gaia', '08:27', 20, '20%'])
-        queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
-        queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
-        queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
-        queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
-        queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
-        it = queueTreestore.append(None, ["Public (2)", '', '', '', '', 0, ''])
-        queueTreestore.append(it, ["Mastering", 'film01', 'Queued', 'apollo2', '08:27', 0, ''])
-        queueTreestore.append(it, ["Mastering", 'film02', 'Queued', 'apollo2', '08:27', 0, ''])
+        # it = queueTreestore.append(None, ["Private (6)", '', '', '', '', 0, ''])
+        # queueTreestore.append(it, ["RnD", 'test_0001', 'Rendering on gaia', 'gaia', '08:27', 20, '20%'])
+        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
+        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
+        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
+        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
+        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
+        # it = queueTreestore.append(None, ["Public (2)", '', '', '', '', 0, ''])
+        # queueTreestore.append(it, ["Mastering", 'film01', 'Queued', 'apollo2', '08:27', 0, ''])
+        # queueTreestore.append(it, ["Mastering", 'film02', 'Queued', 'apollo2', '08:27', 0, ''])
         self.queueTree.set_model(queueTreestore)
         self.queueTree.expand_all()
         scrolled_window = gtk.ScrolledWindow()
@@ -356,15 +305,15 @@ class PyApp(gtk.Window):
         cell2 = gtk.CellRendererToggle()
         self.queueTreestore = gtk.TreeStore(str, str, str, str, str)
         queueTreestore = self.queueTreestore
-        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
-        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
-        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
-        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'apollo2', '08:27'])
-        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'apollo1', '08:27'])
-        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
-        queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
-        queueTreestore.append(None, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27'])
-        queueTreestore.append(None, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27'])
+        # queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+        # queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+        # queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+        # queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'apollo2', '08:27'])
+        # queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'apollo1', '08:27'])
+        # queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+        # queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
+        # queueTreestore.append(None, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27'])
+        # queueTreestore.append(None, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27'])
         self.queueTree.set_model(queueTreestore)
         self.queueTree.expand_all()
         scrolled_window = gtk.ScrolledWindow()
@@ -460,8 +409,7 @@ class PyApp(gtk.Window):
         # Installed tools
         tools_installed = []
         if hyperspeed.mistika.product == 'Mistika':
-            config_path = os.path.expanduser(hyperspeed.mistika.shared_path + '/config/LinuxMistikaTools')
-            for line in open(config_path):
+            for line in open(mistika.tools_path):
                 line_alias, line_path = line.strip().split(' ', 1)
                 tools_installed.append(line_path)
         # Crontab
@@ -469,11 +417,13 @@ class PyApp(gtk.Window):
         for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
             for name in dirs:
                 path = os.path.join(root, name)
-                if 'config.json' in os.listdir(path):
-                    file_config = json.loads(open(os.path.join(path, 'config.json')).read())
-                    path = os.path.join(path, file_config['executable'])
+                if 'config.xml' in os.listdir(path):
+                    tree = ET.parse(os.path.join(path, 'config.xml'))
+                    root = tree.getroot()
+                    path = os.path.join(path, root.find('executable').text)
                     files[path] = {'isdir' : False}
-                    files[path].update(file_config)
+                    for child in root:
+                        files[path][child.tag] = child.text
                 else:
                     files[path] = {'isdir' : True}
         for path in files:
@@ -482,9 +432,8 @@ class PyApp(gtk.Window):
                 continue
             if files[path]['isdir']:
                 continue
-            for key in file_type_defaults:
-                if not key in files[path]:
-                    files[path][key] = file_type_defaults[key]
+            for key, value in file_type_defaults.iteritems():
+                files[path].setdefault(key, value)
             if path in tools_installed:
                 files[path]['Show in Mistika'] = True
             for line in crontab:
@@ -515,41 +464,173 @@ class PyApp(gtk.Window):
             if item['isdir']:
                 iters[item_path] = treestore.append(iters[dir_name], [alias, False, True, '', item_path])
             else:
-                treestore.append(iters[dir_name], [alias, item['Show in Mistika'], True, item['Autorun'], item_path])
+                treestore.append(iters[dir_name], [alias, item['Show in Mistika'], False, item['Autorun'], item_path])
+
+    def init_afterscripts_window(self):
+        tree        = self.afterscripts_tree      = gtk.TreeView()
+        treestore   = self.afterscripts_treestore = gtk.TreeStore(str, bool, bool, str) # Name, show in Mistika, is folder, file path
+        tree_filter = self.afterscripts_filter    = treestore.filter_new();
+        cell = gtk.CellRendererText()
+        column = gtk.TreeViewColumn('', cell, text=0)
+        column.set_resizable(True)
+        column.set_expand(True)
+        tree.append_column(column)
+        cell = gtk.CellRendererToggle()
+        cell.connect("toggled", self.on_afterscripts_toggle, tree)
+        toolsTreeInMistikaColumn = gtk.TreeViewColumn("Show in Mistika", cell, active=1)
+        toolsTreeInMistikaColumn.set_cell_data_func(cell, self.hide_if_parent)
+        toolsTreeInMistikaColumn.set_expand(False)
+        toolsTreeInMistikaColumn.set_resizable(True)
+        tree.append_column(toolsTreeInMistikaColumn)
+        tree_filter.set_visible_func(self.FilterTree, (self.filterEntry, tree));
+        tree.set_model(tree_filter)
+        tree.expand_all()
+        tree.connect('row-activated', self.on_afterscripts_run, tree)
+        scrolled_window = gtk.ScrolledWindow()
+        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+        scrolled_window.add(tree)
+        t = threading.Thread(target=self.io_populate_afterscripts)
+        self.threads.append(t)
+        t.setDaemon(True)
+        t.start()
+        return scrolled_window
+
+    def io_populate_afterscripts(self):
+        file_type = 'Afterscripts'
+        file_type_defaults = {
+            'Show in Mistika' : False
+        }
+        if not file_type in self.files:
+            self.files[file_type] = {}
+        files = self.files[file_type]
+        # Installed afterscripts
+        afterscripts_installed = []
+        for line in open(mistika.afterscripts_path):
+            alias = line.strip()
+            link_path = os.path.join(mistika.scripts_folder, alias)
+            afterscripts_installed.append(os.path.realpath(link_path))
+        for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
+            for name in dirs:
+                path = os.path.join(root, name)
+                if 'config.xml' in os.listdir(path):
+                    tree = ET.parse(os.path.join(path, 'config.xml'))
+                    root = tree.getroot()
+                    path = os.path.join(path, root.find('executable').text)
+                    files[path] = {
+                        'isdir' : False,
+                        'alias' : name
+                    }
+                    for key, value in file_type_defaults.iteritems():
+                        files[path].setdefault(key, value)
+                    for child in root:
+                        files[path][child.tag] = child.text
+                else:
+                    files[path] = {'isdir' : True}
+        for path in files:
+            if not os.path.exists(path):
+                del files[path]
+                continue
+            if files[path]['isdir']:
+                continue
+            if path in afterscripts_installed:
+                files[path]['Show in Mistika'] = True
+        gobject.idle_add(self.gui_update_afterscripts)
 
     def gui_update_afterscripts(self):
-        tree_store = self.afterscriptsTreestore # Name, show in Mistika, is folder
+        tree_store = self.afterscripts_treestore # Name, show in Mistika, is folder
         iters = self.iters
         items = self.files['Afterscripts']
         for item_path in sorted(items):
             item = items[item_path]
             dir_name = os.path.dirname(item_path)
             base_name = os.path.basename(item_path)
-            print item_path,
-            print dir_name
             if not dir_name in iters:
                 iters[dir_name] = None
             if item['isdir']:
                 iters[item_path] = tree_store.append(iters[dir_name], [base_name, False, True, item_path])
             else:
-                tree_store.append(iters[dir_name], [base_name, item['Show in Mistika'], True, item_path])
+                tree_store.append(iters[dir_name], [base_name, item['Show in Mistika'], False, item_path])
+
+    def init_stacks_window(self):
+        tree        = self.stacks_tree      = gtk.TreeView()
+        treestore   = self.stacks_treestore = gtk.TreeStore(str, bool, bool, str, bool) # Name, installed, is folder, file path, requires installation (has dependencies)
+        tree_filter = self.stacks_filter    = treestore.filter_new();
+        cell = gtk.CellRendererText()
+        column = gtk.TreeViewColumn('', cell, text=0)
+        column.set_resizable(True)
+        column.set_expand(True)
+        tree.append_column(column)
+        cell = gtk.CellRendererToggle()
+        cell.connect("toggled", self.on_stacks_toggle, tree)
+        toolsTreeInMistikaColumn = gtk.TreeViewColumn("Installed", cell, active=1)
+        toolsTreeInMistikaColumn.set_cell_data_func(cell, self.hide_if_parent)
+        toolsTreeInMistikaColumn.add_attribute(cell, 'activatable', 4)
+        #linksTreeUrlColumn.add_attribute(cell2, 'underline-set', 3)
+        toolsTreeInMistikaColumn.set_expand(False)
+        toolsTreeInMistikaColumn.set_resizable(True)
+        tree.append_column(toolsTreeInMistikaColumn)
+        tree_filter.set_visible_func(self.FilterTree, (self.filterEntry, tree));
+        tree.set_model(tree_filter)
+        tree.expand_all()
+        scrolled_window = gtk.ScrolledWindow()
+        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+        scrolled_window.add(tree)
+        t = threading.Thread(target=self.io_populate_stacks)
+        self.threads.append(t)
+        t.setDaemon(True)
+        t.start()
+        return scrolled_window
+
+    def io_populate_stacks(self):
+        file_type = 'Stacks'
+        file_type_defaults = {
+            'Installed' : True,
+            'Dependent' : False
+        }
+        if not file_type in self.files:
+            self.files[file_type] = {}
+        files = self.files[file_type]
+        for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
+            for name in dirs:
+                path = os.path.join(root, name)
+                files[path] = {'isdir' : True}
+            for name in filenames:
+                path = os.path.join(root, name)
+                if os.path.splitext(name)[1].lower() in STACK_EXTENSIONS:
+                    files[path] = {'isdir' : False}
+        for path in files:
+            if not os.path.exists(path):
+                del files[path]
+                continue
+            if files[path]['isdir']:
+                continue
+            if not 'dependencies' in files[path]:
+                files[path]['dependencies'] = hyperspeed.Stack(path).dependencies
+            if len(files[path]['dependencies']) > 0:
+                files[path]['Dependent'] = True
+            for dependency in files[path]['dependencies']:
+                if not dependency.check():
+                    files[path]['Installed'] = False
+            for key, value in file_type_defaults.iteritems():
+                files[path].setdefault(key, value)
+            if files[path]['isdir']:
+                continue
+        gobject.idle_add(self.gui_update_stacks)
 
     def gui_update_stacks(self):
-        tree_store = self.afterscriptsTreestore # Name, show in Mistika, is folder
+        tree = self.stacks_treestore # Name, installed, is folder, file path, requires installation (has dependencies)
         iters = self.iters
         items = self.files['Stacks']
         for item_path in sorted(items):
             item = items[item_path]
             dir_name = os.path.dirname(item_path)
             base_name = os.path.basename(item_path)
-            print item_path,
-            print dir_name
             if not dir_name in iters:
                 iters[dir_name] = None
             if item['isdir']:
-                iters[item_path] = tree_store.append(iters[dir_name], [base_name, False, True, item_path])
+                iters[item_path] = tree.append(iters[dir_name], [base_name, False, True, item_path, False])
             else:
-                tree_store.append(iters[dir_name], [base_name, item['Show in Mistika'], True, item_path])
+                tree.append(iters[dir_name], [base_name, item['Installed'], False, item_path, item['Dependent']])
 
     def gui_update_configs(self):
         tree_store = self.sharedTreestore # Name, show in Mistika, is folder
@@ -754,8 +835,8 @@ class PyApp(gtk.Window):
 
     def hide_if_parent(self, column, cell, model, iter):
         has_child = model.iter_has_child(iter)
-        #is_folder = model[iter][2]
-        if has_child:
+        is_folder = model[iter][2]
+        if is_folder:
             cell.set_property('visible', False)
             #print model[iter][0] + ' ' + model[model.iter_children(iter)][0]
         else:
@@ -767,13 +848,13 @@ class PyApp(gtk.Window):
             treestore = treestore.get_model()
         except AttributeError:
             pass
-        config_path = os.path.expanduser(hyperspeed.mistika.shared_path + '/config/LinuxMistikaTools')
         new_config = ''
         alias = treestore[path][0]
+        alias = alias.replace(' ', '_')
         activated = not treestore[path][1]
         file_path = treestore[path][4]
         stored = False
-        for line in open(config_path):
+        for line in open(mistika.tools_path):
             line_alias, line_path = line.strip().split(' ', 1)
             if file_path == line_path:
                 if activated:
@@ -788,7 +869,7 @@ class PyApp(gtk.Window):
             new_config += '%s %s\n' % (alias, file_path)
         print '\nNew config:'
         print new_config
-        open(config_path, 'w').write(new_config)
+        open(mistika.tools_path, 'w').write(new_config)
         treestore[path][1] = activated
 
     def on_autorun_set(self, widget, path, text):
@@ -833,29 +914,31 @@ class PyApp(gtk.Window):
       e.in_ = False
       self.comboEditable.emit('focus-out-event', e)
 
-    def on_afterscripts_toggle(self, cellrenderertoggle, path, *ignore):
-        config_path = os.path.expanduser('~/MISTIKA-ENV/etc/setup/RenderEndScript.cfg')
-        links_folder = os.path.expanduser('~/MISTIKA-ENV/bin/scripts/')
-        tree_store = self.afterscriptsTreestore
-        alias = tree_store[path][0]
-        activated = not tree_store[path][1]
-        file_path = tree_store[path][3]
+    def on_afterscripts_toggle(self, cellrenderertoggle, path, treeview, *ignore):
+        treestore = treeview.get_model()
+        try: # If there is a filter in the middle
+            treestore = treestore.get_model()
+        except AttributeError:
+            pass
+        alias = treestore[path][0]
+        activated = not treestore[path][1]
+        file_path = treestore[path][3]
         linked = False
-        for link in os.listdir(links_folder):
-            link_path = os.path.join(links_folder, link)
+        for link in os.listdir(mistika.scripts_folder):
+            link_path = os.path.join(mistika.scripts_folder, link)
             if os.path.realpath(link_path) == os.path.realpath(file_path):
                 if activated:
                     linked = True
         if activated and not linked:
-            link_path = os.path.join(links_folder, alias)
+            link_path = os.path.join(mistika.scripts_folder, alias)
             if os.path.islink(link_path):
                 os.remove(link_path)
             os.symlink(file_path, link_path)
         stored = False
         new_config = 'None\n'
-        for line in open(config_path):
+        for line in open(mistika.afterscripts_path):
             line_alias = line.strip()
-            line_path = os.path.join(links_folder, line_alias)
+            line_path = os.path.join(mistika.scripts_folder, line_alias)
             if alias == line_alias:
                 if activated:
                     stored = True
@@ -868,8 +951,8 @@ class PyApp(gtk.Window):
             new_config += '%s\n' % alias
         print '\nNew config:'
         print new_config
-        open(config_path, 'w').write(new_config)
-        self.afterscriptsTreestore[path][1] = activated
+        open(mistika.afterscripts_path, 'w').write(new_config)
+        treestore[path][1] = activated
         #print name + ' ' + repr(state)
 
     def on_stacks_toggle(self, cellrenderertoggle, path, *ignore):
@@ -899,6 +982,9 @@ class PyApp(gtk.Window):
                 except:
                     pass
         print 'Failed to execute %s' % file_path
+
+    def on_afterscripts_run(self, treeview, path, view_column, *ignore):
+        print 'Not yet implemented'
 
 
 os.environ['LC_CTYPE'] = 'en_US.utf8'
