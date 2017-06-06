@@ -456,6 +456,7 @@ class PyApp(gtk.Window):
         for line in open(config_path):
             line_alias, line_path = line.strip().split(' ', 1)
             tools_installed.append(line_path)
+        print repr(tools_installed)
         # Crontab
         crontab = subprocess.check_output(['crontab', '-l']).splitlines()
         for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
@@ -763,6 +764,7 @@ class PyApp(gtk.Window):
         config_path = os.path.expanduser(hyperspeed.mistika.shared_path + '/config/LinuxMistikaTools')
         new_config = ''
         alias = treestore[path][0]
+        alias = alias.replace(' ', '_')
         activated = not treestore[path][1]
         file_path = treestore[path][4]
         stored = False
