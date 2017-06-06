@@ -1,5 +1,0 @@
-{
-	"alias" : "XML Fix",
-	"description" : "Attempts to fix certain problems with mixed framerate projects from Adobe Premiere. Writes the new sequence to a separate file.",
-	"executable" : "xmlfix.py"
-}

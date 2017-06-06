@@ -12,6 +12,7 @@ import platform
 import Queue
 import subprocess
 import threading
+import xml.etree.ElementTree as ET
 
 CONFIG_FOLDER = '~/.mistika-hyperspeed/'
 CONFIG_FILE = 'hyperspeed.cfg'
@@ -460,11 +461,13 @@ class PyApp(gtk.Window):
         for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
             for name in dirs:
                 path = os.path.join(root, name)
-                if 'config.json' in os.listdir(path):
-                    file_config = json.loads(open(os.path.join(path, 'config.json')).read())
-                    path = os.path.join(path, file_config['executable'])
+                if 'config.xml' in os.listdir(path):
+                    tree = ET.parse(os.path.join(path, 'config.xml'))
+                    root = tree.getroot()
+                    path = os.path.join(path, root.find('executable').text)
                     files[path] = {'isdir' : False}
-                    files[path].update(file_config)
+                    for child in root:
+                        files[path][child.tag] = child.text
                 else:
                     files[path] = {'isdir' : True}
         for path in files:
@@ -482,7 +485,7 @@ class PyApp(gtk.Window):
                 line = line.strip()
                 if line.endswith(path):
                     for autorun_alias, autorun_value in AUTORUN_TIMES.iteritems():
-                        if autorun_value == '':
+                        if autorun_value == False:
                             continue
                         if line.startswith(autorun_value):
                             files[path]['Autorun'] = autorun_alias
