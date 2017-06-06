@@ -12,11 +12,18 @@ class Stack:
         try:
             self._dependencies
         except AttributeError:
-            self._dependencies = list(self.iter_dependencies())
+            list(self.iter_dependencies())
+        return self._dependencies.keys()
+    @property
+    def dependencies_detailed(self):
+        try:
+            self._dependencies
+        except AttributeError:
+            list(self.iter_dependencies())
         return self._dependencies
 
     def iter_dependencies(self):
-        self.dependencies = []
+        self._dependencies = {}
         try:
             level_names = []
             fx_type = None
@@ -42,6 +49,7 @@ class Stack:
                             fx_type = char_buffer
                         elif object_path.endswith('C/F'): # Clip source link
                             f_path = char_buffer
+                            f_type = 'lnk'
                         elif object_path.endswith('C/d/I/H/p'): # Clip media folder
                             CdIHp = char_buffer
                         elif object_path.endswith('C/d/I/s'): # Clip start frame
@@ -50,18 +58,25 @@ class Stack:
                             CdIe = int(char_buffer)
                         elif object_path.endswith('C/d/I/H/n'): # Clip media name
                             f_path = CdIHp + char_buffer
+                            f_type = 'media'
                         elif object_path.endswith('F/D'): # .dat file relative path (from projects_path)
                             f_path = char_buffer
+                            f_type = 'dat'
                         elif fx_type == '146' and object_path.endswith('F/p/s/c/p/s'): # GLSL file
                             f_path = char_buffer
+                            f_type = 'glsl'
                         if f_path:
                             if '%' in f_path:
-                                f_tuple = (f_path, CdIs, CdIe)
-                                self.dependencies.append(f_tuple)
-                                yield f_tuple
+                                self._dependencies[f_path] = {
+                                    'type' : f_type,
+                                    'Start frame' : CdIs,
+                                    'End frame' : CdIe
+                                }
                             else:
-                                self.dependencies.append(f_path)
-                                yield f_path
+                                self._dependencies[f_path] = {
+                                    'type' : f_type
+                                }
+                            yield f_path
                         char_buffer = ''
                         del level_names[-1]
                     elif len(level_names) > 0 and level_names[-1] == 'Shape':
