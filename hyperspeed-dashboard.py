@@ -16,6 +16,7 @@ import xml.etree.ElementTree as ET
 
 CONFIG_FOLDER = '~/.mistika-hyperspeed/'
 CONFIG_FILE = 'hyperspeed.cfg'
+STACK_EXTENSIONS = ['.grp', '.fx', '.env']
 
 AUTORUN_TIMES = {
     'Never' : False,
@@ -116,34 +117,7 @@ class PyApp(gtk.Window):
 
         notebook.append_page(self.init_tools_window(), gtk.Label('Tools'))
         notebook.append_page(self.init_afterscripts_window(), gtk.Label('Afterscripts'))
-
-        #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
-        self.stacksTree = gtk.TreeView()
-        tree_view = self.stacksTree
-        cell = gtk.CellRendererText()
-        column = gtk.TreeViewColumn('', cell, text=0)
-        column.set_resizable(True)
-        column.set_expand(True)
-        tree_view.append_column(column)
-        cell = gtk.CellRendererToggle()
-        cell.connect("toggled", self.on_stacks_toggle, self.stacksTree)
-        column = gtk.TreeViewColumn("Installed", cell, active=1)
-        column.set_cell_data_func(cell, self.hide_if_parent)
-        column.set_expand(False)
-        tree_view.append_column(column)
-
-        self.stacksTreestore = gtk.TreeStore(str, bool, bool, str) # Name, show in Mistika, is folder, file path
-        self.stacksFilter = self.stacksTreestore.filter_new();
-        self.stacksFilter.set_visible_func(self.FilterTree, (filterEntry, self.stacksTree));
-        self.stacksTree.set_model(self.stacksFilter)
-        self.stacksTree.expand_all()
-        # self.gui_update_stacks()
-
-        scrolled_window = gtk.ScrolledWindow()
-        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
-        scrolled_window.add(self.stacksTree)
-        #vbox.pack_start(scrolled_window)
-        notebook.append_page(scrolled_window, gtk.Label('Stacks'))
+        notebook.append_page(self.init_stacks_window(), gtk.Label('Stacks'))
 
         #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
         self.sharedTree = gtk.TreeView()
@@ -450,9 +424,8 @@ class PyApp(gtk.Window):
                 continue
             if files[path]['isdir']:
                 continue
-            for key in file_type_defaults:
-                if not key in files[path]:
-                    files[path][key] = file_type_defaults[key]
+            for key, value in file_type_defaults.iteritems():
+                files[path].setdefault(key, value)
             if path in tools_installed:
                 files[path]['Show in Mistika'] = True
             for line in crontab:
@@ -538,7 +511,8 @@ class PyApp(gtk.Window):
                         'isdir' : False,
                         'alias' : name
                     }
-                    files[path].update(file_type_defaults)
+                    for key, value in file_type_defaults.iteritems():
+                        files[path].setdefault(key, value)
                     for child in root:
                         files[path][child.tag] = child.text
                 else:
@@ -568,22 +542,75 @@ class PyApp(gtk.Window):
             else:
                 tree_store.append(iters[dir_name], [base_name, item['Show in Mistika'], False, item_path])
 
+    def init_stacks_window(self):
+        tree        = self.stacks_tree      = gtk.TreeView()
+        treestore   = self.stacks_treestore = gtk.TreeStore(str, bool, bool, str, bool) # Name, installed, is folder, file path, requires installation (has dependencies)
+        tree_filter = self.stacks_filter    = treestore.filter_new();
+        cell = gtk.CellRendererText()
+        column = gtk.TreeViewColumn('', cell, text=0)
+        column.set_resizable(True)
+        column.set_expand(True)
+        tree.append_column(column)
+        cell = gtk.CellRendererToggle()
+        cell.connect("toggled", self.on_stacks_toggle, tree)
+        toolsTreeInMistikaColumn = gtk.TreeViewColumn("Installed", cell, active=1)
+        toolsTreeInMistikaColumn.set_cell_data_func(cell, self.hide_if_parent)
+        toolsTreeInMistikaColumn.set_expand(False)
+        toolsTreeInMistikaColumn.set_resizable(True)
+        tree.append_column(toolsTreeInMistikaColumn)
+        tree_filter.set_visible_func(self.FilterTree, (self.filterEntry, tree));
+        tree.set_model(tree_filter)
+        tree.expand_all()
+        scrolled_window = gtk.ScrolledWindow()
+        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+        scrolled_window.add(tree)
+        t = threading.Thread(target=self.io_populate_stacks)
+        self.threads.append(t)
+        t.setDaemon(True)
+        t.start()
+        return scrolled_window
+
+    def io_populate_stacks(self):
+        file_type = 'Stacks'
+        file_type_defaults = {
+            'Installed' : True,
+            'Dependent' : False
+        }
+        if not file_type in self.files:
+            self.files[file_type] = {}
+        files = self.files[file_type]
+        for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
+            for name in dirs:
+                path = os.path.join(root, name)
+                files[path] = {'isdir' : True}
+            for name in filenames:
+                path = os.path.join(root, name)
+                if os.path.splitext(name)[1].lower() in STACK_EXTENSIONS:
+                    files[path] = {'isdir' : False}
+        for path in files:
+            if not os.path.exists(path):
+                del files[path]
+                continue
+            for key, value in file_type_defaults.iteritems():
+                files[path].setdefault(key, value)
+            if files[path]['isdir']:
+                continue
+        gobject.idle_add(self.gui_update_stacks)
+
     def gui_update_stacks(self):
-        tree_store = self.afterscriptsTreestore # Name, show in Mistika, is folder
+        tree = self.stacks_treestore # Name, installed, is folder, file path, requires installation (has dependencies)
         iters = self.iters
         items = self.files['Stacks']
         for item_path in sorted(items):
             item = items[item_path]
             dir_name = os.path.dirname(item_path)
             base_name = os.path.basename(item_path)
-            print item_path,
-            print dir_name
             if not dir_name in iters:
                 iters[dir_name] = None
             if item['isdir']:
-                iters[item_path] = tree_store.append(iters[dir_name], [base_name, False, True, item_path])
+                iters[item_path] = tree.append(iters[dir_name], [base_name, False, True, item_path, False])
             else:
-                tree_store.append(iters[dir_name], [base_name, item['Show in Mistika'], True, item_path])
+                tree.append(iters[dir_name], [base_name, item['Installed'], False, item_path, item['Dependent']])
 
     def gui_update_configs(self):
         tree_store = self.sharedTreestore # Name, show in Mistika, is folder
