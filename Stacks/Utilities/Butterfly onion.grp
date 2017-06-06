@@ -1,0 +1,195 @@
+Group(
+groupType(1)
+trimDesc( head(0) speed(1) )
+ungroup(1)
+p(
+	n((Empty))
+	X(0) Y(7) W(4400) F(0)
+)
+Group(
+groupType(3)
+p(
+	n(Butterfly onion)
+	X(0) Y(7) W(4400) F(1874)
+	L(-23)
+)
+F(
+T(142)
+p(
+	X(0) Y(1) W(4400) F(1874)
+	L(0)
+s(
+	T(n() C(11) t(1))
+	c(n(Options/Mirror)	m(0)	M(3)	d(0) s(None) s(Horizontal) s(Vertical) s(Rotate))
+	c(n(Options/Result Size As)	m(0)	M(2)	d(0) s(Input) s(Anamorphic scale to Project) s(1:1 pixels scale to Project)	p(m(4)v(1)))
+	c(n(Options/Quality)	m(0)	M(4)	d(2) s(Nearest) s(Bilinear) s(Bicubic) s(7 Taps) s(15 Taps))
+	c(n(Scale/ScaleX)	m(0)	M(100000)	d(100)	p(m(0)v(50)))
+	c(n(Scale/ScaleY)	m(0)	M(100000)	d(100)	p(m(0)v(50)))
+	c(n(Offset/OffsetX)	m(-100000)	M(100000)	d(0)	p(m(0)v(25)))
+	c(n(Offset/OffsetY)	m(-100000)	M(100000)	d(0)	p(m(0)v(25)))
+	c(n(crop/Left)	m(0)	M(100)	d(0))
+	c(n(crop/Right)	m(0)	M(100)	d(100))
+	c(n(crop/Up)	m(0)	M(100)	d(100))
+	c(n(crop/Down)	m(0)	M(100)	d(0))
+)
+)
+)
+
+F(
+T(142)
+p(
+	X(0) Y(3) W(4400) F(1874)
+	L(2)
+s(
+	T(n() C(11) t(1))
+	c(n(Options/Mirror)	m(0)	M(3)	d(0) s(None) s(Horizontal) s(Vertical) s(Rotate)	p(m(4)v(1)))
+	c(n(Options/Result Size As)	m(0)	M(2)	d(0) s(Input) s(Anamorphic scale to Project) s(1:1 pixels scale to Project)	p(m(4)v(1)))
+	c(n(Options/Quality)	m(0)	M(4)	d(2) s(Nearest) s(Bilinear) s(Bicubic) s(7 Taps) s(15 Taps))
+	c(n(Scale/ScaleX)	m(0)	M(100000)	d(100)	p(m(0)v(50)))
+	c(n(Scale/ScaleY)	m(0)	M(100000)	d(100)	p(m(0)v(50)))
+	c(n(Offset/OffsetX)	m(-100000)	M(100000)	d(0)	p(m(0)v(-25)))
+	c(n(Offset/OffsetY)	m(-100000)	M(100000)	d(0)	p(m(0)v(25)))
+	c(n(crop/Left)	m(0)	M(100)	d(0))
+	c(n(crop/Right)	m(0)	M(100)	d(100))
+	c(n(crop/Up)	m(0)	M(100)	d(100))
+	c(n(crop/Down)	m(0)	M(100)	d(0))
+)
+)
+)
+
+F(
+T(132)
+p(
+	X(0) Y(4) W(4400) F(1874)
+	L(-6)
+s(
+	T(n() C(33) t(1))
+	c(n(Mode/Mode)	m(0)	M(2)	d(1) s(SW) s(HW) s(HW-HDR))
+	c(n(Red/X)	m(0)	M(9)	d(0) s(R1) s(G1) s(B1) s(A1) s(Luma1) s(R2) s(G2) s(B2) s(A2) s(Luma2))
+	c(n(Red/Operation)	m(0)	M(12)	d(0) s(X Only) s(Only Y) s(Plus) s(Minus) s(And) s(Or) s(XOr) s(Min) s(Max) s(Diff) s(Out=1) s(Out=0) s(Div)	p(m(0)v(2)))
+	c(n(Red/Y)	m(0)	M(9)	d(5) s(R1) s(G1) s(B1) s(A1) s(Luma1) s(R2) s(G2) s(B2) s(A2) s(Luma2))
+	c(n(Red/InvertX)	m(0)	M(3)	d(0) s(No) s(Yes))
+	c(n(Red/InvertOut)	m(0)	M(1)	d(0) s(No) s(Yes))
+	c(n(Red/InvertY)	m(0)	M(1)	d(0) s(No) s(Yes))
+	c(n(Red/Scale)	m(-1000000)	M(1000000)	d(100))
+	c(n(Red/Bias)	m(-1000000)	M(1000000)	d(0))
+	c(n(Green/X)	m(0)	M(9)	d(1) s(R1) s(G1) s(B1) s(A1) s(Luma1) s(R2) s(G2) s(B2) s(A2) s(Luma2))
+	c(n(Green/Operation)	m(0)	M(12)	d(0) s(X Only) s(Only Y) s(Plus) s(Minus) s(And) s(Or) s(XOr) s(Min) s(Max) s(Diff) s(Out=1) s(Out=0) s(Div)	p(m(0)v(2)))
+	c(n(Green/Y)	m(0)	M(9)	d(6) s(R1) s(G1) s(B1) s(A1) s(Luma1) s(R2) s(G2) s(B2) s(A2) s(Luma2))
+	c(n(Green/InvertX)	m(0)	M(3)	d(0) s(No) s(Yes))
+	c(n(Green/InvertOut)	m(0)	M(1)	d(0) s(No) s(Yes))
+	c(n(Green/InvertY)	m(0)	M(1)	d(0) s(No) s(Yes))
+	c(n(Green/Scale)	m(-1000000)	M(1000000)	d(100))
+	c(n(Green/Bias)	m(-1000000)	M(1000000)	d(0))
+	c(n(Blue/X)	m(0)	M(9)	d(2) s(R1) s(G1) s(B1) s(A1) s(Luma1) s(R2) s(G2) s(B2) s(A2) s(Luma2))
+	c(n(Blue/Operation)	m(0)	M(12)	d(0) s(X Only) s(Only Y) s(Plus) s(Minus) s(And) s(Or) s(XOr) s(Min) s(Max) s(Diff) s(Out=1) s(Out=0) s(Div)	p(m(0)v(2)))
+	c(n(Blue/Y)	m(0)	M(9)	d(7) s(R1) s(G1) s(B1) s(A1) s(Luma1) s(R2) s(G2) s(B2) s(A2) s(Luma2))
+	c(n(Blue/InvertX)	m(0)	M(3)	d(0) s(No) s(Yes))
+	c(n(Blue/InvertOut)	m(0)	M(1)	d(0) s(No) s(Yes))
+	c(n(Blue/InvertY)	m(0)	M(1)	d(0) s(No) s(Yes))
+	c(n(Blue/Scale)	m(-1000000)	M(1000000)	d(100))
+	c(n(Blue/Bias)	m(-1000000)	M(1000000)	d(0))
+	c(n(Alpha/X)	m(0)	M(9)	d(3) s(R1) s(G1) s(B1) s(A1) s(Luma1) s(R2) s(G2) s(B2) s(A2) s(Luma2))
+	c(n(Alpha/Operation)	m(0)	M(12)	d(0) s(X Only) s(Only Y) s(Plus) s(Minus) s(And) s(Or) s(XOr) s(Min) s(Max) s(Diff) s(Out=1) s(Out=0) s(Div)	p(m(0)v(2)))
+	c(n(Alpha/Y)	m(0)	M(9)	d(8) s(R1) s(G1) s(B1) s(A1) s(Luma1) s(R2) s(G2) s(B2) s(A2) s(Luma2))
+	c(n(Alpha/InvertX)	m(0)	M(3)	d(0) s(No) s(Yes))
+	c(n(Alpha/InvertOut)	m(0)	M(1)	d(0) s(No) s(Yes))
+	c(n(Alpha/InvertY)	m(0)	M(1)	d(0) s(No) s(Yes))
+	c(n(Alpha/Scale)	m(-1000000)	M(1000000)	d(100))
+	c(n(Alpha/Bias)	m(-1000000)	M(1000000)	d(0))
+)
+)
+)
+
+U(
+i(0)
+p(
+	n(Dummy 1)
+	X(0) Y(-3) W(4400) F(322)
+)
+)
+
+U(
+i(1)
+p(
+	n(Dummy 2)
+	X(0) Y(0) W(4400) F(0)
+)
+)
+
+U(
+i(0)
+p(
+	n(Dummy 1)
+	X(0) Y(2) W(4400) F(322)
+)
+)
+
+U(
+i(1)
+p(
+	n(Dummy 2)
+	X(0) Y(-6) W(4400) F(1874)
+)
+)
+
+F(
+T(142)
+p(
+	X(0) Y(-5) W(4400) F(1874)
+	L(-6)
+s(
+	T(n() C(11) t(1))
+	c(n(Options/Mirror)	m(0)	M(3)	d(0) s(None) s(Horizontal) s(Vertical) s(Rotate))
+	c(n(Options/Result Size As)	m(0)	M(2)	d(0) s(Input) s(Anamorphic scale to Project) s(1:1 pixels scale to Project)	p(m(4)v(1)))
+	c(n(Options/Quality)	m(0)	M(4)	d(2) s(Nearest) s(Bilinear) s(Bicubic) s(7 Taps) s(15 Taps))
+	c(n(Scale/ScaleX)	m(0)	M(100000)	d(100)	p(m(0)v(50)))
+	c(n(Scale/ScaleY)	m(0)	M(100000)	d(100)	p(m(0)v(50)))
+	c(n(Offset/OffsetX)	m(-100000)	M(100000)	d(0))
+	c(n(Offset/OffsetY)	m(-100000)	M(100000)	d(0)	p(m(0)v(-25)))
+	c(n(crop/Left)	m(0)	M(100)	d(0))
+	c(n(crop/Right)	m(0)	M(100)	d(100))
+	c(n(crop/Up)	m(0)	M(100)	d(100))
+	c(n(crop/Down)	m(0)	M(100)	d(0))
+)
+)
+)
+
+F(
+T(142)
+p(
+	X(0) Y(-2) W(4400) F(1874)
+	L(-3)
+s(
+	T(n() C(11) t(1))
+	c(n(Options/Mirror)	m(0)	M(3)	d(0) s(None) s(Horizontal) s(Vertical) s(Rotate))
+	c(n(Options/Result Size As)	m(0)	M(2)	d(0) s(Input) s(Anamorphic scale to Project) s(1:1 pixels scale to Project)	p(m(4)v(1)))
+	c(n(Options/Quality)	m(0)	M(4)	d(2) s(Nearest) s(Bilinear) s(Bicubic) s(7 Taps) s(15 Taps))
+	c(n(Scale/ScaleX)	m(0)	M(100000)	d(100)	p(m(0)v(50)))
+	c(n(Scale/ScaleY)	m(0)	M(100000)	d(100)	p(m(0)v(50)))
+	c(n(Offset/OffsetX)	m(-100000)	M(100000)	d(0))
+	c(n(Offset/OffsetY)	m(-100000)	M(100000)	d(0)	p(m(0)v(-25)))
+	c(n(crop/Left)	m(0)	M(100)	d(0))
+	c(n(crop/Right)	m(0)	M(100)	d(100))
+	c(n(crop/Up)	m(0)	M(100)	d(100))
+	c(n(crop/Down)	m(0)	M(100)	d(0))
+)
+)
+)
+
+F(
+T(22)
+p(
+	X(0) Y(-1) W(4400) F(1874)
+	L(-5)
+s(
+	T(n() C(1) t(1))
+	c(n(Blend)	m(0)	M(100)	d(100)	p(m(0)v(50)))
+)
+)
+)
+
+)
+
+)
+

@@ -1,0 +1,73 @@
+Group(
+groupType(1)
+trimDesc( head(0) speed(1) )
+ungroup(1)
+p(
+	n(segment+1)
+	X(4192) Y(6) W(500) F(0)
+)
+C(
+f(0.5) l(0.5)
+F()
+p(
+	n(segment)
+	X(4192) Y(5) W(500) F(0)
+)
+d(
+	I(
+		s(0) e(0) t(000) T(0)  i(0)
+		L( d(Xfs.dev) p(/Volumes/MATERIAL_HF/MISTIKA_MEDIA/2015_Mastering/MISTIKA_JS/) n(L_segment.js) f(RGB10:RGB10) )
+		H( d(Xfs.dev) p(/Volumes/CENTRAL/Archive/Video/Mistika/Segment/) n(segment.js) f(RGB10:RGB10) )
+	)
+)
+AudioRoute(
+)
+)
+
+F(
+T(132)
+p(
+	X(4192) Y(6) W(500) F(499)
+	L(4)
+s(
+	T(n() C(33) t(1))
+	Folders(102000)
+	c(R(0)	n(Mode/Mode)	m(0)	M(2)	d(1) s(SW) s(HW) s(HW-HDR))
+	c(R(1)	n(Red/X)	m(0)	M(9)	d(0) s(R1) s(G1) s(B1) s(A1) s(Luma1) s(R2) s(G2) s(B2) s(A2) s(Luma2))
+	c(R(2)	n(Red/Operation)	m(0)	M(12)	d(0) s(X Only) s(Only Y) s(Plus) s(Minus) s(And) s(Or) s(XOr) s(Min) s(Max) s(Diff) s(Out=1) s(Out=0) s(Div)E(v(1)))
+	c(R(3)	n(Red/Y)	m(0)	M(9)	d(5) s(R1) s(G1) s(B1) s(A1) s(Luma1) s(R2) s(G2) s(B2) s(A2) s(Luma2))
+	c(R(4)	n(Red/InvertX)	m(0)	M(3)	d(0) s(No) s(Yes))
+	c(R(5)	n(Red/InvertOut)	m(0)	M(1)	d(0) s(No) s(Yes))
+	c(R(6)	n(Red/InvertY)	m(0)	M(1)	d(0) s(No) s(Yes))
+	c(R(7)	n(Red/Scale)	m(-1000000)	M(1000000)	d(100))
+	c(R(8)	n(Red/Bias)	m(-1000000)	M(1000000)	d(0))
+	c(R(9)	n(Green/X)	m(0)	M(9)	d(1) s(R1) s(G1) s(B1) s(A1) s(Luma1) s(R2) s(G2) s(B2) s(A2) s(Luma2))
+	c(R(10)	n(Green/Operation)	m(0)	M(12)	d(0) s(X Only) s(Only Y) s(Plus) s(Minus) s(And) s(Or) s(XOr) s(Min) s(Max) s(Diff) s(Out=1) s(Out=0) s(Div)E(v(1)))
+	c(R(11)	n(Green/Y)	m(0)	M(9)	d(6) s(R1) s(G1) s(B1) s(A1) s(Luma1) s(R2) s(G2) s(B2) s(A2) s(Luma2))
+	c(R(12)	n(Green/InvertX)	m(0)	M(3)	d(0) s(No) s(Yes))
+	c(R(13)	n(Green/InvertOut)	m(0)	M(1)	d(0) s(No) s(Yes))
+	c(R(14)	n(Green/InvertY)	m(0)	M(1)	d(0) s(No) s(Yes))
+	c(R(15)	n(Green/Scale)	m(-1000000)	M(1000000)	d(100))
+	c(R(16)	n(Green/Bias)	m(-1000000)	M(1000000)	d(0))
+	c(R(17)	n(Blue/X)	m(0)	M(9)	d(2) s(R1) s(G1) s(B1) s(A1) s(Luma1) s(R2) s(G2) s(B2) s(A2) s(Luma2))
+	c(R(18)	n(Blue/Operation)	m(0)	M(12)	d(0) s(X Only) s(Only Y) s(Plus) s(Minus) s(And) s(Or) s(XOr) s(Min) s(Max) s(Diff) s(Out=1) s(Out=0) s(Div)E(v(1)))
+	c(R(19)	n(Blue/Y)	m(0)	M(9)	d(7) s(R1) s(G1) s(B1) s(A1) s(Luma1) s(R2) s(G2) s(B2) s(A2) s(Luma2))
+	c(R(20)	n(Blue/InvertX)	m(0)	M(3)	d(0) s(No) s(Yes))
+	c(R(21)	n(Blue/InvertOut)	m(0)	M(1)	d(0) s(No) s(Yes))
+	c(R(22)	n(Blue/InvertY)	m(0)	M(1)	d(0) s(No) s(Yes))
+	c(R(23)	n(Blue/Scale)	m(-1000000)	M(1000000)	d(100))
+	c(R(24)	n(Blue/Bias)	m(-1000000)	M(1000000)	d(0))
+	c(R(25)	n(Alpha/X)	m(0)	M(9)	d(3) s(R1) s(G1) s(B1) s(A1) s(Luma1) s(R2) s(G2) s(B2) s(A2) s(Luma2))
+	c(R(26)	n(Alpha/Operation)	m(0)	M(12)	d(0) s(X Only) s(Only Y) s(Plus) s(Minus) s(And) s(Or) s(XOr) s(Min) s(Max) s(Diff) s(Out=1) s(Out=0) s(Div)E(v(1)))
+	c(R(27)	n(Alpha/Y)	m(0)	M(9)	d(8) s(R1) s(G1) s(B1) s(A1) s(Luma1) s(R2) s(G2) s(B2) s(A2) s(Luma2))
+	c(R(28)	n(Alpha/InvertX)	m(0)	M(3)	d(0) s(No) s(Yes))
+	c(R(29)	n(Alpha/InvertOut)	m(0)	M(1)	d(0) s(No) s(Yes))
+	c(R(30)	n(Alpha/InvertY)	m(0)	M(1)	d(0) s(No) s(Yes))
+	c(R(31)	n(Alpha/Scale)	m(-1000000)	M(1000000)	d(100))
+	c(R(32)	n(Alpha/Bias)	m(-1000000)	M(1000000)	d(0))
+)
+)
+)
+
+)
+
