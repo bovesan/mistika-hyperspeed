@@ -28,7 +28,8 @@ AUTORUN_TIMES = {
 CONFIG_FOLDER = os.path.expanduser(CONFIG_FOLDER)
 os.chdir(os.path.dirname(sys.argv[0]))
 
-import hyperspeed
+import hyperspeed.manage
+from hyperspeed import mistika
 
 def md5(fname):
     hash_md5 = hashlib.md5()
@@ -451,9 +452,8 @@ class PyApp(gtk.Window):
             self.files[file_type] = {}
         files = self.files[file_type]
         # Installed tools
-        config_path = os.path.expanduser(hyperspeed.mistika.shared_path + '/config/LinuxMistikaTools')
         tools_installed = []
-        for line in open(config_path):
+        for line in open(mistika.tools_path):
             line_alias, line_path = line.strip().split(' ', 1)
             tools_installed.append(line_path)
         print repr(tools_installed)
@@ -761,14 +761,13 @@ class PyApp(gtk.Window):
             treestore = treestore.get_model()
         except AttributeError:
             pass
-        config_path = os.path.expanduser(hyperspeed.mistika.shared_path + '/config/LinuxMistikaTools')
         new_config = ''
         alias = treestore[path][0]
         alias = alias.replace(' ', '_')
         activated = not treestore[path][1]
         file_path = treestore[path][4]
         stored = False
-        for line in open(config_path):
+        for line in open(mistika.tools_path):
             line_alias, line_path = line.strip().split(' ', 1)
             if file_path == line_path:
                 if activated:
@@ -783,7 +782,7 @@ class PyApp(gtk.Window):
             new_config += '%s %s\n' % (alias, file_path)
         print '\nNew config:'
         print new_config
-        open(config_path, 'w').write(new_config)
+        open(mistika.tools_path, 'w').write(new_config)
         treestore[path][1] = activated
 
     def on_autorun_set(self, widget, path, text):

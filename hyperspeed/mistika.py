@@ -6,23 +6,23 @@ import re
 from xml.etree import ElementTree
 from distutils.version import LooseVersion
 
-def get_mistikarc_path(mistika_env_path):
+def get_mistikarc_path(env_folder):
     mistikarc_paths = [
-    mistika_env_path + '/.mistikarc',
-    mistika_env_path + '/mistikarc.cfg',
-    mistika_env_path + '/.mambarc',
+    env_folder + '/.mistikarc',
+    env_folder + '/mistikarc.cfg',
+    env_folder + '/.mambarc',
     ]
     while len(mistikarc_paths) > 0 and not os.path.exists(mistikarc_paths[0]):
         del mistikarc_paths[0]
     if len(mistikarc_paths) == 0:
-        print 'Error: mistikarc config not found in %s' % mistika_env_path
+        print 'Error: mistikarc config not found in %s' % env_folder
         return False
     return mistikarc_paths[0]
 
-def get_current_project(shared_path, user):
+def get_current_project(shared_folder, user):
     project = None
     latest_project_time = 0
-    for line in open(os.path.join(shared_path, "users/%s/projects.cfg" % user)).readlines():
+    for line in open(os.path.join(shared_folder, "users/%s/projects.cfg" % user)).readlines():
         try:
             project_name, project_time = line.split()
             if project_time > latest_project_time:
@@ -33,33 +33,33 @@ def get_current_project(shared_path, user):
     return project
 
 def reload():
-    global mistika_env_path, shared_path, version, project, user, settings, product
-    mistika_env_path = os.path.realpath(os.path.expanduser("~/MISTIKA-ENV"))
-    if os.path.exists(mistika_env_path):
+    global env_folder, tools_path, shared_folder, version, project, user, settings, product
+    env_folder = os.path.realpath(os.path.expanduser("~/MISTIKA-ENV"))
+    if os.path.exists(env_folder):
         product = 'Mistika'
     else:
-        mistika_env_path = os.path.realpath(os.path.expanduser("~/MAMBA-ENV"))
-        if os.path.exists(mistika_env_path):
+        env_folder = os.path.realpath(os.path.expanduser("~/MAMBA-ENV"))
+        if os.path.exists(env_folder):
             product = 'Mamba'
         else:
             product = False
-    shared_path = os.path.expanduser("~/MISTIKA-SHARED")
-    version = LooseVersion('.'.join(re.findall(r'\d+', os.path.basename(mistika_env_path))[:3]))
+    shared_folder = os.path.expanduser("~/MISTIKA-SHARED")
+    version = LooseVersion('.'.join(re.findall(r'\d+', os.path.basename(env_folder))[:3]))
     try:
         version.vstring
     except AttributeError:
         version = LooseVersion('0')
 
     if version < LooseVersion('8.6'):
-        project = open(os.path.join(mistika_env_path, '%s_PRJ' % product.upper())).readline().splitlines()[0]
+        project = open(os.path.join(env_folder, '%s_PRJ' % product.upper())).readline().splitlines()[0]
         user = False
     else:
         try:
-            user = ElementTree.parse(os.path.join(shared_path, "users/login.xml")).getroot().find('autoLogin/lastUser').text
+            user = ElementTree.parse(os.path.join(shared_folder, "users/login.xml")).getroot().find('autoLogin/lastUser').text
         except:
             user = 'MistikaUser'
-        project = get_current_project(shared_path, user)
-    mistikarc_path = get_mistikarc_path(mistika_env_path)
+        project = get_current_project(shared_folder, user)
+    mistikarc_path = get_mistikarc_path(env_folder)
     settings = {}
     for line in open(mistikarc_path):
         if line.strip() == '':
@@ -71,5 +71,6 @@ def reload():
         elif value.lower() == 'false':
             value = False
         settings[key] = value
+    tools_path = os.path.join(shared_folder, 'config/LinuxMistikaTools')
 
 reload()
