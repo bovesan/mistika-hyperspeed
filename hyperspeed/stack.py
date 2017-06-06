@@ -2,6 +2,24 @@
 
 import os
 import time
+import mistika
+
+class Dependency:
+    def __init__(self, name, f_type, start = False, end = False):
+        self.name = name
+        self.type = f_type
+        self.start = start
+        self.end = end
+    def __str__(self):
+        return self.name
+    def __repr__(self):
+        return self.name
+    def check(self):
+        if self.name.startswith('/'):
+            path = self.name
+        elif self.type == 'glsl':
+            path = os.path.join(mistika.glsl_folder, self.name)
+        return os.path.exists(path)
 
 class Stack:
     def __init__(self, path):
@@ -13,17 +31,10 @@ class Stack:
             self._dependencies
         except AttributeError:
             list(self.iter_dependencies())
-        return self._dependencies.keys()
-    @property
-    def dependencies_detailed(self):
-        try:
-            self._dependencies
-        except AttributeError:
-            list(self.iter_dependencies())
         return self._dependencies
 
     def iter_dependencies(self):
-        self._dependencies = {}
+        self._dependencies = []
         try:
             level_names = []
             fx_type = None
@@ -67,16 +78,11 @@ class Stack:
                             f_type = 'glsl'
                         if f_path:
                             if '%' in f_path:
-                                self._dependencies[f_path] = {
-                                    'type' : f_type,
-                                    'Start frame' : CdIs,
-                                    'End frame' : CdIe
-                                }
+                                dependency = Dependency(f_path, f_type, CdIs, CdIe)
                             else:
-                                self._dependencies[f_path] = {
-                                    'type' : f_type
-                                }
-                            yield f_path
+                                dependency = Dependency(f_path, f_type)
+                            self._dependencies.append(dependency)
+                            yield dependency
                         char_buffer = ''
                         del level_names[-1]
                     elif len(level_names) > 0 and level_names[-1] == 'Shape':

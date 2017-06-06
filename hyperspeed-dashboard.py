@@ -555,6 +555,8 @@ class PyApp(gtk.Window):
         cell.connect("toggled", self.on_stacks_toggle, tree)
         toolsTreeInMistikaColumn = gtk.TreeViewColumn("Installed", cell, active=1)
         toolsTreeInMistikaColumn.set_cell_data_func(cell, self.hide_if_parent)
+        toolsTreeInMistikaColumn.add_attribute(cell, 'activatable', 4)
+        #linksTreeUrlColumn.add_attribute(cell2, 'underline-set', 3)
         toolsTreeInMistikaColumn.set_expand(False)
         toolsTreeInMistikaColumn.set_resizable(True)
         tree.append_column(toolsTreeInMistikaColumn)
@@ -591,6 +593,15 @@ class PyApp(gtk.Window):
             if not os.path.exists(path):
                 del files[path]
                 continue
+            if files[path]['isdir']:
+                continue
+            if not 'dependencies' in files[path]:
+                files[path]['dependencies'] = hyperspeed.Stack(path).dependencies
+            if len(files[path]['dependencies']) > 0:
+                files[path]['Dependent'] = True
+            for dependency in files[path]['dependencies']:
+                if not dependency.check():
+                    files[path]['Installed'] = False
             for key, value in file_type_defaults.iteritems():
                 files[path].setdefault(key, value)
             if files[path]['isdir']:

@@ -36,6 +36,7 @@ def reload():
     global env_folder, tools_path, shared_folder, version, project, user, settings, product
     global afterscripts_path
     global scripts_folder
+    global glsl_folder
     env_folder = os.path.realpath(os.path.expanduser("~/MISTIKA-ENV"))
     if os.path.exists(env_folder):
         product = 'Mistika'
@@ -76,5 +77,6 @@ def reload():
     tools_path = os.path.join(shared_folder, 'config/LinuxMistikaTools')
     afterscripts_path = os.path.join(env_folder, 'etc/setup/RenderEndScript.cfg')
     scripts_folder = os.path.join(env_folder, 'bin/scripts/')
+    glsl_folder = os.path.join(env_folder, 'etc/GLSL')
 
 reload()
