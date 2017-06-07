@@ -52,7 +52,7 @@ def md5(fname):
 
 def get_crontab_lines():
     try:
-        crontab = subprocess.check_output(['crontab', '-l']).splitlines()
+        crontab = subprocess.Popen(['crontab', '-l'], stdout=subprocess.PIPE).communicate()[0].splitlines()
     except subprocess.CalledProcessError:
         crontab = []
     return crontab
