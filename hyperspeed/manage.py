@@ -20,8 +20,9 @@ def install(link_target, link):
 		backup_path = link+BACKUP_SUFFIX
 		desc = '%s -> %s' % (link, link_target)
 		try:
-			os.rename(link, backup_path)
-			print 'Moved %s to %s' % (link, backup_path)
+			if os.path.exists(link):
+				os.rename(link, backup_path)
+				print 'Moved %s to %s' % (link, backup_path)
 			os.symlink(link_target, link)
 			print 'Created link: %s' % desc
 			return True
@@ -38,20 +39,17 @@ def remove(link_target, link):
 		if not os.path.islink(link):
 			print 'Not a link: %s' % link
 			return False
-		if not os.path.exists(backup_path):
-			print 'Backup file not found: %s' % backup_path
-			print 'Aborting'
-			return False
 		try:
 			os.unlink(link)
 			print 'Removed link: %s' % link
 		except OSError:
 			print 'Error: Cannot remove link: %s' % link
 			return False
-		try:
-			os.rename(backup_path, link)
-			print 'Moved %s to %s' % (backup_path, link)
-			return True
-		except OSError:
-			print 'Cannot restore backup: %s' % backup_path
-			return False
+		if os.path.exists(backup_path):
+			try:
+				os.rename(backup_path, link)
+				print 'Moved %s to %s' % (backup_path, link)
+				return True
+			except OSError:
+				print 'Cannot restore backup: %s' % backup_path
+				return False

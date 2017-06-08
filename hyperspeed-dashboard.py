@@ -14,6 +14,8 @@ import subprocess
 import threading
 import xml.etree.ElementTree as ET
 
+VERSION_STRING = '<span color="#ff9900" weight="bold">Development version.</span>'
+
 CONFIG_FOLDER = '~/.mistika-hyperspeed/'
 CONFIG_FILE = 'hyperspeed.cfg'
 STACK_EXTENSIONS = ['.grp', '.fx', '.env']
@@ -83,42 +85,11 @@ class PyApp(gtk.Window):
         }
         class "*" style "theme-fixes"''' % (screen.get_width()/300)
         gtk.rc_parse_string(gtkrc)
-        # gtk.rc_add_default_file(gtkrc)
-        # gtk.rc_reparse_all()
 
         vbox = gtk.VBox(False, 10)
-
-
-        #title = gtk.Label('<span size="38000">Hyperspeed</span>')
-        #title.set_use_markup(gtk.TRUE)
-
-        #halign = gtk.Alignment(0, 0, 0, 0)
-        #halign.add(title)
+        self.filterEntry = gtk.Entry()
+        vbox.pack_start(self.init_toolbar(), False, False, 10)
         self.iters = {}
-        toolbarBox = gtk.HBox(False, 10)
-
-        filterBox = gtk.HBox(False, 10)
-        filterLabel = gtk.Label('Filter: ')
-        filterBox.pack_start(filterLabel, False, False,)
-        filterEntry = gtk.Entry()
-        filterEntry.add_events(gtk.gdk.KEY_RELEASE_MASK)
-        filterEntry.connect("activate", self.on_filter)
-        filterEntry.connect("key-release-event", self.on_filter)
-        filterEntry.grab_focus()
-        self.filterEntry = filterEntry
-        filterBox.pack_start(filterEntry, False, False)
-        toolbarBox.pack_start(filterBox, False, False)
-
-        versionBox = gtk.HBox(False, 2)
-        versionStr = '<span color="#11cc11">Up to date.</span> Updated 27 Nov 2016.'
-        versionLabel = gtk.Label(versionStr)
-        versionLabel.set_use_markup(True)
-        versionBox.pack_start(versionLabel, False, False, 5)
-        updateButton = gtk.Button('Update')
-        #versionBox.pack_start(updateButton, False, False, 5)
-        toolbarBox.pack_end(versionBox, False, False)
-
-        # vbox.pack_start(toolbarBox, False, False, 10)
 
         notebook = gtk.Notebook()
 
@@ -151,7 +122,7 @@ class PyApp(gtk.Window):
         linksTreestore.append(it, ["Online Reel Browser", 'https://bovesan.com/orb', '#9999ff'])
         linksFilter = linksTreestore.filter_new();
         self.linksFilter = linksFilter
-        linksFilter.set_visible_func(self.FilterTree, (filterEntry, self.linksTree));
+        linksFilter.set_visible_func(self.FilterTree, (self.filterEntry, self.linksTree));
         self.linksTree.set_model(linksFilter)
         self.linksTree.expand_all()
 
@@ -322,6 +293,28 @@ class PyApp(gtk.Window):
 
         self.comboEditable = None
         #self.present()
+    def init_toolbar(self):
+        filterEntry = self.filterEntry
+        toolbarBox = gtk.HBox(False, 10)
+        filterBox = gtk.HBox(False, 10)
+        filterLabel = gtk.Label('Filter: ')
+        filterBox.pack_start(filterLabel, False, False,)
+        filterEntry.add_events(gtk.gdk.KEY_RELEASE_MASK)
+        filterEntry.connect("activate", self.on_filter)
+        filterEntry.connect("key-release-event", self.on_filter)
+        filterEntry.grab_focus()
+        filterBox.pack_start(filterEntry, False, False)
+        toolbarBox.pack_start(filterBox, False, False)
+        versionBox = gtk.HBox(False, 2)
+        versionStr = VERSION_STRING
+        versionLabel = gtk.Label(versionStr)
+        versionLabel.set_use_markup(True)
+        versionBox.pack_start(versionLabel, False, False, 5)
+        updateButton = gtk.Button('Update')
+        #versionBox.pack_start(updateButton, False, False, 5)
+        toolbarBox.pack_end(versionBox, False, False)
+        return toolbarBox
+
     def init_tools_window(self):
         tree        = self.tools_tree      = gtk.TreeView()
         treestore   = self.tools_treestore = gtk.TreeStore(str, bool, bool, str, str) # Name, show in Mistika, is folder, autorun, file_path
@@ -648,14 +641,14 @@ class PyApp(gtk.Window):
                 path = os.path.join(root, name)
                 if 'config.xml' in os.listdir(path):
                     tree = ET.parse(os.path.join(path, 'config.xml'))
-                    root = tree.getroot()
+                    treeroot = tree.getroot()
                     files[path] = {'isdir' : False}
-                    for child in root:
+                    for child in treeroot:
                         if child.tag == 'links':
                             files[path][child.tag] = {}
                             for link in child:
                                 link_target = link.find('target').text
-                                link_target = os.path.join(path, link_target)
+                                link_target = os.path.abspath(os.path.join(path, link_target))
                                 link_location = link.find('location').text
                                 if link_location.startswith('MISTIKA-ENV/'):
                                     link_location = os.path.join(mistika.env_folder, link_location[12:])
