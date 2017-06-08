@@ -112,7 +112,7 @@ class PyApp(gtk.Window):
         versionBox = gtk.HBox(False, 2)
         versionStr = '<span color="#11cc11">Up to date.</span> Updated 27 Nov 2016.'
         versionLabel = gtk.Label(versionStr)
-        versionLabel.set_use_markup(gtk.TRUE)
+        versionLabel.set_use_markup(True)
         versionBox.pack_start(versionLabel, False, False, 5)
         updateButton = gtk.Button('Update')
         #versionBox.pack_start(updateButton, False, False, 5)
@@ -125,33 +125,7 @@ class PyApp(gtk.Window):
         notebook.append_page(self.init_tools_window(), gtk.Label('Tools'))
         notebook.append_page(self.init_afterscripts_window(), gtk.Label('Afterscripts'))
         notebook.append_page(self.init_stacks_window(), gtk.Label('Stacks'))
-
-        #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
-        self.sharedTree = gtk.TreeView()
-        cell = gtk.CellRendererText()
-        sharedTreeNameColumn = gtk.TreeViewColumn('', cell, text=0)
-        sharedTreeNameColumn.set_resizable(True)
-        sharedTreeNameColumn.set_expand(True)
-        self.sharedTree.append_column(sharedTreeNameColumn)
-        cell2 = gtk.CellRendererToggle()
-        cell2.connect("toggled", self.on_shared_toggle, self.sharedTree)
-        sharedTreeInMistikaColumn = gtk.TreeViewColumn("Active", cell2, active=1)
-        sharedTreeInMistikaColumn.set_cell_data_func(cell2, self.hide_if_parent)
-        sharedTreeInMistikaColumn.set_expand(False)
-        self.sharedTree.append_column(sharedTreeInMistikaColumn)
-        self.sharedTreestore = gtk.TreeStore(str, bool, bool) # Name, active, is folder
-        # self.gui_update_configs()
-        sharedFilter = self.sharedTreestore.filter_new();
-        self.sharedFilter = sharedFilter
-        sharedFilter.set_visible_func(self.FilterTree, (filterEntry, self.sharedTree));
-        self.sharedTree.set_model(sharedFilter)
-        self.sharedTree.expand_all()
-
-        scrolled_window = gtk.ScrolledWindow()
-        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
-        scrolled_window.add(self.sharedTree)
-        #vbox.pack_start(scrolled_window)
-        notebook.append_page(scrolled_window, gtk.Label('Misc.'))
+        notebook.append_page(self.init_configs_window(), gtk.Label('Configs'))
 
         #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
         self.linksTree = gtk.TreeView()
@@ -632,22 +606,103 @@ class PyApp(gtk.Window):
             else:
                 tree.append(iters[dir_name], [base_name, item['Installed'], False, item_path, item['Dependent']])
 
+    def init_configs_window(self):
+
+        tree        = self.configs_tree      = gtk.TreeView()
+        treestore   = self.configs_treestore = gtk.TreeStore(str, bool, bool, str) # Name, active, is folder, path
+        tree_filter = self.configs_filter    = treestore.filter_new();
+        cell = gtk.CellRendererText()
+        column = gtk.TreeViewColumn('', cell, text=0)
+        column.set_resizable(True)
+        column.set_expand(True)
+        tree.append_column(column)
+        cell = gtk.CellRendererToggle()
+        cell.connect("toggled", self.on_configs_toggle, tree)
+        column = gtk.TreeViewColumn("Active", cell, active=1)
+        column.set_cell_data_func(cell, self.hide_if_parent)
+        column.set_expand(False)
+        column.set_resizable(True)
+        tree.append_column(column)
+        tree_filter.set_visible_func(self.FilterTree, (self.filterEntry, tree));
+        tree.set_model(tree_filter)
+        tree.expand_all()
+        scrolled_window = gtk.ScrolledWindow()
+        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+        scrolled_window.add(tree)
+        t = threading.Thread(target=self.io_populate_configs)
+        self.threads.append(t)
+        t.setDaemon(True)
+        t.start()
+        return scrolled_window
+
+    def io_populate_configs(self):
+        file_type = 'Misc'
+        file_type_defaults = {
+            'Active' : False
+        }
+        if not file_type in self.files:
+            self.files[file_type] = {}
+        files = self.files[file_type]
+        for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
+            for name in dirs:
+                path = os.path.join(root, name)
+                if 'config.xml' in os.listdir(path):
+                    tree = ET.parse(os.path.join(path, 'config.xml'))
+                    root = tree.getroot()
+                    files[path] = {'isdir' : False}
+                    for child in root:
+                        if child.tag == 'links':
+                            files[path][child.tag] = {}
+                            for link in child:
+                                link_target = link.find('target').text
+                                link_target = os.path.join(path, link_target)
+                                link_location = link.find('location').text
+                                if link_location.startswith('MISTIKA-ENV/'):
+                                    link_location = os.path.join(mistika.env_folder, link_location[12:])
+                                files[path][child.tag][link_target] = link_location
+                                
+                        elif child.tag == 'manage':
+                            files[path][child.tag] = child.text.lower() == 'true'
+                        else:
+                            files[path][child.tag] = child.text
+                else:
+                    files[path] = {'isdir' : True}
+        for path in files:
+            if not os.path.exists(path):
+                del files[path]
+                continue
+            if files[path]['isdir']:
+                continue
+            detected = True
+            if files[path]['manage']:
+                try:
+                    if subprocess.call([os.path.join(path, 'manage'), 'detect']) > 0:
+                        detected = False
+                except OSError as e:
+                    detected = False
+            if 'links' in files[path]:
+                print repr(files[path]['links'])
+                for link_target, link in files[path]['links'].iteritems():
+                    if not hyperspeed.manage.detect(link_target, link):
+                        detected = False
+            files[path]['Active'] = detected
+            for key, value in file_type_defaults.iteritems():
+                files[path].setdefault(key, value)
+        gobject.idle_add(self.gui_update_configs)
     def gui_update_configs(self):
-        tree_store = self.sharedTreestore # Name, show in Mistika, is folder
+        tree = self.configs_treestore # Name, show in Mistika, is folder
         iters = self.iters
         items = self.files['Misc']
         for item_path in sorted(items):
             item = items[item_path]
             dir_name = os.path.dirname(item_path)
             base_name = os.path.basename(item_path)
-            print item_path,
-            print dir_name
             if not dir_name in iters:
                 iters[dir_name] = None
             if item['isdir']:
-                iters[item_path] = tree_store.append(iters[dir_name], [base_name, False, True])
+                iters[item_path] = tree.append(iters[dir_name], [base_name, False, True, item_path])
             else:
-                tree_store.append(iters[dir_name], [base_name, item['Active'], True])
+                tree.append(iters[dir_name], [base_name, item['Active'], False, item_path])
 
 
     def files_update(self):
@@ -959,14 +1014,25 @@ class PyApp(gtk.Window):
         print 'Not yet implemented'
         pass
 
-    def on_shared_toggle(self, cellrenderertoggle, path, *ignore):
-        name = self.sharedTreestore[path][0]
-        state = not self.sharedTreestore[path][1]
-        self.sharedTreestore[path][1] = state
-        #print name + ' ' + repr(state)
+    def on_configs_toggle(self, cellrenderertoggle, treepath, *ignore):
+        tree = self.configs_treestore
+        name = tree[treepath][0]
+        state = not tree[treepath][1]
+        path = tree[treepath][3]
+        f_item = self.files['Misc'][path]
+        print repr(f_item)
+        links = f_item['links']
+        if state: # Install
+            for link_target, link in links.iteritems():
+                state = state and hyperspeed.manage.install(link_target, link)
+        else: # remove
+            for link_target, link in links.iteritems():
+                hyperspeed.manage.remove(link_target, link)
+        tree[treepath][1] = state
+
     def on_tools_run(self, treeview, path, view_column, *ignore):
 
-        file_path = self.toolsTreestore[path][4]
+        file_path = self.tools_treestore[path][4]
         print file_path
         try:
             subprocess.Popen(['konsole', '-e', os.path.join(self.config['app_folder'], 'res/scripts/bash_wrapper.sh'), file_path])

@@ -46,7 +46,7 @@ def reload():
             product = 'Mamba'
         else:
             product = False
-    shared_folder = os.path.expanduser("~/MISTIKA-SHARED")
+    shared_folder = os.path.join(env_folder, 'shared')
     version = LooseVersion('.'.join(re.findall(r'\d+', os.path.basename(env_folder))[:3]))
     try:
         version.vstring

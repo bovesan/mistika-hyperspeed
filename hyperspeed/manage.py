@@ -13,7 +13,7 @@ def detect(link_target, link):
 		return False
 
 def install(link_target, link):
-	if detect():
+	if detect(link_target, link):
 		print 'This configuration is already installed.'
 		sys.exit(0)
 	else:
@@ -24,34 +24,34 @@ def install(link_target, link):
 			print 'Moved %s to %s' % (link, backup_path)
 			os.symlink(link_target, link)
 			print 'Created link: %s' % desc
-			sys.exit(0)
+			return True
 		except OSError:
 			print 'Could not create link: %s' % desc
-			sys.exit(1)
+			return False
 
-def remove(link):
-	if not detect():
+def remove(link_target, link):
+	if not detect(link_target, link):
 		print 'This configuration is not installed.'
-		sys.exit(0)
+		return True
 	else:
 		backup_path = link+BACKUP_SUFFIX
 		if not os.path.islink(link):
 			print 'Not a link: %s' % link
-			sys.exit(1)
+			return False
 		if not os.path.exists(backup_path):
 			print 'Backup file not found: %s' % backup_path
 			print 'Aborting'
-			sys.exit(1)
+			return False
 		try:
 			os.unlink(link)
 			print 'Removed link: %s' % link
 		except OSError:
 			print 'Error: Cannot remove link: %s' % link
-			sys.exit(1)
+			return False
 		try:
 			os.rename(backup_path, link)
 			print 'Moved %s to %s' % (backup_path, link)
-			sys.exit(0)
+			return True
 		except OSError:
 			print 'Cannot restore backup: %s' % backup_path
-			sys.exit(1)
+			return False

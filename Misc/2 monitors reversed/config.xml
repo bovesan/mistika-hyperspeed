@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<config>
+    <alias>Flopped 2 monitor layout</alias>
+    <description>Puts the timeline on the right and the composer on the left.</description>
+    <links>
+    	<link>
+    		<target>2_LAYOUT.sup</target>
+    		<location>MISTIKA-ENV/config/2_LAYOUT.sup</location>
+    	</link>
+    </links>
+    <manage>false</manage>
+</config>
