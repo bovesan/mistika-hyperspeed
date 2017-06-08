@@ -13,6 +13,7 @@ import Queue
 import subprocess
 import threading
 import xml.etree.ElementTree as ET
+import webbrowser
 
 VERSION_STRING = '<span color="#ff9900" weight="bold">Development version.</span>'
 
@@ -97,40 +98,7 @@ class PyApp(gtk.Window):
         notebook.append_page(self.init_afterscripts_window(), gtk.Label('Afterscripts'))
         notebook.append_page(self.init_stacks_window(), gtk.Label('Stacks'))
         notebook.append_page(self.init_configs_window(), gtk.Label('Configs'))
-
-        #vbox.pack_start(gtk.Label('Afterscripts'), False, False, 5)
-        self.linksTree = gtk.TreeView()
-        cell = gtk.CellRendererText()
-        linksTreeNameColumn = gtk.TreeViewColumn('', cell, text=0)
-        linksTreeNameColumn.set_resizable(True)
-        linksTreeNameColumn.set_expand(True)
-        self.linksTree.append_column(linksTreeNameColumn)
-        cell2 = gtk.CellRendererText()
-        linksTreeUrlColumn = gtk.TreeViewColumn('URL', cell2, text=1, foreground=2)
-        linksTreeUrlColumn.set_resizable(True)
-        linksTreeUrlColumn.set_expand(True)
-        #linksTreeUrlColumn.add_attribute(cell2, 'underline-set', 3)
-        #linksTreeUrlColumn.set_attribute(cell2, foreground='blue')
-        self.linksTree.append_column(linksTreeUrlColumn)
-        self.linksTreestore = gtk.TreeStore(str, str, str) # Name, url, color, underline
-        linksTreestore = self.linksTreestore
-        it = linksTreestore.append(None, ["sgo.es", '', 'black'])
-        linksTreestore.append(it, ["Support home", 'http://support.sgo.es/support/home', '#9999ff'])
-
-        it = linksTreestore.append(None, ["bovesan.com", '', 'black'])
-        linksTreestore.append(it, ["Comp3D builder", 'https://bovesan.com/cb', '#9999ff'])
-        linksTreestore.append(it, ["Online Reel Browser", 'https://bovesan.com/orb', '#9999ff'])
-        linksFilter = linksTreestore.filter_new();
-        self.linksFilter = linksFilter
-        linksFilter.set_visible_func(self.FilterTree, (self.filterEntry, self.linksTree));
-        self.linksTree.set_model(linksFilter)
-        self.linksTree.expand_all()
-
-        scrolled_window = gtk.ScrolledWindow()
-        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
-        scrolled_window.add(self.linksTree)
-        #vbox.pack_start(scrolled_window)
-        notebook.append_page(scrolled_window, gtk.Label('Web links'))
+        notebook.append_page(self.init_links_window(), gtk.Label('Web links'))
         vbox.pack_start(notebook)
 
         #vbox.pack_start(gtk.HSeparator())
@@ -386,10 +354,10 @@ class PyApp(gtk.Window):
                 path = os.path.join(root, name)
                 if 'config.xml' in os.listdir(path):
                     tree = ET.parse(os.path.join(path, 'config.xml'))
-                    root = tree.getroot()
-                    path = os.path.join(path, root.find('executable').text)
+                    treeroot = tree.getroot()
+                    path = os.path.join(path, treeroot.find('executable').text)
                     files[path] = {'isdir' : False}
-                    for child in root:
+                    for child in treeroot:
                         files[path][child.tag] = child.text
                 else:
                     files[path] = {'isdir' : True}
@@ -600,7 +568,6 @@ class PyApp(gtk.Window):
                 tree.append(iters[dir_name], [base_name, item['Installed'], False, item_path, item['Dependent']])
 
     def init_configs_window(self):
-
         tree        = self.configs_tree      = gtk.TreeView()
         treestore   = self.configs_treestore = gtk.TreeStore(str, bool, bool, str) # Name, active, is folder, path
         tree_filter = self.configs_filter    = treestore.filter_new();
@@ -697,6 +664,93 @@ class PyApp(gtk.Window):
             else:
                 tree.append(iters[dir_name], [base_name, item['Active'], False, item_path])
 
+    def init_links_window(self):
+        tree        = self.links_tree      = gtk.TreeView()
+        treestore   = self.links_treestore = gtk.TreeStore(str, str) # Name, url
+        tree_filter = self.links_filter    = treestore.filter_new();
+        cell = gtk.CellRendererText()
+        column = gtk.TreeViewColumn('', cell, text=0)
+        column.set_resizable(True)
+        column.set_expand(True)
+        tree.append_column(column)
+        cell = gtk.CellRendererText()
+        column = gtk.TreeViewColumn('URL', cell, text=1)
+        column.set_resizable(True)
+        column.set_expand(True)
+        cell.set_property('foreground', '#0000ff')
+        cell.set_property('underline', 'single')
+        tree.append_column(column)
+        tree_filter.set_visible_func(self.FilterTree, (self.filterEntry, tree));
+        tree.set_model(tree_filter)
+        tree.expand_all()
+        tree.connect('row-activated', self.on_links_run, tree)
+        scrolled_window = gtk.ScrolledWindow()
+        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+        scrolled_window.add(tree)
+        t = threading.Thread(target=self.io_populate_links)
+        self.threads.append(t)
+        t.setDaemon(True)
+        t.start()
+        return scrolled_window
+
+    def add_link(self, xmlobject):
+        link_dict = {}
+        for child in xmlobject:
+            if child.tag == 'alias':
+                link_dict['alias'] = child.text
+            elif child.tag == 'url':
+                link_dict['url'] =  child.text
+            elif child.tag == 'link':
+                link_dict['children'] = add_link(child)
+        return link_dict
+
+    def io_populate_links(self):
+        file_type = 'Links'
+        if not file_type in self.files:
+            self.files[file_type] = {}
+        files = self.files[file_type]
+        for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
+            for name in dirs:
+                path = os.path.join(root, name)
+                files[path] = {'isdir' : True}
+            for name in filenames:
+                if name.endswith('.xml'):
+                    path = os.path.join(root, name)
+                    files[path] = {'isdir' : False}
+                    tree = ET.parse(path)
+                    treeroot = tree.getroot()
+                    for child in treeroot:
+                        if child.tag == 'link':
+                            if not 'children' in files[path]:
+                                files[path]['children'] = []
+                            files[path]['children'].append(self.add_link(child))
+                        else:
+                            files[path][child.tag] = child.text
+        gobject.idle_add(self.gui_update_links)
+
+    def gui_update_links(self):
+        tree = self.links_treestore # Name, show in Mistika, is folder
+        iters = self.iters
+        items = self.files['Links']
+        for item_path in sorted(items):
+            item = items[item_path]
+            dir_name = os.path.dirname(item_path)
+            base_name = os.path.basename(item_path)
+            if not dir_name in iters:
+                iters[dir_name] = None
+            alias = base_name
+            url = ''
+            try:
+                alias = item['alias']
+                url = item['url']
+            except KeyError:
+                pass
+            if 'children' in item:
+                iters[item_path] = tree.append(iters[dir_name], [alias, url])
+                for child in item['children']:
+                    tree.append(iters[item_path], [child['alias'], child['url']])
+            else:
+                tree.append(iters[dir_name], [alias, url])
 
     def files_update(self):
         if not hasattr(self, 'files'):
@@ -1044,6 +1098,16 @@ class PyApp(gtk.Window):
 
     def on_afterscripts_run(self, treeview, path, view_column, *ignore):
         print 'Not yet implemented'
+
+    def on_links_run(self, treeview, path, view_column, *ignore):
+        treestore = treeview.get_model()
+        try: # If there is a filter in the middle
+            treestore = treestore.get_model()
+        except AttributeError:
+            pass
+        url = treestore[path][1]
+        print url
+        webbrowser.get('firefox').open(url)
 
 
 os.environ['LC_CTYPE'] = 'en_US.utf8'
