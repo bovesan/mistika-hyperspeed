@@ -629,7 +629,7 @@ class PyApp(gtk.Window):
         return scrolled_window
 
     def io_populate_configs(self):
-        file_type = 'Misc'
+        file_type = 'Configs'
         file_type_defaults = {
             'Active' : False
         }
@@ -685,7 +685,7 @@ class PyApp(gtk.Window):
     def gui_update_configs(self):
         tree = self.configs_treestore # Name, show in Mistika, is folder
         iters = self.iters
-        items = self.files['Misc']
+        items = self.files['Configs']
         for item_path in sorted(items):
             item = items[item_path]
             dir_name = os.path.dirname(item_path)
@@ -722,7 +722,7 @@ class PyApp(gtk.Window):
                     'Dependencies installed' : True,
                 }
             },
-            'Misc': {
+            'Configs': {
                 'required files' : [
                     'config.json'
                 ],
@@ -751,7 +751,7 @@ class PyApp(gtk.Window):
                             if files_ref[file_type][path]['isdir'] == False:
                                 file_md5 = md5(path)
                                 files_ref[file_type][path]['md5'] = file_md5
-                                if file_type == 'Misc':
+                                if file_type == 'Configs':
                                     print path
                                     print os.path.join(path, 'config.json')
                                     file_config = json.loads(open(os.path.join(path, 'config.json')).read())
@@ -1012,7 +1012,7 @@ class PyApp(gtk.Window):
         name = tree[treepath][0]
         state = not tree[treepath][1]
         path = tree[treepath][3]
-        f_item = self.files['Misc'][path]
+        f_item = self.files['Configs'][path]
         print repr(f_item)
         links = f_item['links']
         if state: # Install
