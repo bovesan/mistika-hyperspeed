@@ -2,6 +2,7 @@
 
 import os
 import re
+import subprocess
 
 from xml.etree import ElementTree
 from distutils.version import LooseVersion
@@ -19,19 +20,6 @@ def get_mistikarc_path(env_folder):
         return False
     return mistikarc_paths[0]
 
-def get_current_project(shared_folder, user):
-    project = None
-    latest_project_time = 0
-    for line in open(os.path.join(shared_folder, "users/%s/projects.cfg" % user)).readlines():
-        try:
-            project_name, project_time = line.split()
-            if project_time > latest_project_time:
-                latest_project_time = project_time
-                project = project_name
-        except:
-            pass
-    return project
-
 def reload():
     global env_folder, tools_path, shared_folder, version, project, user, settings, product
     global afterscripts_path
@@ -47,12 +35,12 @@ def reload():
         else:
             product = False
     shared_folder = os.path.join(env_folder, 'shared')
-    version = LooseVersion('.'.join(re.findall(r'\d+', os.path.basename(env_folder))[:3]))
     try:
+        version = LooseVersion('.'.join(re.findall(r'\d+',subprocess.Popen(['mistika', '-V'], stdout=subprocess.PIPE).communicate()[0].splitlines()[0])))
         version.vstring
     except AttributeError:
         version = LooseVersion('0')
-
+    print version.vstring
     if version < LooseVersion('8.6'):
         project = open(os.path.join(env_folder, '%s_PRJ' % product.upper())).readline().splitlines()[0]
         user = False
@@ -61,13 +49,17 @@ def reload():
             user = ElementTree.parse(os.path.join(shared_folder, "users/login.xml")).getroot().find('autoLogin/lastUser').text
         except:
             user = 'MistikaUser'
-        project = get_current_project(shared_folder, user)
+        try:
+            project = ElementTree.parse(os.path.join(shared_folder, "users/%s/UIvalues.xml" % user)).getroot().find('project/current').text
+        except:
+            project = 'None'
     mistikarc_path = get_mistikarc_path(env_folder)
     settings = {}
     for line in open(mistikarc_path):
-        if line.strip() == '':
+        try:
+            key, value = line.strip().split(' ', 1)
+        except ValueError:
             continue
-        key, value = line.strip().split(' ', 1)
         value = value.strip()
         if value.lower() == 'true':
             value = True
