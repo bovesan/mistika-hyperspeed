@@ -4,7 +4,7 @@ import os
 import time
 import mistika
 
-class Dependency:
+class Dependency(object):
     def __init__(self, name, f_type, start = False, end = False):
         self.name = name
         self.type = f_type
@@ -21,10 +21,82 @@ class Dependency:
             path = os.path.join(mistika.glsl_folder, self.name)
         return os.path.exists(path)
 
-class Stack:
+class Stack(object):
     def __init__(self, path):
         self.path = path
         self.size = os.path.getsize(self.path)
+        self.read_header()
+    def read_header(self):
+        try:
+            level_names = []
+            fx_type = None
+            char_buffer = ''
+            char_buffer_store = ''
+            for line in open(self.path):
+                for char in line:
+                    if char == '(':
+                        char_buffer = char_buffer.replace('\n', '').strip()
+                        level_names.append(char_buffer)
+                        char_buffer = ''
+                    elif char == ')':
+                        f_path = False
+                        object_path = '/'.join(level_names)
+                        if object_path.endswith('D/RenderProject'):
+                            self.project = char_buffer
+                        if object_path.endswith('D/X'):
+                            self.resX = char_buffer
+                        if object_path.endswith('D/Y'):
+                            self.resY = char_buffer
+                        if object_path.endswith('D/JobFrameRate'):
+                            self.fps = char_buffer
+                        elif object_path.endswith('D'): # End of header
+                            return
+                        char_buffer = ''
+                        del level_names[-1]
+                    elif len(level_names) > 0 and level_names[-1] == 'Shape':
+                        continue
+                    elif char:
+                        char_buffer += char
+        except IOError as e:
+            print 'Could not open ' + self.path
+            raise e
+
+
+    @property
+    def groupname(self):
+        try:
+            self._groupname
+        except AttributeError:
+            self.set_groupname()
+        return self._groupname
+    def set_groupname(self):
+        try:
+            level_names = []
+            fx_type = None
+            char_buffer = ''
+            char_buffer_store = ''
+            for line in open(self.path):
+                for char in line:
+                    if char == '(':
+                        char_buffer = char_buffer.replace('\n', '').strip()
+                        level_names.append(char_buffer)
+                        char_buffer = ''
+                    elif char == ')':
+                        f_path = False
+                        object_path = '/'.join(level_names)
+                        if object_path.endswith('Group/Group/p/n'):
+                            self._groupname = char_buffer
+                            return
+                        char_buffer = ''
+                        del level_names[-1]
+                    elif len(level_names) > 0 and level_names[-1] == 'Shape':
+                        continue
+                    elif char:
+                        char_buffer += char
+            self._groupname = False
+        except IOError as e:
+            print 'Could not open ' + self.path
+            raise e
     @property
     def dependencies(self):
         try:
@@ -32,7 +104,6 @@ class Stack:
         except AttributeError:
             list(self.iter_dependencies())
         return self._dependencies
-
     def iter_dependencies(self):
         self._dependencies = []
         try:

@@ -10,6 +10,7 @@ import os
 import sys
 import platform
 import Queue
+import socket
 import subprocess
 import threading
 import xml.etree.ElementTree as ET
@@ -34,6 +35,7 @@ CONFIG_FOLDER = os.path.expanduser(CONFIG_FOLDER)
 os.chdir(os.path.dirname(sys.argv[0]))
 
 import hyperspeed.manage
+from hyperspeed import stack
 from hyperspeed import mistika
 
 def md5(fname):
@@ -59,6 +61,11 @@ def get_crontab_lines():
     except subprocess.CalledProcessError:
         crontab = []
     return crontab
+class RenderItem(hyperspeed.stack.Stack):
+    def __init__(self, path):
+        super(RenderItem, self).__init__(path)
+        self.progress = 0.0
+
 class PyApp(gtk.Window):
 
     def __init__(self):
@@ -94,6 +101,8 @@ class PyApp(gtk.Window):
         self.row_references_stacks = {}
         self.row_references_configs = {}
         self.row_references_links = {}
+        self.render_queue = {}
+        self.row_references_render_queue = {}
 
 
         notebook = gtk.Notebook()
@@ -104,77 +113,7 @@ class PyApp(gtk.Window):
         notebook.append_page(self.init_configs_window(), gtk.Label('Configs'))
         notebook.append_page(self.init_links_window(), gtk.Label('Web links'))
         vbox.pack_start(notebook)
-
-        #vbox.pack_start(gtk.HSeparator())
-        headerBox = gtk.HBox(False, 5)
-        headerLabel  = gtk.Label('<span size="large"><b>Render queue:</b></span>')
-        headerLabel.set_use_markup(True)
-        headerBox.pack_start(headerLabel, False, False, 5)
-        vbox.pack_start(headerBox, False, False, 2)
-        afterscriptsToolbar = gtk.HBox(False, 2)
-        #afterscriptsToolbar.pack_start(headerBox, False, False, 2)
-        checkButton = gtk.CheckButton('Process queue')
-        checkButton.set_property("active", True)
-        afterscriptsToolbar.pack_start(checkButton, False, False, 5)
-        afterscriptsToolbar.pack_start(gtk.CheckButton('Process jobs for other hosts'), False, False, 5)
-        vbox.pack_start(afterscriptsToolbar, False, False, 2)
-        afterscriptsBox = gtk.HBox(False, 5)
-        self.queueTree = gtk.TreeView()
-        queueTreeNameColumn = gtk.TreeViewColumn('Project', gtk.CellRendererText(), text=0)
-        queueTreeNameColumn.set_resizable(True)
-        queueTreeNameColumn.set_expand(False)
-        self.queueTree.append_column(queueTreeNameColumn)
-        queueTreeNameColumn = gtk.TreeViewColumn('Name', gtk.CellRendererText(), text=1)
-        queueTreeNameColumn.set_resizable(True)
-        queueTreeNameColumn.set_expand(False)
-        self.queueTree.append_column(queueTreeNameColumn)
-        cell = gtk.CellRendererProgress()
-        queueTreeNameColumn = gtk.TreeViewColumn('Progress', cell, value=5, text=6)
-        queueTreeNameColumn.set_cell_data_func(cell, self.hide_if_parent)
-        queueTreeNameColumn.set_resizable(True)
-        queueTreeNameColumn.set_expand(False)
-        self.queueTree.append_column(queueTreeNameColumn)
-        queueTreeNameColumn = gtk.TreeViewColumn('Status', gtk.CellRendererText(), text=2)
-        queueTreeNameColumn.set_resizable(True)
-        queueTreeNameColumn.set_expand(True)
-        self.queueTree.append_column(queueTreeNameColumn)
-        queueTreeNameColumn = gtk.TreeViewColumn('Added by', gtk.CellRendererText(), text=3)
-        queueTreeNameColumn.set_resizable(True)
-        queueTreeNameColumn.set_expand(False)
-        self.queueTree.append_column(queueTreeNameColumn)
-        queueTreeNameColumn = gtk.TreeViewColumn('Added time', gtk.CellRendererText(), text=4)
-        queueTreeNameColumn.set_resizable(True)
-        queueTreeNameColumn.set_expand(False)
-        self.queueTree.append_column(queueTreeNameColumn)
-        cell2 = gtk.CellRendererToggle()
-        self.queueTreestore = gtk.TreeStore(str, str, str, str, str, int, str)
-        queueTreestore = self.queueTreestore
-        # it = queueTreestore.append(None, ["Private (6)", '', '', '', '', 0, ''])
-        # queueTreestore.append(it, ["RnD", 'test_0001', 'Rendering on gaia', 'gaia', '08:27', 20, '20%'])
-        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
-        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
-        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
-        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
-        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
-        # it = queueTreestore.append(None, ["Public (2)", '', '', '', '', 0, ''])
-        # queueTreestore.append(it, ["Mastering", 'film01', 'Queued', 'apollo2', '08:27', 0, ''])
-        # queueTreestore.append(it, ["Mastering", 'film02', 'Queued', 'apollo2', '08:27', 0, ''])
-        self.queueTree.set_model(queueTreestore)
-        self.queueTree.expand_all()
-        scrolled_window = gtk.ScrolledWindow()
-        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
-        scrolled_window.add(self.queueTree)
-        afterscriptsBox.pack_start(scrolled_window)
-        afterscriptsButtons = gtk.VBox(False, 3)
-        afterscriptsButtons.set_size_request(30,80)
-        gtk.stock_add([(gtk.STOCK_GO_UP, "", 0, 0, "")])
-        upButton = gtk.Button(stock=gtk.STOCK_GO_UP)
-        afterscriptsButtons.pack_start(upButton)
-        gtk.stock_add([(gtk.STOCK_GO_DOWN, "", 0, 0, "")])
-        downButton = gtk.Button(stock=gtk.STOCK_GO_DOWN)
-        afterscriptsButtons.pack_start(downButton)
-        afterscriptsBox.pack_start(afterscriptsButtons, False, False)
-        vbox.pack_start(afterscriptsBox, True, True, 5)
+        vbox.pack_start(self.init_render_queue_window(), True, True, 5)
 
 
         headerBox = gtk.HBox(False, 5)
@@ -296,11 +235,8 @@ class PyApp(gtk.Window):
         column.set_expand(True)
         tree.append_column(column)
         autorunStates = gtk.ListStore(str)
-        autorunStates.append(['Never'])
-        autorunStates.append(['Hourly'])
-        autorunStates.append(['Daily'])
-        autorunStates.append(['Weekly'])
-        autorunStates.append(['Monthly'])
+        for autorun_time in AUTORUN_TIMES:
+            autorunStates.append([autorun_time])
         cell = gtk.CellRendererCombo()
         cell.set_property("editable", True)
         cell.set_property("has-entry", False)
@@ -443,6 +379,78 @@ class PyApp(gtk.Window):
         t.setDaemon(True)
         t.start()
         return scrolled_window
+    def init_render_queue_window(self):
+        tree        = self.render_queue_tree      = gtk.TreeView()
+        treestore   = self.render_queue_treestore = gtk.TreeStore(str, str, str, str, str, int, str) # Project, Name, Progress, Status, Added by, Added time
+        tree_filter = self.render_queue_filter    = treestore.filter_new();
+        vbox = gtk.VBox(False, 10)
+        headerBox = gtk.HBox(False, 5)
+        headerLabel  = gtk.Label('<span size="large"><b>Render queue:</b></span>')
+        headerLabel.set_use_markup(True)
+        headerBox.pack_start(headerLabel, False, False, 5)
+        vbox.pack_start(headerBox, False, False, 2)
+        afterscriptsToolbar = gtk.HBox(False, 2)
+        #afterscriptsToolbar.pack_start(headerBox, False, False, 2)
+        checkButton = gtk.CheckButton('Process queue')
+        checkButton.set_property("active", True)
+        afterscriptsToolbar.pack_start(checkButton, False, False, 5)
+        afterscriptsToolbar.pack_start(gtk.CheckButton('Process jobs for other hosts'), False, False, 5)
+        vbox.pack_start(afterscriptsToolbar, False, False, 2)
+        afterscriptsBox = gtk.HBox(False, 5)
+        queueTreeNameColumn = gtk.TreeViewColumn('Project', gtk.CellRendererText(), text=0)
+        queueTreeNameColumn.set_resizable(True)
+        queueTreeNameColumn.set_expand(False)
+        tree.append_column(queueTreeNameColumn)
+        queueTreeNameColumn = gtk.TreeViewColumn('Name', gtk.CellRendererText(), text=1)
+        queueTreeNameColumn.set_resizable(True)
+        queueTreeNameColumn.set_expand(False)
+        tree.append_column(queueTreeNameColumn)
+        cell = gtk.CellRendererProgress()
+        queueTreeNameColumn = gtk.TreeViewColumn('Progress', cell, value=5, text=6)
+        queueTreeNameColumn.set_cell_data_func(cell, self.hide_if_parent)
+        queueTreeNameColumn.set_resizable(True)
+        queueTreeNameColumn.set_expand(False)
+        tree.append_column(queueTreeNameColumn)
+        queueTreeNameColumn = gtk.TreeViewColumn('Status', gtk.CellRendererText(), text=2)
+        queueTreeNameColumn.set_resizable(True)
+        queueTreeNameColumn.set_expand(True)
+        tree.append_column(queueTreeNameColumn)
+        queueTreeNameColumn = gtk.TreeViewColumn('Added by', gtk.CellRendererText(), text=3)
+        queueTreeNameColumn.set_resizable(True)
+        queueTreeNameColumn.set_expand(False)
+        tree.append_column(queueTreeNameColumn)
+        queueTreeNameColumn = gtk.TreeViewColumn('Added time', gtk.CellRendererText(), text=4)
+        queueTreeNameColumn.set_resizable(True)
+        queueTreeNameColumn.set_expand(False)
+        tree.append_column(queueTreeNameColumn)
+        # it = queueTreestore.append(None, ["Private (6)", '', '', '', '', 0, ''])
+        # queueTreestore.append(it, ["RnD", 'test_0001', 'Rendering on gaia', 'gaia', '08:27', 20, '20%'])
+        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
+        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
+        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
+        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
+        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
+        # it = queueTreestore.append(None, ["Public (2)", '', '', '', '', 0, ''])
+        # queueTreestore.append(it, ["Mastering", 'film01', 'Queued', 'apollo2', '08:27', 0, ''])
+        # queueTreestore.append(it, ["Mastering", 'film02', 'Queued', 'apollo2', '08:27', 0, ''])
+        tree.set_model(treestore)
+        tree.expand_all()
+        scrolled_window = gtk.ScrolledWindow()
+        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+        scrolled_window.add(tree)
+        afterscriptsBox.pack_start(scrolled_window)
+        afterscriptsButtons = gtk.VBox(False, 3)
+        afterscriptsButtons.set_size_request(30,80)
+        gtk.stock_add([(gtk.STOCK_GO_UP, "", 0, 0, "")])
+        upButton = gtk.Button(stock=gtk.STOCK_GO_UP)
+        afterscriptsButtons.pack_start(upButton)
+        gtk.stock_add([(gtk.STOCK_GO_DOWN, "", 0, 0, "")])
+        downButton = gtk.Button(stock=gtk.STOCK_GO_DOWN)
+        afterscriptsButtons.pack_start(downButton)
+        afterscriptsBox.pack_start(afterscriptsButtons, False, False)
+        self.launch_thread(self.io_populate_render_queue)
+        vbox.pack_start(afterscriptsBox, True, True, 5)
+        return vbox
     def io_populate_tools(self):
         file_type = 'Tools'
         file_type_defaults = {
@@ -642,6 +650,21 @@ class PyApp(gtk.Window):
                         else:
                             files[path][child.tag] = child.text
         gobject.idle_add(self.gui_update_links)
+    def io_populate_render_queue(self):
+        queue = self.render_queue
+        hostname = socket.gethostname()
+        for queue_name in os.listdir(mistika.settings['BATCHPATH']):
+            if not queue_name.startswith(hostname) and not queue_name.startswith('public'):
+                continue
+            queue_path = os.path.join(mistika.settings['BATCHPATH'], queue_name)
+            for file_name in os.listdir(queue_path):
+                file_path = os.path.join(queue_path, file_name)
+                file_id, file_ext = os.path.splitext(file_path)
+                if file_ext == '.rnd':
+                    print 'Render item: ', file_path
+                    queue[file_id] = RenderItem(file_path)
+                    print 'Render groupname: ', queue[file_id].groupname
+        gobject.idle_add(self.gui_update_render_queue)
     def gui_update_tools(self):
         treestore = self.tools_treestore # Name, show in Mistika, is folder, autorun, file path
         row_references = self.row_references_tools
@@ -782,6 +805,10 @@ class PyApp(gtk.Window):
                     else:
                         row_path = row_references[item_path].get_path()
                         treestore[row_path] = (child['alias'], child['url'])
+    def gui_update_render_queue(self):
+        treestore = self.render_queue_treestore
+        row_references = self.row_references_render_queue
+        pass
     def launch_thread(self, method):
         t = threading.Thread(target=method)
         self.threads.append(t)
