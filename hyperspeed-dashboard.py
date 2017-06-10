@@ -91,6 +91,11 @@ class PyApp(gtk.Window):
         vbox.pack_start(self.init_toolbar(), False, False, 10)
         self.iters = {}
         self.row_references_tools = {}
+        self.row_references_afterscripts = {}
+        self.row_references_stacks = {}
+        self.row_references_configs = {}
+        self.row_references_links = {}
+
 
         notebook = gtk.Notebook()
 
@@ -642,7 +647,6 @@ class PyApp(gtk.Window):
         gobject.idle_add(self.gui_update_links)
     def gui_update_tools(self):
         treestore = self.tools_treestore # Name, show in Mistika, is folder, autorun, file path
-        iters = self.iters
         row_references = self.row_references_tools
         items = self.files['Tools']
         for item_path in sorted(items):
@@ -663,25 +667,36 @@ class PyApp(gtk.Window):
                 row_iter = treestore.append(parent_row_iter, [alias, False, True, '', item_path])
                 row_path = treestore.get_path(row_iter)
                 row_references[item_path] = gtk.TreeRowReference(treestore, row_path)
-            row_path = row_references[item_path].get_path()
+            else:
+                row_path = row_references[item_path].get_path()
             if item['isdir']:
                 treestore[row_path] = (alias, False, True, '', item_path)
             else:
                 treestore[row_path] = (alias, item['Show in Mistika'], False, item['Autorun'], item_path)
     def gui_update_afterscripts(self):
-        tree_store = self.afterscripts_treestore # Name, show in Mistika, is folder
-        iters = self.iters
+        treestore = self.afterscripts_treestore # Name, show in Mistika, is folder
+        row_references = self.row_references_afterscripts
         items = self.files['Afterscripts']
         for item_path in sorted(items):
             item = items[item_path]
             dir_name = os.path.dirname(item_path)
             base_name = os.path.basename(item_path)
-            if not dir_name in iters:
-                iters[dir_name] = None
-            if item['isdir']:
-                iters[item_path] = tree_store.append(iters[dir_name], [base_name, False, True, item_path])
+            try:
+                parent_row_reference = row_references[dir_name]
+                parent_row_path = parent_row_reference.get_path()
+                parent_row_iter = treestore.get_iter(parent_row_path)
+            except KeyError:
+                parent_row_iter = None
+            if not item_path in row_references:
+                row_iter = treestore.append(parent_row_iter, [base_name, False, True, item_path])
+                row_path = treestore.get_path(row_iter)
+                row_references[item_path] = gtk.TreeRowReference(treestore, row_path)
             else:
-                tree_store.append(iters[dir_name], [base_name, item['Show in Mistika'], False, item_path])
+                row_path = row_references[item_path].get_path()
+            if item['isdir']:
+                treestore[row_path] = (base_name, False, True, item_path)
+            else:
+                treestore[row_path] = (base_name, item['Show in Mistika'], False, item_path)
     def gui_update_stacks(self):
         tree = self.stacks_treestore # Name, installed, is folder, file path, requires installation (has dependencies)
         iters = self.iters
@@ -907,7 +922,7 @@ class PyApp(gtk.Window):
         open(temp_config_path, 'w').write(new_config)
         subprocess.Popen(['crontab', temp_config_path])
         print new_config
-        treestore[path][3] = text
+        self.launch_thread(self.io_populate_tools)
     def on_editing_started(self, cell, editable, path):
         self.comboEditable = editable
     def on_combo_changed(self, cell, path, newiter):
@@ -954,8 +969,7 @@ class PyApp(gtk.Window):
         print '\nNew config:'
         print new_config
         open(mistika.afterscripts_path, 'w').write(new_config)
-        treestore[path][1] = activated
-        #print name + ' ' + repr(state)
+        self.launch_thread(self.io_populate_afterscripts)
     def on_stacks_toggle(self, cellrenderertoggle, path, *ignore):
         print 'Not yet implemented'
         pass
