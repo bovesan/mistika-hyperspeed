@@ -40,7 +40,6 @@ def reload():
         version.vstring
     except AttributeError:
         version = LooseVersion('0')
-    print version.vstring
     if version < LooseVersion('8.6'):
         project = open(os.path.join(env_folder, '%s_PRJ' % product.upper())).readline().splitlines()[0]
         user = False

@@ -53,10 +53,9 @@ def md5(fname):
         except OSError:
             pass
     return hash_md5.hexdigest()
-
 def get_crontab_lines():
     try:
-        crontab = subprocess.Popen(['crontab', '-l'], stdout=subprocess.PIPE).communicate()[0].splitlines()
+        crontab = subprocess.Popen(['crontab', '-l'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0].splitlines()
     except subprocess.CalledProcessError:
         crontab = []
     return crontab
@@ -484,7 +483,6 @@ class PyApp(gtk.Window):
             if path in tools_installed:
                 files[path]['Show in Mistika'] = True
             for line in crontab:
-                print repr(line)
                 line = line.strip()
                 if line.endswith(path):
                     for autorun_alias, autorun_value in AUTORUN_TIMES.iteritems():
@@ -614,7 +612,6 @@ class PyApp(gtk.Window):
                 except OSError as e:
                     detected = False
             if 'links' in files[path]:
-                print repr(files[path]['links'])
                 for link_target, link in files[path]['links'].iteritems():
                     if not hyperspeed.manage.detect(link_target, link):
                         detected = False
@@ -652,11 +649,10 @@ class PyApp(gtk.Window):
         for item_path in sorted(items):
             item = items[item_path]
             dir_name = os.path.dirname(item_path)
-            alias = os.path.basename(item_path)
-            try:
+            if 'alias' in items[item_path]:
                 alias = items[item_path]['alias']
-            except KeyError:
-                pass
+            else:
+                alias = os.path.basename(item_path)
             try:
                 parent_row_reference = row_references[dir_name]
                 parent_row_path = parent_row_reference.get_path()
@@ -680,6 +676,33 @@ class PyApp(gtk.Window):
         for item_path in sorted(items):
             item = items[item_path]
             dir_name = os.path.dirname(item_path)
+            if 'alias' in items[item_path]:
+                alias = items[item_path]['alias']
+            else:
+                alias = os.path.basename(item_path)
+            try:
+                parent_row_reference = row_references[dir_name]
+                parent_row_path = parent_row_reference.get_path()
+                parent_row_iter = treestore.get_iter(parent_row_path)
+            except KeyError:
+                parent_row_iter = None
+            if not item_path in row_references:
+                row_iter = treestore.append(parent_row_iter, [alias, False, True, item_path])
+                row_path = treestore.get_path(row_iter)
+                row_references[item_path] = gtk.TreeRowReference(treestore, row_path)
+            else:
+                row_path = row_references[item_path].get_path()
+            if item['isdir']:
+                treestore[row_path] = (alias, False, True, item_path)
+            else:
+                treestore[row_path] = (alias, item['Show in Mistika'], False, item_path)
+    def gui_update_stacks(self):
+        treestore = self.stacks_treestore # Name, installed, is folder, file path, requires installation (has dependencies)
+        row_references = self.row_references_stacks
+        items = self.files['Stacks']
+        for item_path in sorted(items):
+            item = items[item_path]
+            dir_name = os.path.dirname(item_path)
             base_name = os.path.basename(item_path)
             try:
                 parent_row_reference = row_references[dir_name]
@@ -688,66 +711,77 @@ class PyApp(gtk.Window):
             except KeyError:
                 parent_row_iter = None
             if not item_path in row_references:
-                row_iter = treestore.append(parent_row_iter, [base_name, False, True, item_path])
+                row_iter = treestore.append(parent_row_iter, [base_name, False, True, item_path, False])
                 row_path = treestore.get_path(row_iter)
                 row_references[item_path] = gtk.TreeRowReference(treestore, row_path)
             else:
                 row_path = row_references[item_path].get_path()
             if item['isdir']:
-                treestore[row_path] = (base_name, False, True, item_path)
+                treestore[row_path] = (base_name, False, True, item_path, False)
             else:
-                treestore[row_path] = (base_name, item['Show in Mistika'], False, item_path)
-    def gui_update_stacks(self):
-        tree = self.stacks_treestore # Name, installed, is folder, file path, requires installation (has dependencies)
-        iters = self.iters
-        items = self.files['Stacks']
-        for item_path in sorted(items):
-            item = items[item_path]
-            dir_name = os.path.dirname(item_path)
-            base_name = os.path.basename(item_path)
-            if not dir_name in iters:
-                iters[dir_name] = None
-            if item['isdir']:
-                iters[item_path] = tree.append(iters[dir_name], [base_name, False, True, item_path, False])
-            else:
-                tree.append(iters[dir_name], [base_name, item['Installed'], False, item_path, item['Dependent']])
+                treestore[row_path] = (base_name, item['Installed'], False, item_path, item['Dependent'])
     def gui_update_configs(self):
-        tree = self.configs_treestore # Name, show in Mistika, is folder
-        iters = self.iters
+        treestore = self.configs_treestore # Name, show in Mistika, is folder
+        row_references = self.row_references_configs
         items = self.files['Configs']
         for item_path in sorted(items):
             item = items[item_path]
             dir_name = os.path.dirname(item_path)
-            base_name = os.path.basename(item_path)
-            if not dir_name in iters:
-                iters[dir_name] = None
-            if item['isdir']:
-                iters[item_path] = tree.append(iters[dir_name], [base_name, False, True, item_path])
+            if 'alias' in items[item_path]:
+                alias = items[item_path]['alias']
             else:
-                tree.append(iters[dir_name], [base_name, item['Active'], False, item_path])
+                alias = os.path.basename(item_path)
+            try:
+                parent_row_reference = row_references[dir_name]
+                parent_row_path = parent_row_reference.get_path()
+                parent_row_iter = treestore.get_iter(parent_row_path)
+            except KeyError:
+                parent_row_iter = None
+            if not item_path in row_references:
+                row_iter = treestore.append(parent_row_iter, [alias, False, True, item_path])
+                row_path = treestore.get_path(row_iter)
+                row_references[item_path] = gtk.TreeRowReference(treestore, row_path)
+            else:
+                row_path = row_references[item_path].get_path()
+            if item['isdir']:
+                treestore[row_path] = (alias, False, True, item_path)
+            else:
+                treestore[row_path] = (alias, item['Active'], False, item_path)
     def gui_update_links(self):
-        tree = self.links_treestore # Name, show in Mistika, is folder
+        treestore = self.links_treestore # Name, show in Mistika, is folder
         iters = self.iters
+        row_references = self.row_references_links
         items = self.files['Links']
         for item_path in sorted(items):
             item = items[item_path]
-            dir_name = os.path.dirname(item_path)
-            base_name = os.path.basename(item_path)
-            if not dir_name in iters:
-                iters[dir_name] = None
-            alias = base_name
+            parent_row_iter = None
+            if 'alias' in items[item_path]:
+                alias = items[item_path]['alias']
+            else:
+                alias = os.path.basename(item_path)
             url = ''
             try:
-                alias = item['alias']
                 url = item['url']
             except KeyError:
                 pass
-            if 'children' in item:
-                iters[item_path] = tree.append(iters[dir_name], [alias, url])
-                for child in item['children']:
-                    tree.append(iters[item_path], [child['alias'], child['url']])
+            if not item_path in row_references:
+                row_iter = treestore.append(parent_row_iter, [alias, url])
+                row_path = treestore.get_path(row_iter)
+                row_references[item_path] = gtk.TreeRowReference(treestore, row_path)
             else:
-                tree.append(iters[dir_name], [alias, url])
+                row_path = row_references[item_path].get_path()
+                treestore[row_path] = (alias, url)
+            if 'children' in item:
+                parent_row_iter = row_iter
+                for child in item['children']:
+                    child_path = item_path+'/'+child['alias']
+                    if not child_path in row_references:
+                        row_iter = treestore.append(parent_row_iter, [child['alias'], child['url']])
+                        row_path = treestore.get_path(row_iter)
+                        row_references[child_path] = gtk.TreeRowReference(treestore, row_path)
+                    else:
+                        row_path = row_references[item_path].get_path()
+                        treestore[row_path] = (child['alias'], child['url'])
     def launch_thread(self, method):
         t = threading.Thread(target=method)
         self.threads.append(t)
@@ -972,14 +1006,13 @@ class PyApp(gtk.Window):
         self.launch_thread(self.io_populate_afterscripts)
     def on_stacks_toggle(self, cellrenderertoggle, path, *ignore):
         print 'Not yet implemented'
-        pass
+        self.launch_thread(self.io_populate_stacks)
     def on_configs_toggle(self, cellrenderertoggle, treepath, *ignore):
         tree = self.configs_treestore
         name = tree[treepath][0]
         state = not tree[treepath][1]
         path = tree[treepath][3]
         f_item = self.files['Configs'][path]
-        print repr(f_item)
         links = f_item['links']
         if state: # Install
             for link_target, link in links.iteritems():
@@ -987,7 +1020,7 @@ class PyApp(gtk.Window):
         else: # remove
             for link_target, link in links.iteritems():
                 hyperspeed.manage.remove(link_target, link)
-        tree[treepath][1] = state
+        self.launch_thread(self.io_populate_configs)
     def on_tools_run(self, treeview, path, view_column, *ignore):
 
         file_path = self.tools_treestore[path][4]
