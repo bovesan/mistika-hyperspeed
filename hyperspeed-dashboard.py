@@ -381,7 +381,7 @@ class PyApp(gtk.Window):
         return scrolled_window
     def init_render_queue_window(self):
         tree        = self.render_queue_tree      = gtk.TreeView()
-        treestore   = self.render_queue_treestore = gtk.TreeStore(str, str, str, str, str, int, str) # Project, Name, Progress, Status, Added by, Added time
+        treestore   = self.render_queue_treestore = gtk.TreeStore(str, str, int, str, str, str, str) # Project, Name, Progress value, Progress str, Status, Added by, Added time
         tree_filter = self.render_queue_filter    = treestore.filter_new();
         vbox = gtk.VBox(False, 10)
         headerBox = gtk.HBox(False, 5)
@@ -406,20 +406,20 @@ class PyApp(gtk.Window):
         queueTreeNameColumn.set_expand(False)
         tree.append_column(queueTreeNameColumn)
         cell = gtk.CellRendererProgress()
-        queueTreeNameColumn = gtk.TreeViewColumn('Progress', cell, value=5, text=6)
+        queueTreeNameColumn = gtk.TreeViewColumn('Progress', cell, value=2, text=3)
         queueTreeNameColumn.set_cell_data_func(cell, self.hide_if_parent)
         queueTreeNameColumn.set_resizable(True)
         queueTreeNameColumn.set_expand(False)
         tree.append_column(queueTreeNameColumn)
-        queueTreeNameColumn = gtk.TreeViewColumn('Status', gtk.CellRendererText(), text=2)
+        queueTreeNameColumn = gtk.TreeViewColumn('Status', gtk.CellRendererText(), text=4)
         queueTreeNameColumn.set_resizable(True)
         queueTreeNameColumn.set_expand(True)
         tree.append_column(queueTreeNameColumn)
-        queueTreeNameColumn = gtk.TreeViewColumn('Added by', gtk.CellRendererText(), text=3)
+        queueTreeNameColumn = gtk.TreeViewColumn('Added by', gtk.CellRendererText(), text=5)
         queueTreeNameColumn.set_resizable(True)
         queueTreeNameColumn.set_expand(False)
         tree.append_column(queueTreeNameColumn)
-        queueTreeNameColumn = gtk.TreeViewColumn('Added time', gtk.CellRendererText(), text=4)
+        queueTreeNameColumn = gtk.TreeViewColumn('Added time', gtk.CellRendererText(), text=6)
         queueTreeNameColumn.set_resizable(True)
         queueTreeNameColumn.set_expand(False)
         tree.append_column(queueTreeNameColumn)
@@ -654,16 +654,19 @@ class PyApp(gtk.Window):
         queue = self.render_queue
         hostname = socket.gethostname()
         for queue_name in os.listdir(mistika.settings['BATCHPATH']):
-            if not queue_name.startswith(hostname) and not queue_name.startswith('public'):
-                continue
+            # if not queue_name.startswith(hostname) and not queue_name.startswith('public'):
+            #     continue
             queue_path = os.path.join(mistika.settings['BATCHPATH'], queue_name)
-            for file_name in os.listdir(queue_path):
-                file_path = os.path.join(queue_path, file_name)
-                file_id, file_ext = os.path.splitext(file_path)
-                if file_ext == '.rnd':
-                    print 'Render item: ', file_path
-                    queue[file_id] = RenderItem(file_path)
-                    print 'Render groupname: ', queue[file_id].groupname
+            try:
+                for file_name in os.listdir(queue_path):
+                    file_path = os.path.join(queue_path, file_name)
+                    file_id, file_ext = os.path.splitext(file_path)
+                    if file_ext == '.rnd':
+                        print 'Render item: ', file_path
+                        queue[file_id] = RenderItem(file_path)
+                        print 'Render groupname: ', queue[file_id].groupname
+            except OSError:
+                pass
         gobject.idle_add(self.gui_update_render_queue)
     def gui_update_tools(self):
         treestore = self.tools_treestore # Name, show in Mistika, is folder, autorun, file path
@@ -806,8 +809,20 @@ class PyApp(gtk.Window):
                         row_path = row_references[item_path].get_path()
                         treestore[row_path] = (child['alias'], child['url'])
     def gui_update_render_queue(self):
+        print 'gui_update_render_queue'
         treestore = self.render_queue_treestore
         row_references = self.row_references_render_queue
+        queue = self.render_queue
+        for file_id in sorted(queue):
+            render = queue[file_id]
+            parent_row_iter = None
+            if not file_id in row_references:
+                row_iter = treestore.append(parent_row_iter, [render.project, render.groupname, render.progress, '',  render.status, render.owner, render.ctime])
+                row_path = treestore.get_path(row_iter)
+                row_references[item_path] = gtk.TreeRowReference(treestore, row_path)
+                # Project, Name, Progress value, Progress str, Status, Added by, Added time
+            
+
         pass
     def launch_thread(self, method):
         t = threading.Thread(target=method)
