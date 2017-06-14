@@ -91,7 +91,6 @@ class PyApp(gtk.Window):
         }
         class "*" style "theme-fixes"''' % (screen.get_width()/300)
         gtk.rc_parse_string(gtkrc)
-
         vbox = gtk.VBox(False, 10)
         self.filterEntry = gtk.Entry()
         vbox.pack_start(self.init_toolbar(), False, False, 10)
@@ -227,7 +226,8 @@ class PyApp(gtk.Window):
         return toolbarBox
     def init_tools_window(self):
         tree        = self.tools_tree      = gtk.TreeView()
-        treestore   = self.tools_treestore = gtk.TreeStore(str, bool, bool, str, str) # Name, show in Mistika, is folder, autorun, file_path
+        treestore   = self.tools_treestore = gtk.TreeStore(str, bool, bool, str, str, str) # Name, show in Mistika, is folder, autorun, file_path, description
+        tree.set_tooltip_column(5)
         tree_filter = self.tools_filter    = treestore.filter_new();
         cell = gtk.CellRendererText()
         column = gtk.TreeViewColumn('', cell, text=0)
@@ -383,6 +383,7 @@ class PyApp(gtk.Window):
         tree        = self.render_queue_tree      = gtk.TreeView()
         treestore   = self.render_queue_treestore = gtk.TreeStore(str, str, int, str, str, str, str) # Project, Name, Progress value, Progress str, Status, Added by, Added time
         tree_filter = self.render_queue_filter    = treestore.filter_new();
+        tree.set_tooltip_column(0)
         vbox = gtk.VBox(False, 10)
         headerBox = gtk.HBox(False, 5)
         headerLabel  = gtk.Label('<span size="large"><b>Render queue:</b></span>')
@@ -456,6 +457,7 @@ class PyApp(gtk.Window):
         file_type_defaults = {
             'Autorun' : 'Never',
             'Show in Mistika' : False,
+            'description' : ''
         }
         if not file_type in self.files:
             self.files[file_type] = {}
@@ -669,7 +671,7 @@ class PyApp(gtk.Window):
                 pass
         gobject.idle_add(self.gui_update_render_queue)
     def gui_update_tools(self):
-        treestore = self.tools_treestore # Name, show in Mistika, is folder, autorun, file path
+        treestore = self.tools_treestore # Name, show in Mistika, is folder, autorun, file path, description
         row_references = self.row_references_tools
         items = self.files['Tools']
         for item_path in sorted(items):
@@ -686,15 +688,15 @@ class PyApp(gtk.Window):
             except KeyError:
                 parent_row_iter = None
             if not item_path in row_references:
-                row_iter = treestore.append(parent_row_iter, [alias, False, True, '', item_path])
+                row_iter = treestore.append(parent_row_iter, [alias, False, True, '', item_path, ''])
                 row_path = treestore.get_path(row_iter)
                 row_references[item_path] = gtk.TreeRowReference(treestore, row_path)
             else:
                 row_path = row_references[item_path].get_path()
             if item['isdir']:
-                treestore[row_path] = (alias, False, True, '', item_path)
+                treestore[row_path] = (alias, False, True, '', item_path, '')
             else:
-                treestore[row_path] = (alias, item['Show in Mistika'], False, item['Autorun'], item_path)
+                treestore[row_path] = (alias, item['Show in Mistika'], False, item['Autorun'], item_path, item['description'])
     def gui_update_afterscripts(self):
         treestore = self.afterscripts_treestore # Name, show in Mistika, is folder
         row_references = self.row_references_afterscripts
@@ -810,17 +812,22 @@ class PyApp(gtk.Window):
                         treestore[row_path] = (child['alias'], child['url'])
     def gui_update_render_queue(self):
         print 'gui_update_render_queue'
+        treeview = self.render_queue_tree
         treestore = self.render_queue_treestore
         row_references = self.row_references_render_queue
         queue = self.render_queue
         for file_id in sorted(queue):
             render = queue[file_id]
             parent_row_iter = None
+            progress_string = '%5.2f%%' % (render.progress * 100.0)
             if not file_id in row_references:
-                row_iter = treestore.append(parent_row_iter, [render.project, render.groupname, render.progress, '',  render.status, render.owner, render.ctime])
+                row_iter = treestore.append(parent_row_iter, [render.project, render.groupname, render.progress, progress_string,  render.status, render.owner, render.ctime])
                 row_path = treestore.get_path(row_iter)
-                row_references[item_path] = gtk.TreeRowReference(treestore, row_path)
+                row_references[file_id] = gtk.TreeRowReference(treestore, row_path)
                 # Project, Name, Progress value, Progress str, Status, Added by, Added time
+            else:
+                row_path = row_references[file_id].get_path()
+                treestore[row_path] = (render.project, render.groupname, render.progress, progress_string,  render.status, render.owner, render.ctime)
             
 
         pass
