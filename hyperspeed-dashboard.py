@@ -37,6 +37,7 @@ os.chdir(os.path.dirname(sys.argv[0]))
 import hyperspeed.manage
 from hyperspeed import stack
 from hyperspeed import mistika
+from hyperspeed import video
 
 def md5(fname):
     hash_md5 = hashlib.md5()
@@ -65,6 +66,8 @@ class RenderItem(hyperspeed.stack.Stack):
     def __init__(self, path):
         super(RenderItem, self).__init__(path)
         self.progress = 0.0
+        self.duration = video.frames2tc(self.frames, self.fps)
+        self.afterscript = ''
 
 class PyApp(gtk.Window):
 
@@ -103,6 +106,8 @@ class PyApp(gtk.Window):
         self.render_queue = {}
         self.row_references_render_queue = {}
 
+        self.afterscripts_model = gtk.ListStore(str)
+        self.afterscripts_model.append(['None'])
 
         notebook = gtk.Notebook()
 
@@ -133,30 +138,30 @@ class PyApp(gtk.Window):
         vbox.pack_start(afterscriptsToolbar, False, False, 2)
         afterscriptsBox = gtk.HBox(False, 5)
         self.queueTree = gtk.TreeView()
-        queueTreeNameColumn = gtk.TreeViewColumn('Project', gtk.CellRendererText(), text=0)
-        queueTreeNameColumn.set_resizable(True)
-        queueTreeNameColumn.set_expand(False)
-        self.queueTree.append_column(queueTreeNameColumn)
-        queueTreeNameColumn = gtk.TreeViewColumn('Name', gtk.CellRendererText(), text=1)
-        queueTreeNameColumn.set_resizable(True)
-        queueTreeNameColumn.set_expand(False)
-        self.queueTree.append_column(queueTreeNameColumn)
-        queueTreeNameColumn = gtk.TreeViewColumn('Progress', gtk.CellRendererProgress())
-        queueTreeNameColumn.set_resizable(True)
-        queueTreeNameColumn.set_expand(False)
-        self.queueTree.append_column(queueTreeNameColumn)
-        queueTreeNameColumn = gtk.TreeViewColumn('Status', gtk.CellRendererText(), text=2)
-        queueTreeNameColumn.set_resizable(True)
-        queueTreeNameColumn.set_expand(True)
-        self.queueTree.append_column(queueTreeNameColumn)
-        queueTreeNameColumn = gtk.TreeViewColumn('Added by', gtk.CellRendererText(), text=3)
-        queueTreeNameColumn.set_resizable(True)
-        queueTreeNameColumn.set_expand(False)
-        self.queueTree.append_column(queueTreeNameColumn)
-        queueTreeNameColumn = gtk.TreeViewColumn('Added time', gtk.CellRendererText(), text=4)
-        queueTreeNameColumn.set_resizable(True)
-        queueTreeNameColumn.set_expand(False)
-        self.queueTree.append_column(queueTreeNameColumn)
+        column = gtk.TreeViewColumn('Project', gtk.CellRendererText(), text=0)
+        column.set_resizable(True)
+        column.set_expand(False)
+        self.queueTree.append_column(column)
+        column = gtk.TreeViewColumn('Name', gtk.CellRendererText(), text=1)
+        column.set_resizable(True)
+        column.set_expand(False)
+        self.queueTree.append_column(column)
+        column = gtk.TreeViewColumn('Progress', gtk.CellRendererProgress())
+        column.set_resizable(True)
+        column.set_expand(False)
+        self.queueTree.append_column(column)
+        column = gtk.TreeViewColumn('Status', gtk.CellRendererText(), text=2)
+        column.set_resizable(True)
+        column.set_expand(True)
+        self.queueTree.append_column(column)
+        column = gtk.TreeViewColumn('Added by', gtk.CellRendererText(), text=3)
+        column.set_resizable(True)
+        column.set_expand(False)
+        self.queueTree.append_column(column)
+        column = gtk.TreeViewColumn('Added time', gtk.CellRendererText(), text=4)
+        column.set_resizable(True)
+        column.set_expand(False)
+        self.queueTree.append_column(column)
         cell2 = gtk.CellRendererToggle()
         self.queueTreestore = gtk.TreeStore(str, str, str, str, str)
         queueTreestore = self.queueTreestore
@@ -381,9 +386,8 @@ class PyApp(gtk.Window):
         return scrolled_window
     def init_render_queue_window(self):
         tree        = self.render_queue_tree      = gtk.TreeView()
-        treestore   = self.render_queue_treestore = gtk.TreeStore(str, str, int, str, str, str, str) # Project, Name, Progress value, Progress str, Status, Added by, Added time
+        treestore   = self.render_queue_treestore = gtk.TreeStore(str, str, str, int, str, str, str, str, str, str) # Id, Project, Name, Progress value, Progress str, Status, Afterscript, Added by, Added time, Description
         tree_filter = self.render_queue_filter    = treestore.filter_new();
-        tree.set_tooltip_column(0)
         vbox = gtk.VBox(False, 10)
         headerBox = gtk.HBox(False, 5)
         headerLabel  = gtk.Label('<span size="large"><b>Render queue:</b></span>')
@@ -398,32 +402,48 @@ class PyApp(gtk.Window):
         afterscriptsToolbar.pack_start(gtk.CheckButton('Process jobs for other hosts'), False, False, 5)
         vbox.pack_start(afterscriptsToolbar, False, False, 2)
         afterscriptsBox = gtk.HBox(False, 5)
-        queueTreeNameColumn = gtk.TreeViewColumn('Project', gtk.CellRendererText(), text=0)
-        queueTreeNameColumn.set_resizable(True)
-        queueTreeNameColumn.set_expand(False)
-        tree.append_column(queueTreeNameColumn)
-        queueTreeNameColumn = gtk.TreeViewColumn('Name', gtk.CellRendererText(), text=1)
-        queueTreeNameColumn.set_resizable(True)
-        queueTreeNameColumn.set_expand(False)
-        tree.append_column(queueTreeNameColumn)
+        column = gtk.TreeViewColumn('Project', gtk.CellRendererText(), text=1)
+        column.set_resizable(True)
+        column.set_expand(False)
+        tree.append_column(column)
+        column = gtk.TreeViewColumn('Name', gtk.CellRendererText(), text=2)
+        column.set_resizable(True)
+        column.set_expand(False)
+        tree.append_column(column)
         cell = gtk.CellRendererProgress()
-        queueTreeNameColumn = gtk.TreeViewColumn('Progress', cell, value=2, text=3)
-        queueTreeNameColumn.set_cell_data_func(cell, self.hide_if_parent)
-        queueTreeNameColumn.set_resizable(True)
-        queueTreeNameColumn.set_expand(False)
-        tree.append_column(queueTreeNameColumn)
-        queueTreeNameColumn = gtk.TreeViewColumn('Status', gtk.CellRendererText(), text=4)
-        queueTreeNameColumn.set_resizable(True)
-        queueTreeNameColumn.set_expand(True)
-        tree.append_column(queueTreeNameColumn)
-        queueTreeNameColumn = gtk.TreeViewColumn('Added by', gtk.CellRendererText(), text=5)
-        queueTreeNameColumn.set_resizable(True)
-        queueTreeNameColumn.set_expand(False)
-        tree.append_column(queueTreeNameColumn)
-        queueTreeNameColumn = gtk.TreeViewColumn('Added time', gtk.CellRendererText(), text=6)
-        queueTreeNameColumn.set_resizable(True)
-        queueTreeNameColumn.set_expand(False)
-        tree.append_column(queueTreeNameColumn)
+        column = gtk.TreeViewColumn('Progress', cell, value=3, text=4)
+        column.set_cell_data_func(cell, self.hide_if_parent)
+        column.set_resizable(True)
+        column.set_expand(False)
+        tree.append_column(column)
+        column = gtk.TreeViewColumn('Status', gtk.CellRendererText(), text=5)
+        column.set_resizable(True)
+        column.set_expand(True)
+        tree.append_column(column)
+
+        afterscripts_model = self.afterscripts_model
+        cell = gtk.CellRendererCombo()
+        cell.set_property("editable", True)
+        cell.set_property("has-entry", False)
+        cell.set_property("text-column", 0)
+        cell.set_property("model", afterscripts_model)
+        cell.connect('changed', self.on_combo_changed)
+        cell.connect('editing-started', self.on_editing_started)
+        cell.connect("edited", self.on_render_afterscript_set)
+        column = gtk.TreeViewColumn("Afterscript", cell, text=6)
+        column.set_resizable(True)
+        column.set_expand(False)
+        tree.append_column(column)
+
+        column = gtk.TreeViewColumn('Added by', gtk.CellRendererText(), text=7)
+        column.set_resizable(True)
+        column.set_expand(False)
+        tree.append_column(column)
+        column = gtk.TreeViewColumn('Added time', gtk.CellRendererText(), text=8)
+        column.set_resizable(True)
+        column.set_expand(False)
+        tree.append_column(column)
+        tree.set_tooltip_column(9)
         # it = queueTreestore.append(None, ["Private (6)", '', '', '', '', 0, ''])
         # queueTreestore.append(it, ["RnD", 'test_0001', 'Rendering on gaia', 'gaia', '08:27', 20, '20%'])
         # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
@@ -437,7 +457,7 @@ class PyApp(gtk.Window):
         tree.set_model(treestore)
         tree.expand_all()
         scrolled_window = gtk.ScrolledWindow()
-        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+        scrolled_window.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(tree)
         afterscriptsBox.pack_start(scrolled_window)
         afterscriptsButtons = gtk.VBox(False, 3)
@@ -482,6 +502,7 @@ class PyApp(gtk.Window):
                         files[path][child.tag] = child.text
                 else:
                     files[path] = {'isdir' : True}
+                    files[path]['description'] = "Folder"
         for path in files:
             if not os.path.exists(path):
                 del files[path]
@@ -667,6 +688,11 @@ class PyApp(gtk.Window):
                         print 'Render item: ', file_path
                         queue[file_id] = RenderItem(file_path)
                         print 'Render groupname: ', queue[file_id].groupname
+                        afterscript_setting_path = file_id+'.afterscript'
+                        try:
+                            queue[file_id].afterscript = open(afterscript_setting_path).read()
+                        except IOError:
+                            pass
             except OSError:
                 pass
         gobject.idle_add(self.gui_update_render_queue)
@@ -708,6 +734,13 @@ class PyApp(gtk.Window):
                 alias = items[item_path]['alias']
             else:
                 alias = os.path.basename(item_path)
+            in_model = False
+            for model_row in self.afterscripts_model:
+                if model_row[0] == alias:
+                    in_model = True
+                    break
+            if not in_model:
+                self.afterscripts_model.append([alias])
             try:
                 parent_row_reference = row_references[dir_name]
                 parent_row_path = parent_row_reference.get_path()
@@ -820,14 +853,19 @@ class PyApp(gtk.Window):
             render = queue[file_id]
             parent_row_iter = None
             progress_string = '%5.2f%%' % (render.progress * 100.0)
+            description = ''
+            description += 'Resolution: %sx%s\n' % (render.resX, render.resY)
+            description += 'Fps: %s\n' % render.fps
+            description += 'Duration: %s (%s frames)\n' % (render.duration, render.frames)
+            description = description.strip('\n')
             if not file_id in row_references:
-                row_iter = treestore.append(parent_row_iter, [render.project, render.groupname, render.progress, progress_string,  render.status, render.owner, render.ctime])
+                # Id, Project, Name, Progress value, Progress str, Status, Afterscript, Added by, Added time, Description
+                row_iter = treestore.append(parent_row_iter, [file_id, render.project, render.groupname, render.progress, progress_string,  render.status, render.afterscript, render.owner, render.ctime, description])
                 row_path = treestore.get_path(row_iter)
                 row_references[file_id] = gtk.TreeRowReference(treestore, row_path)
-                # Project, Name, Progress value, Progress str, Status, Added by, Added time
             else:
                 row_path = row_references[file_id].get_path()
-                treestore[row_path] = (render.project, render.groupname, render.progress, progress_string,  render.status, render.owner, render.ctime)
+                treestore[row_path] = (file_id, render.project, render.groupname, render.progress, progress_string,  render.status, render.afterscript, render.owner, render.ctime, description)
             
 
         pass
@@ -1006,6 +1044,19 @@ class PyApp(gtk.Window):
         subprocess.Popen(['crontab', temp_config_path])
         print new_config
         self.launch_thread(self.io_populate_tools)
+    def on_render_afterscript_set(self, widget, path, text):
+        treestore = self.render_queue_treestore
+        file_id = treestore[path][0]
+        afterscript_setting_path = file_id+'.afterscript'
+        afterscript = text
+        if afterscript == 'None':
+            try:
+                os.remove(afterscript_setting_path)
+            except:
+                pass
+        else:
+            open(afterscript_setting_path, 'w').write(afterscript)
+        self.launch_thread(self.io_populate_render_queue)
     def on_editing_started(self, cell, editable, path):
         self.comboEditable = editable
     def on_combo_changed(self, cell, path, newiter):

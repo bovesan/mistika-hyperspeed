@@ -46,13 +46,15 @@ class Stack(object):
                         object_path = '/'.join(level_names)
                         if object_path.endswith('D/RenderProject'):
                             self.project = char_buffer
-                        if object_path.endswith('D/X'):
+                        elif object_path.endswith('D/X'):
                             self.resX = char_buffer
-                        if object_path.endswith('D/Y'):
+                        elif object_path.endswith('D/Y'):
                             self.resY = char_buffer
-                        if object_path.endswith('D/JobFrameRate'):
+                        elif object_path.endswith('D/JobFrameRate'):
                             self.fps = char_buffer
-                        elif object_path.endswith('D'): # End of header
+                        elif object_path.endswith('p/W'):
+                            self.frames = char_buffer
+                        elif object_path.endswith('Group/p'): # End of header
                             return
                         char_buffer = ''
                         del level_names[-1]
