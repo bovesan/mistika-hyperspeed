@@ -87,7 +87,7 @@ class PyApp(gtk.Window):
         self.set_position(gtk.WIN_POS_CENTER)
         if 'darwin' in platform.system().lower():
             self.set_resizable(False) # Because resizing crashes the app on Mac
-
+        self.set_icon_from_file("res/img/hyperspeed_1024px.png")
         gtkrc = '''
         style "theme-fixes" {
             font_name = "sans normal %i"
