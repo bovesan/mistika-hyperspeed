@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<config>
+    <alias>Private render queue</alias>
+    <description>Set up private and public render queues, to be able to better prioritize renders.</description>
+    <links>
+    	<link>
+    		<target>~/.hyperspeed_render_queue_public</target>
+    		<location>$BATCHPATH$/public</location>
+    	</link>
+    	<link>
+    		<target>$BATCHPATH$/.$HOSTNAME$_public</target>
+    		<location>~/.hyperspeed_render_queue_public</location>
+    	</link>
+    	<link copy="yes">
+    		<target>queue_folder</target>
+    		<location>$BATCHPATH$/.$HOSTNAME$_public</location>
+    	</link>
+    	<link>
+    		<target>~/.hyperspeed_render_queue_private</target>
+    		<location>$BATCHPATH$/private</location>
+    	</link>
+    	<link>
+    		<target>$BATCHPATH$/.$HOSTNAME$_private</target>
+    		<location>~/.hyperspeed_render_queue_private</location>
+    	</link>
+    	<link copy="yes">
+    		<target>queue_folder</target>
+    		<location>$BATCHPATH$/.$HOSTNAME$_private</location>
+    	</link>
+    </links>
+    <manage>false</manage>
+</config>
