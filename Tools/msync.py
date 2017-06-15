@@ -269,26 +269,13 @@ class MainThread(threading.Thread):
         column = gtk.TreeViewColumn('Tree path', gtk.CellRendererText(), text=1, foreground=13)
         column.set_resizable(True)
         column.set_expand(True)
-<<<<<<< HEAD
         #column.set_property('visible', False)
-=======
-        column.set_property('visible', False)
->>>>>>> ea57e9c6f1005031d4abd5f2517f1aee0bb9ffab
         self.projectsTree.append_column(column)
 
         column = gtk.TreeViewColumn('Local size', gtk.CellRendererText(), text=11, foreground=13)
         column.set_resizable(True)
-<<<<<<< HEAD
         column.set_expand(True)
         #column.set_property('visible', False)
-=======
-        column.set_expand(False)
-        self.projectsTree.append_column(column)
-
-        column = gtk.TreeViewColumn('Local time', gtk.CellRendererText(), text=2, foreground=13)
-        column.set_resizable(True)
-        column.set_expand(False)
->>>>>>> ea57e9c6f1005031d4abd5f2517f1aee0bb9ffab
         self.projectsTree.append_column(column)
 
         column = gtk.TreeViewColumn('Action', gtk.CellRendererPixbuf(), pixbuf=3)
@@ -1172,11 +1159,6 @@ class MainThread(threading.Thread):
         #gobject.idle_add(loader.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
 
     def buffer_add(self, lines, host, root, parent_path=''):
-<<<<<<< HEAD
-    	#time.sleep(0.1)
-=======
-        #time.sleep(0.1)
->>>>>>> ea57e9c6f1005031d4abd5f2517f1aee0bb9ffab
         root = root.rstrip('/')
         if not root == '':
             root += '/'
@@ -1216,14 +1198,11 @@ class MainThread(threading.Thread):
             elif path == '': # Skip root item
                 continue
             else:
-<<<<<<< HEAD
-<<<<<<< HEAD
                 parent_path_to_store = parent_dir
             if parent_path_to_store != '' and not parent_path_to_store in self.buffer:
             	print 'parent_path_to_store: ' + parent_path_to_store
                 time.sleep(1)
                 self.buffer_add(['0 d 0 0 %s' % parent_path_to_store], host, root)
-=======
                 tree_parent_path = parent_dir
             #print 'tree_parent_path: ' + tree_parent_path
             tree_parent_path = tree_parent_path.rstrip('/')
@@ -1231,14 +1210,6 @@ class MainThread(threading.Thread):
             if tree_parent_path != '' and not tree_parent_path in self.buffer:
                 time.sleep(0.1)
                 self.buffer_add(['0 d 0 0 %s' % tree_parent_path], host, root, parent_path )
->>>>>>> 31f5b4ea5a5a7cad33f96b36da6f5c280f7f624e
-=======
-                parent_path_to_store = parent_dir.rstrip('/')
-            if parent_path_to_store != '' and not parent_path_to_store in self.buffer:
-                print 'parent_path_to_store: ' + parent_path_to_store
-                #time.sleep(1)
-                self.buffer_add(['0 d 0 0 %s' % parent_path_to_store], host, root)
->>>>>>> ea57e9c6f1005031d4abd5f2517f1aee0bb9ffab
             if f_time == 0:
                 virtual = True
             else:

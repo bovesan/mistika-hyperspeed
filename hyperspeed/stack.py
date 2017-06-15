@@ -25,8 +25,6 @@ class Stack(object):
     def __init__(self, path):
         self.path = path
         self.size = os.path.getsize(self.path)
-        self.owner = 'Unknown'
-        self.status = 'Unknown'
         self.ctime = os.path.getctime(self.path)
         self.read_header()
     def read_header(self):

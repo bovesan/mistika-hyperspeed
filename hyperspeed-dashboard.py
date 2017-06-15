@@ -68,6 +68,15 @@ class RenderItem(hyperspeed.stack.Stack):
         self.progress = 0.0
         self.duration = video.frames2tc(self.frames, self.fps)
         self.afterscript = ''
+        self.owner = 'Unknown'
+        self.status = 'Queued'
+    def run(self):
+        cmd = ['mistika', '-c', self.path]
+        self.logfile_path = self.path + '.log'
+        logfile_h = open(self.logfile_path, 'w')
+        self.process = subprocess.Popen(cmd, stdout=logfile_h, stderr=subprocess.STDOUT)
+        self.ret_code = self.process.wait()
+        logfile_h.flush()
 
 class PyApp(gtk.Window):
 
@@ -103,8 +112,6 @@ class PyApp(gtk.Window):
         self.row_references_stacks = {}
         self.row_references_configs = {}
         self.row_references_links = {}
-        self.render_queue = {}
-        self.row_references_render_queue = {}
 
         self.afterscripts_model = gtk.ListStore(str)
         self.afterscripts_model.append(['None'])
@@ -385,9 +392,15 @@ class PyApp(gtk.Window):
         t.start()
         return scrolled_window
     def init_render_queue_window(self):
-        tree        = self.render_queue_tree      = gtk.TreeView()
-        treestore   = self.render_queue_treestore = gtk.TreeStore(str, str, str, int, str, str, str, str, str, str) # Id, Project, Name, Progress value, Progress str, Status, Afterscript, Added by, Added time, Description
-        tree_filter = self.render_queue_filter    = treestore.filter_new();
+        self.render_queue = {}
+        row_references = self.row_references_render_queue = {}
+        tree           = self.render_queue_tree      = gtk.TreeView()
+        treestore      = self.render_queue_treestore = gtk.TreeStore(str, str, str, int, str, str, str, str, str, str) # Id, Project, Name, Progress value, Progress str, Status, Afterscript, Added by, Added time, Description
+        tree_filter    = self.render_queue_filter    = treestore.filter_new();
+        for queue_name in ['Private', 'Public']:
+            row_iter = treestore.append(None, [queue_name, queue_name, '', 0, '', '', '', '', '', ''])
+            row_path = treestore.get_path(row_iter)
+            row_references[queue_name] = gtk.TreeRowReference(treestore, row_path)
         vbox = gtk.VBox(False, 10)
         headerBox = gtk.HBox(False, 5)
         headerLabel  = gtk.Label('<span size="large"><b>Render queue:</b></span>')
@@ -444,6 +457,7 @@ class PyApp(gtk.Window):
         column.set_expand(False)
         tree.append_column(column)
         tree.set_tooltip_column(9)
+        tree.set_rules_hint(True)
         # it = queueTreestore.append(None, ["Private (6)", '', '', '', '', 0, ''])
         # queueTreestore.append(it, ["RnD", 'test_0001', 'Rendering on gaia', 'gaia', '08:27', 20, '20%'])
         # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
@@ -677,8 +691,6 @@ class PyApp(gtk.Window):
         queue = self.render_queue
         hostname = socket.gethostname()
         for queue_name in os.listdir(mistika.settings['BATCHPATH']):
-            # if not queue_name.startswith(hostname) and not queue_name.startswith('public'):
-            #     continue
             queue_path = os.path.join(mistika.settings['BATCHPATH'], queue_name)
             try:
                 for file_name in os.listdir(queue_path):
@@ -687,10 +699,12 @@ class PyApp(gtk.Window):
                     if file_ext == '.rnd':
                         #print 'Render item: ', file_path
                         queue[file_id] = RenderItem(file_path)
+                        render = queue[file_id]
+                        render.private = queue_name.startswith(hostname)
                         #print 'Render groupname: ', queue[file_id].groupname
                         afterscript_setting_path = file_id+'.afterscript'
                         try:
-                            queue[file_id].afterscript = open(afterscript_setting_path).read()
+                            render.afterscript = open(afterscript_setting_path).read()
                         except IOError:
                             pass
             except OSError:
@@ -851,7 +865,12 @@ class PyApp(gtk.Window):
         queue = self.render_queue
         for file_id in sorted(queue):
             render = queue[file_id]
-            parent_row_iter = None
+            if render.private:
+                parent_row_reference = row_references['Private']
+            else:
+                parent_row_reference = row_references['Public']
+            parent_row_path = parent_row_reference.get_path()
+            parent_row_iter = treestore.get_iter(parent_row_path)
             progress_string = '%5.2f%%' % (render.progress * 100.0)
             description = ''
             description += 'Resolution: %sx%s\n' % (render.resX, render.resY)
@@ -866,6 +885,7 @@ class PyApp(gtk.Window):
             else:
                 row_path = row_references[file_id].get_path()
                 treestore[row_path] = (file_id, render.project, render.groupname, render.progress, progress_string,  render.status, render.afterscript, render.owner, render.ctime, description)
+        treeview.expand_all()
             
 
         pass
