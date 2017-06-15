@@ -39,6 +39,16 @@ from hyperspeed import stack
 from hyperspeed import mistika
 from hyperspeed import video
 
+def config_value_decode(value, parent_folder = False):
+    value = value.replace('$BATCHPATH$', mistika.settings['BATCHPATH'])
+    value = value.replace('$HOSTNAME$', socket.gethostname())
+    value = value.replace('$MISTIKA-ENV$', mistika.env_folder)
+    value = os.path.expanduser(value)
+    if parent_folder and not value.startswith('/'):
+        value = os.path.join(parent_folder, value)
+    value = os.path.abspath(value)
+    return value
+
 def md5(fname):
     hash_md5 = hashlib.md5()
     if os.path.isdir(fname):
@@ -338,7 +348,7 @@ class PyApp(gtk.Window):
         return scrolled_window
     def init_configs_window(self):
         tree        = self.configs_tree      = gtk.TreeView()
-        treestore   = self.configs_treestore = gtk.TreeStore(str, bool, bool, str) # Name, active, is folder, path
+        treestore   = self.configs_treestore = gtk.TreeStore(str, bool, bool, str, str) # Name, active, is folder, path, description
         tree_filter = self.configs_filter    = treestore.filter_new();
         cell = gtk.CellRendererText()
         column = gtk.TreeViewColumn('', cell, text=0)
@@ -352,6 +362,7 @@ class PyApp(gtk.Window):
         column.set_expand(False)
         column.set_resizable(True)
         tree.append_column(column)
+        tree.set_tooltip_column(4)
         tree_filter.set_visible_func(self.filter_tree, (self.filterEntry, tree));
         tree.set_model(tree_filter)
         tree.expand_all()
@@ -491,7 +502,7 @@ class PyApp(gtk.Window):
         file_type_defaults = {
             'Autorun' : 'Never',
             'Show in Mistika' : False,
-            'description' : ''
+            'description' : 'No description available'
         }
         if not file_type in self.files:
             self.files[file_type] = {}
@@ -614,7 +625,8 @@ class PyApp(gtk.Window):
     def io_populate_configs(self):
         file_type = 'Configs'
         file_type_defaults = {
-            'Active' : False
+            'Active' : False,
+            'Description' : 'No description available'
         }
         if not file_type in self.files:
             self.files[file_type] = {}
@@ -630,11 +642,8 @@ class PyApp(gtk.Window):
                         if child.tag == 'links':
                             files[path][child.tag] = {}
                             for link in child:
-                                link_target = link.find('target').text
-                                link_target = os.path.abspath(os.path.join(path, link_target))
-                                link_location = link.find('location').text
-                                if link_location.startswith('MISTIKA-ENV/'):
-                                    link_location = os.path.join(mistika.env_folder, link_location[12:])
+                                link_target = config_value_decode(link.find('target').text, path)
+                                link_location = config_value_decode(link.find('location').text)
                                 files[path][child.tag][link_target] = link_location
                                 
                         elif child.tag == 'manage':
@@ -813,15 +822,15 @@ class PyApp(gtk.Window):
             except KeyError:
                 parent_row_iter = None
             if not item_path in row_references:
-                row_iter = treestore.append(parent_row_iter, [alias, False, True, item_path])
+                row_iter = treestore.append(parent_row_iter, [alias, False, True, item_path, ''])
                 row_path = treestore.get_path(row_iter)
                 row_references[item_path] = gtk.TreeRowReference(treestore, row_path)
             else:
                 row_path = row_references[item_path].get_path()
             if item['isdir']:
-                treestore[row_path] = (alias, False, True, item_path)
+                treestore[row_path] = (alias, False, True, item_path, 'Folder')
             else:
-                treestore[row_path] = (alias, item['Active'], False, item_path)
+                treestore[row_path] = (alias, item['Active'], False, item_path, items[item_path]['description'])
     def gui_update_links(self):
         treestore = self.links_treestore # Name, show in Mistika, is folder
         iters = self.iters

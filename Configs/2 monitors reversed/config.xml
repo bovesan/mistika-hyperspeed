@@ -5,7 +5,7 @@
     <links>
     	<link>
     		<target>2_LAYOUT.sup</target>
-    		<location>MISTIKA-ENV/config/2_LAYOUT.sup</location>
+    		<location>$MISTIKA-ENV$/config/2_LAYOUT.sup</location>
     	</link>
     </links>
     <manage>false</manage>
