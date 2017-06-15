@@ -685,9 +685,9 @@ class PyApp(gtk.Window):
                     file_path = os.path.join(queue_path, file_name)
                     file_id, file_ext = os.path.splitext(file_path)
                     if file_ext == '.rnd':
-                        print 'Render item: ', file_path
+                        #print 'Render item: ', file_path
                         queue[file_id] = RenderItem(file_path)
-                        print 'Render groupname: ', queue[file_id].groupname
+                        #print 'Render groupname: ', queue[file_id].groupname
                         afterscript_setting_path = file_id+'.afterscript'
                         try:
                             queue[file_id].afterscript = open(afterscript_setting_path).read()
