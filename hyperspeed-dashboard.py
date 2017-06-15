@@ -640,11 +640,15 @@ class PyApp(gtk.Window):
                     files[path] = {'isdir' : False}
                     for child in treeroot:
                         if child.tag == 'links':
-                            files[path][child.tag] = {}
+                            files[path][child.tag] = []
                             for link in child:
                                 link_target = config_value_decode(link.find('target').text, path)
                                 link_location = config_value_decode(link.find('location').text)
-                                files[path][child.tag][link_target] = link_location
+                                try:
+                                    link_copy = link.attrib['copy'].lower() == 'yes'
+                                except KeyError:
+                                    link_copy = False
+                                files[path][child.tag].append((link_target, link_location, link_copy))
                                 
                         elif child.tag == 'manage':
                             files[path][child.tag] = child.text.lower() == 'true'
@@ -666,8 +670,8 @@ class PyApp(gtk.Window):
                 except OSError as e:
                     detected = False
             if 'links' in files[path]:
-                for link_target, link in files[path]['links'].iteritems():
-                    if not hyperspeed.manage.detect(link_target, link):
+                for link_target, link, link_copy in files[path]['links']:
+                    if not hyperspeed.manage.detect(link_target, link, link_copy):
                         detected = False
             files[path]['Active'] = detected
             for key, value in file_type_defaults.iteritems():
@@ -1144,11 +1148,11 @@ class PyApp(gtk.Window):
         f_item = self.files['Configs'][path]
         links = f_item['links']
         if state: # Install
-            for link_target, link in links.iteritems():
-                state = state and hyperspeed.manage.install(link_target, link)
+            for link_target, link, link_copy in links:
+                state = state and hyperspeed.manage.install(link_target, link, link_copy)
         else: # remove
-            for link_target, link in links.iteritems():
-                hyperspeed.manage.remove(link_target, link)
+            for link_target, link, link_copy in links:
+                hyperspeed.manage.remove(link_target, link, link_copy)
         self.launch_thread(self.io_populate_configs)
     def on_tools_run(self, treeview, path, view_column, *ignore):
 
