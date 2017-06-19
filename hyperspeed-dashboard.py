@@ -22,6 +22,8 @@ VERSION_STRING = '<span color="#ff9900" weight="bold">Development version.</span
 CONFIG_FOLDER = '~/.mistika-hyperspeed/'
 CONFIG_FILE = 'hyperspeed.cfg'
 STACK_EXTENSIONS = ['.grp', '.fx', '.env']
+THIS_HOST_ALIAS = 'This machine'
+OTHER_HOSTS_ALIAS = 'Others'
 
 AUTORUN_TIMES = {
     'Never' :   False,
@@ -38,6 +40,7 @@ import hyperspeed.manage
 from hyperspeed import stack
 from hyperspeed import mistika
 from hyperspeed import video
+from hyperspeed import human
 
 def config_value_decode(value, parent_folder = False):
     value = value.replace('$BATCHPATH$', mistika.settings['BATCHPATH'])
@@ -79,7 +82,7 @@ class RenderItem(hyperspeed.stack.Stack):
         self.duration = video.frames2tc(self.frames, self.fps)
         self.afterscript = ''
         self.owner = 'Unknown'
-        self.status = 'Queued'
+        self.status = 'Not started'
     def run(self):
         cmd = ['mistika', '-c', self.path]
         self.logfile_path = self.path + '.log'
@@ -147,7 +150,9 @@ class PyApp(gtk.Window):
         checkButton = gtk.CheckButton('Process queue')
         checkButton.set_property("active", True)
         afterscriptsToolbar.pack_start(checkButton, False, False, 5)
-        afterscriptsToolbar.pack_start(gtk.CheckButton('Process jobs for other hosts'), False, False, 5)
+        checkButton = gtk.CheckButton('Process jobs for other hosts')
+        checkButton.set_property("active", False)
+        afterscriptsToolbar.pack_start(checkButton, False, False, 5)
         simulBox =  gtk.HBox(False, 5)
         simulBox.pack_start(gtk.Label('Simultaneous jobs:'), False, False, 0)
         simulBox.pack_start(gtk.SpinButton(gtk.Adjustment(value=5, lower=0, upper=999, step_incr=1, page_incr=0, page_size=0)), False, False, 0)
@@ -406,10 +411,10 @@ class PyApp(gtk.Window):
         self.render_queue = {}
         row_references = self.row_references_render_queue = {}
         tree           = self.render_queue_tree      = gtk.TreeView()
-        treestore      = self.render_queue_treestore = gtk.TreeStore(str, str, str, int, str, str, str, str, str, str) # Id, Project, Name, Progress value, Progress str, Status, Afterscript, Added by, Added time, Description
+        treestore      = self.render_queue_treestore = gtk.TreeStore(str, str, str, int, str, str, str, str, str, str, bool) # Id, Project, Name, Progress value, Progress str, Status, Afterscript, Added time, Description, human time, show progress
         tree_filter    = self.render_queue_filter    = treestore.filter_new();
-        for queue_name in ['Private', 'Public']:
-            row_iter = treestore.append(None, [queue_name, queue_name, '', 0, '', '', '', '', '', ''])
+        for queue_name in [THIS_HOST_ALIAS, OTHER_HOSTS_ALIAS]:
+            row_iter = treestore.append(None, [queue_name, queue_name, '', 0, '', '', '', '', 'Render jobs submitted by %s' % queue_name.lower(), '', False])
             row_path = treestore.get_path(row_iter)
             row_references[queue_name] = gtk.TreeRowReference(treestore, row_path)
         vbox = gtk.VBox(False, 10)
@@ -418,13 +423,20 @@ class PyApp(gtk.Window):
         headerLabel.set_use_markup(True)
         headerBox.pack_start(headerLabel, False, False, 5)
         vbox.pack_start(headerBox, False, False, 2)
-        afterscriptsToolbar = gtk.HBox(False, 2)
-        #afterscriptsToolbar.pack_start(headerBox, False, False, 2)
+        toolbar = gtk.HBox(False, 2)
         checkButton = gtk.CheckButton('Process queue')
         checkButton.set_property("active", True)
-        afterscriptsToolbar.pack_start(checkButton, False, False, 5)
-        afterscriptsToolbar.pack_start(gtk.CheckButton('Process jobs for other hosts'), False, False, 5)
-        vbox.pack_start(afterscriptsToolbar, False, False, 2)
+        toolbar.pack_start(checkButton, False, False, 5)
+        checkButton = gtk.CheckButton('Process jobs for other hosts')
+        checkButton.set_property("active", False)
+        toolbar.pack_start(checkButton, False, False, 5)
+        checkButton = gtk.CheckButton('Autostart jobs from this machine')
+        checkButton.set_property("active", False)
+        toolbar.pack_start(checkButton, False, False, 5)
+        button = gtk.CheckButton('Autostart jobs from this machine')
+        checkButton.set_property("active", False)
+        toolbar.pack_start(checkButton, False, False, 5)
+        vbox.pack_start(toolbar, False, False, 2)
         afterscriptsBox = gtk.HBox(False, 5)
         column = gtk.TreeViewColumn('Project', gtk.CellRendererText(), text=1)
         column.set_resizable(True)
@@ -436,7 +448,7 @@ class PyApp(gtk.Window):
         tree.append_column(column)
         cell = gtk.CellRendererProgress()
         column = gtk.TreeViewColumn('Progress', cell, value=3, text=4)
-        column.set_cell_data_func(cell, self.hide_if_parent)
+        column.add_attribute(cell, 'visible', 10)
         column.set_resizable(True)
         column.set_expand(False)
         tree.append_column(column)
@@ -458,16 +470,11 @@ class PyApp(gtk.Window):
         column.set_resizable(True)
         column.set_expand(False)
         tree.append_column(column)
-
-        column = gtk.TreeViewColumn('Added by', gtk.CellRendererText(), text=7)
+        column = gtk.TreeViewColumn('Added time', gtk.CellRendererText(), text=9)
         column.set_resizable(True)
         column.set_expand(False)
         tree.append_column(column)
-        column = gtk.TreeViewColumn('Added time', gtk.CellRendererText(), text=8)
-        column.set_resizable(True)
-        column.set_expand(False)
-        tree.append_column(column)
-        tree.set_tooltip_column(9)
+        tree.set_tooltip_column(8)
         tree.set_rules_hint(True)
         # it = queueTreestore.append(None, ["Private (6)", '', '', '', '', 0, ''])
         # queueTreestore.append(it, ["RnD", 'test_0001', 'Rendering on gaia', 'gaia', '08:27', 20, '20%'])
@@ -494,6 +501,20 @@ class PyApp(gtk.Window):
         downButton = gtk.Button(stock=gtk.STOCK_GO_DOWN)
         afterscriptsButtons.pack_start(downButton)
         afterscriptsBox.pack_start(afterscriptsButtons, False, False)
+
+        menu = self.popup = gtk.Menu()
+        newi = gtk.ImageMenuItem(gtk.STOCK_DELETE)
+        newi.connect("activate", self.on_render_delete)
+        newi.show()
+        menu.append(newi)
+        newi = gtk.ImageMenuItem(gtk.STOCK_MEDIA_PLAY)
+        newi.set_label('Start')
+        newi.connect("activate", self.on_render_start)
+        newi.show()
+        menu.append(newi)
+        menu.set_title('Popup')
+        tree.connect('button_release_event', self.on_render_button_press_event, tree)
+
         self.launch_thread(self.io_populate_render_queue)
         vbox.pack_start(afterscriptsBox, True, True, 5)
         return vbox
@@ -871,7 +892,6 @@ class PyApp(gtk.Window):
                         row_path = row_references[item_path].get_path()
                         treestore[row_path] = (child['alias'], child['url'])
     def gui_update_render_queue(self):
-        print 'gui_update_render_queue'
         treeview = self.render_queue_tree
         treestore = self.render_queue_treestore
         row_references = self.row_references_render_queue
@@ -879,25 +899,26 @@ class PyApp(gtk.Window):
         for file_id in sorted(queue):
             render = queue[file_id]
             if render.private:
-                parent_row_reference = row_references['Private']
+                parent_row_reference = row_references[THIS_HOST_ALIAS]
             else:
-                parent_row_reference = row_references['Public']
+                parent_row_reference = row_references[OTHER_HOSTS_ALIAS]
             parent_row_path = parent_row_reference.get_path()
             parent_row_iter = treestore.get_iter(parent_row_path)
             progress_string = '%5.2f%%' % (render.progress * 100.0)
+            time_string = human.time(render.ctime)
             description = ''
             description += 'Resolution: %sx%s\n' % (render.resX, render.resY)
             description += 'Fps: %s\n' % render.fps
             description += 'Duration: %s (%s frames)\n' % (render.duration, render.frames)
             description = description.strip('\n')
             if not file_id in row_references:
-                # Id, Project, Name, Progress value, Progress str, Status, Afterscript, Added by, Added time, Description
-                row_iter = treestore.append(parent_row_iter, [file_id, render.project, render.groupname, render.progress, progress_string,  render.status, render.afterscript, render.owner, render.ctime, description])
+                # Id, Project, Name, Progress value, Progress str, Status, Afterscript, Added time, Description, human time, show progress
+                row_iter = treestore.append(parent_row_iter, [file_id, render.project, render.groupname, render.progress, progress_string,  render.status, render.afterscript, render.ctime, description, time_string, False])
                 row_path = treestore.get_path(row_iter)
                 row_references[file_id] = gtk.TreeRowReference(treestore, row_path)
             else:
                 row_path = row_references[file_id].get_path()
-                treestore[row_path] = (file_id, render.project, render.groupname, render.progress, progress_string,  render.status, render.afterscript, render.owner, render.ctime, description)
+                treestore[row_path] = (file_id, render.project, render.groupname, render.progress, progress_string,  render.status, render.afterscript, render.ctime, description, time_string, False)
         treeview.expand_all()
             
 
@@ -1183,6 +1204,34 @@ class PyApp(gtk.Window):
         url = treestore[path][1]
         print url
         webbrowser.get('firefox').open(url)
+    def on_render_delete(self, widget, *ignore):
+        treestore = self.render_queue_treestore
+        treepath = self.render_queue_selected_path
+        name = treestore[treepath][0]
+        print 'Delete', 
+        print name
+    def on_render_start(self, widget, *ignore):
+        treestore = self.render_queue_treestore
+        treepath = self.render_queue_selected_path
+        name = treestore[treepath][0]
+        print 'Start', 
+        print name
+    def on_render_button_press_event(self, treeview, event, *ignore):
+        treestore = treeview.get_model()
+        if event.button == 3:
+            x = int(event.x)
+            y = int(event.y)
+            time = event.time
+            pthinfo = treeview.get_path_at_pos(x, y)
+            if pthinfo is not None:
+                path, col, cellx, celly = pthinfo
+                if treestore[path].parent == None:
+                    return False
+                treeview.grab_focus()
+                treeview.set_cursor( path, col, 0)
+                self.popup.popup( None, None, None, event.button, time)
+                self.render_queue_selected_path = path
+            return True
 
 os.environ['LC_CTYPE'] = 'en_US.utf8'
 os.environ['LC_ALL'] = 'en_US.utf8'
