@@ -14,12 +14,16 @@ class Dependency(object):
         return self.name
     def __repr__(self):
         return self.name
-    def check(self):
+    @property
+    def path(self):
         if self.name.startswith('/'):
-            path = self.name
+            return self.name
         elif self.type == 'glsl':
-            path = os.path.join(mistika.glsl_folder, self.name)
-        return os.path.exists(path)
+            return os.path.join(mistika.glsl_folder, self.name)
+        else: # should not happen
+            return self.name
+    def check(self):
+        return os.path.exists(self.path)
 
 class Stack(object):
     def __init__(self, path):
@@ -116,6 +120,8 @@ class Stack(object):
             char_buffer_store = ''
             env_bytes_read = 0
             last_progress_update_time = 0
+            level = 0
+            hidden_level = False
             for line in open(self.path):
                 for char in line:
                     env_bytes_read += 1
@@ -125,13 +131,24 @@ class Stack(object):
                         progress_float = float(env_bytes_read) / float(self.size)
                     if char == '(':
                         char_buffer = char_buffer.replace('\n', '').strip()
+                        level += 1
                         level_names.append(char_buffer)
                         char_buffer = ''
                     elif char == ')':
+                        level -= 1
+                        if hidden_level:
+                            if hidden_level <= level:
+                                char_buffer = ''
+                                continue
+                            else:
+                                hidden_level = False
                         f_path = False
                         object_path = '/'.join(level_names)
                         if object_path.endswith('F/T'):
                             fx_type = char_buffer
+                        elif object_path.endswith('p/h'):
+                            if bool(char_buffer):
+                                hidden_level = level-2
                         elif object_path.endswith('C/F'): # Clip source link
                             f_path = char_buffer
                             f_type = 'lnk'

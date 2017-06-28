@@ -2,8 +2,19 @@
 # -*- coding: utf-8 -*-
 
 import gtk
-import sys, platform
+import os
+import subprocess
+import sys
+import tempfile
+import platform
 
+try:
+    os.chdir(os.path.dirname(sys.argv[0]))
+    sys.path.append("..") 
+    from hyperspeed.stack import Stack
+    from hyperspeed import mistika
+except (OSError):
+    mistika = False
 
 class PyApp(gtk.Window):
 
@@ -16,6 +27,9 @@ class PyApp(gtk.Window):
         self.set_position(gtk.WIN_POS_CENTER)
         if 'darwin' in platform.system().lower():
             self.set_resizable(False) # Because resizing crashes the app on Mac
+
+        self.stacks = {}
+
 
         vbox = gtk.VBox(False, 10)
 
@@ -36,9 +50,9 @@ class PyApp(gtk.Window):
         column = gtk.TreeViewColumn('Path', cell, text=1)
         column.set_resizable(True)
         column.set_expand(True)
-        self.linksTreestore = gtk.TreeStore(str) # Name, url, color, underline
-        linksTreestore = self.linksTreestore
-        self.linksTree.set_model(linksTreestore)
+        self.stacks_treestore = gtk.TreeStore(str) # Name, url, color, underline
+        treestore = self.stacks_treestore
+        self.linksTree.set_model(treestore)
         self.linksTree.expand_all()
 
         scrolled_window = gtk.ScrolledWindow()
@@ -54,7 +68,7 @@ class PyApp(gtk.Window):
         vbox.pack_start(hbox, False, False, 0)
 
         hbox = gtk.HBox(False, 10)
-        hbox.pack_start(gtk.Label('Media in loaded structures:'), False, False, 0)
+        hbox.pack_start(gtk.Label('Dependencies in loaded structures:'), False, False, 0)
         vbox.pack_start(hbox, False, False, 0)
 
         self.linksTree = gtk.TreeView()
@@ -70,10 +84,10 @@ class PyApp(gtk.Window):
         column = gtk.TreeViewColumn('Path', cell, text=1)
         column.set_resizable(True)
         column.set_expand(True)
-        self.linksTreestore = gtk.TreeStore(str) # Name, url, color, underline
-        linksTreestore = self.linksTreestore
-        linksTreestore.append(None, ["Horten", 'horten.hocusfocus.no', 'mistika', 22, '/Volumes/SLOW_HF/PROJECTS/'])
-        self.linksTree.set_model(linksTreestore)
+        self.dependencies_treestore = gtk.TreeStore(str) # Name, url, color, underline
+        treestore = self.dependencies_treestore
+        # linksTreestore.append(None, ["Horten", 'horten.hocusfocus.no', 'mistika', 22, '/Volumes/SLOW_HF/PROJECTS/'])
+        self.linksTree.set_model(treestore)
         self.linksTree.expand_all()
 
         scrolled_window = gtk.ScrolledWindow()
@@ -97,12 +111,20 @@ class PyApp(gtk.Window):
         vbox2.pack_start(button, False, False, 0)
         vbox2.pack_start(button, False, False, 0)
         hbox.pack_start(vbox2, False, False, 0)
-        vbox.pack_start(hbox, False, False, 0)
+        # vbox.pack_start(hbox, False, False, 0)
 
 
         hbox = gtk.HBox(False, 10)
-        hbox.pack_start(gtk.Button('Destination folder:'), False, False, 5)
-        hbox.pack_start(gtk.Entry(), False, False, 5)
+        button = gtk.Button('Destination folder ...')
+        button.connect("clicked", self.set_destination_dialog)
+        hbox.pack_start(button, False, False, 5)
+        self.destination_folder_entry = gtk.Entry()
+        hbox.pack_start(self.destination_folder_entry, False, False, 5)
+        button = gtk.Button('Copy')
+        button.connect("clicked", self.copy_start)
+        hbox.pack_start(button, False, False, 5)
+        self.status_label = gtk.Label('Not started')
+        hbox.pack_start(self.status_label, False, False, 5)
         vbox.pack_start(hbox, False, False, 0)
 
         #menu = ['Sync project', 'Sync media']
@@ -127,12 +149,19 @@ class PyApp(gtk.Window):
         gtk.main_quit()
 
     def add_file_dialog(self, widget):
+        if mistika:
+            folder = os.path.join(mistika.projects_folder, mistika.project)
+        else:
+            folder = '/'
         dialog = gtk.FileChooserDialog(title="Add files", parent=None, action=gtk.FILE_CHOOSER_ACTION_OPEN, buttons=(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL, gtk.STOCK_OPEN, gtk.RESPONSE_OK), backend=None)
         dialog.set_select_multiple(True)
         #dialog.add_filter(filter)
         dialog.add_shortcut_folder('/home/mistika/MISTIKA-ENV')
+        dialog.add_shortcut_folder(folder)
+        dialog.set_current_folder(folder)
         filter = gtk.FileFilter()
         filter.set_name("Mistika structures")
+        filter.add_pattern("*.fx")
         filter.add_pattern("*.env")
         filter.add_pattern("*.grp")
         filter.add_pattern("*.rnd")
@@ -140,10 +169,63 @@ class PyApp(gtk.Window):
         filter.add_pattern("*.lnk")
         response = dialog.run()
         if response == gtk.RESPONSE_OK:
-            print dialog.get_filename(), 'selected'
+            stack_path = dialog.get_filename()
+            print stack_path
+            self.stacks[stack_path] = Stack(stack_path)
+            stack = self.stacks[stack_path]
+            for dependency in stack.dependencies:
+                self.dependencies_treestore.append(None, [dependency.name])
+            self.stacks_treestore.append(None, [stack_path])
         elif response == gtk.RESPONSE_CANCEL:
             print 'Closed, no files selected'
         dialog.destroy()
+
+    def set_destination_dialog(self, widget):
+        if mistika:
+            folder = os.path.join(mistika.projects_folder, mistika.project)
+        else:
+            folder = '/'
+        dialog = gtk.FileChooserDialog(title="Select destination folder", parent=None, action=gtk.FILE_CHOOSER_ACTION_CREATE_FOLDER, buttons=(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL, gtk.STOCK_OPEN, gtk.RESPONSE_OK), backend=None)
+        dialog.set_select_multiple(True)
+        #dialog.add_filter(filter)
+        dialog.add_shortcut_folder('/home/mistika/MISTIKA-ENV')
+        dialog.add_shortcut_folder(folder)
+        dialog.set_current_folder(folder)
+        response = dialog.run()
+        if response == gtk.RESPONSE_OK:
+            self.destination_folder_entry.set_text(dialog.get_filename())
+        elif response == gtk.RESPONSE_CANCEL:
+            print 'Closed, no files selected'
+        dialog.destroy()
+
+    def copy_start(self, widget):
+        destination_folder = self.destination_folder_entry.get_text()
+        if not os.path.isdir(destination_folder):
+            try:
+                os.makedirs(destination_folder)
+            except OSError:
+                print 'Could not create destination folder. Aborting.'
+                return
+        if not destination_folder.endswith('/'):
+            destination_folder += '/'
+        self.copy_queue = []
+        for stack_path in self.stacks:
+            cmd = ['rsync', '-ua', stack_path, destination_folder]
+            subprocess.call(cmd)
+            for dependency in self.stacks[stack_path].dependencies:
+                self.copy_queue.append(dependency.path)
+        print repr(self.copy_queue)
+        with tempfile.NamedTemporaryFile() as temp:
+            temp.write('\n'.join(self.copy_queue) + '\n')
+            temp.flush()
+            # subprocess.call(['cat', temp.name])
+            # rsync -a --files-from=/tmp/foo /usr remote:/backup
+            cmd = ['rsync', '-ua', '--files-from=%s' % temp.name, '/', destination_folder]
+            status = subprocess.call(cmd)
+            if status == 0:
+                self.status_label.set_text('Finished successfully')
+            else:
+                self.status_label.set_text('Finished with errors')
 
 PyApp()
 gtk.main()
