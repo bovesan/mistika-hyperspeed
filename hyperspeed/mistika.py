@@ -20,8 +20,13 @@ def get_mistikarc_path(env_folder):
         return False
     return mistikarc_paths[0]
 
+def get_mistika_projects_folder(env_folder):
+    for line in open(os.path.join(env_folder, 'MISTIKA_WORK')):
+        if line.startswith('MISTIKA_WORK'):
+            return line.strip().split(' ', 1)[1].strip()
+
 def reload():
-    global env_folder, tools_path, shared_folder, version, project, user, settings, product
+    global env_folder, tools_path, shared_folder, version, project, user, settings, product, projects_folder
     global afterscripts_path
     global scripts_folder
     global glsl_folder
@@ -65,6 +70,7 @@ def reload():
         elif value.lower() == 'false':
             value = False
         settings[key] = value
+    projects_folder = get_mistika_projects_folder(env_folder)
     tools_path = os.path.join(shared_folder, 'config/LinuxMistikaTools')
     afterscripts_path = os.path.join(env_folder, 'etc/setup/RenderEndScript.cfg')
     if not os.path.isfile(afterscripts_path):
