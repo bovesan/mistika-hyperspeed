@@ -111,8 +111,9 @@ class Stack(object):
         except AttributeError:
             list(self.iter_dependencies())
         return self._dependencies
-    def iter_dependencies(self):
+    def iter_dependencies(self, progress_callback=False):
         self._dependencies = []
+        self._dependency_paths = []
         try:
             level_names = []
             fx_type = None
@@ -129,6 +130,8 @@ class Stack(object):
                     if time_now - last_progress_update_time > 0.1:
                         last_progress_update_time = time_now
                         progress_float = float(env_bytes_read) / float(self.size)
+                        if progress_callback:
+                            progress_callback(self, progress_float)
                     if char == '(':
                         char_buffer = char_buffer.replace('\n', '').strip()
                         level += 1
@@ -149,6 +152,7 @@ class Stack(object):
                         elif object_path.endswith('p/h'):
                             if bool(char_buffer):
                                 hidden_level = level-2
+                                hidden_level = False # Because it is not working
                         elif object_path.endswith('C/F'): # Clip source link
                             f_path = char_buffer
                             f_type = 'lnk'
@@ -172,14 +176,17 @@ class Stack(object):
                                 dependency = Dependency(f_path, f_type, CdIs, CdIe)
                             else:
                                 dependency = Dependency(f_path, f_type)
-                            self._dependencies.append(dependency)
-                            yield dependency
+                            if not f_path in self._dependency_paths:
+                                self._dependencies.append(dependency)
+                                yield dependency
                         char_buffer = ''
                         del level_names[-1]
                     elif len(level_names) > 0 and level_names[-1] == 'Shape':
                         continue
                     elif char:
                         char_buffer += char
+            if progress_callback:
+                progress_callback(self, 1.0)
         except IOError as e:
             print 'Could not open ' + self.path
             raise e
