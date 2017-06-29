@@ -18,6 +18,8 @@ class Dependency(object):
     def path(self):
         if self.name.startswith('/'):
             return self.name
+        elif self.type == 'dat':
+            return os.path.join(mistika.projects_folder, self.name)
         elif self.type == 'glsl':
             return os.path.join(mistika.glsl_folder, self.name)
         else: # should not happen
@@ -142,6 +144,7 @@ class Stack(object):
                         if hidden_level:
                             if hidden_level <= level:
                                 char_buffer = ''
+                                del level_names[-1]
                                 continue
                             else:
                                 hidden_level = False
@@ -152,7 +155,7 @@ class Stack(object):
                         elif object_path.endswith('p/h'):
                             if bool(char_buffer):
                                 hidden_level = level-2
-                                hidden_level = False # Because it is not working
+                                # hidden_level = False # Because it is not working
                         elif object_path.endswith('C/F'): # Clip source link
                             f_path = char_buffer
                             f_type = 'lnk'

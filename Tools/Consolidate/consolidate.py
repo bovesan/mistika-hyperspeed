@@ -13,7 +13,7 @@ import re
 
 try:
     os.chdir(os.path.dirname(sys.argv[0]))
-    sys.path.append("..") 
+    sys.path.append("../..") 
     from hyperspeed.stack import Stack
     from hyperspeed import mistika
 except (OSError):
@@ -25,7 +25,7 @@ class PyApp(gtk.Window):
         super(PyApp, self).__init__()
         screen = self.get_screen()
         self.set_title("Consolidate Mistika structures")
-        self.set_size_request(screen.get_width()*0.5-100, screen.get_height()-200)
+        self.set_size_request(screen.get_width()/2-100, screen.get_height()-200)
         self.set_border_width(20)
         self.set_position(gtk.WIN_POS_CENTER)
         if 'darwin' in platform.system().lower():
@@ -315,10 +315,13 @@ class PyApp(gtk.Window):
         # print self, dependency
         treestore = self.dependencies_treestore
         # print repr(self.dependency_row_references)
-        row_path = self.dependency_row_references[dependency_path].get_path()
-        treestore[row_path][1] = progress
-        treestore[row_path][2] = progress_string
-        treestore[row_path][3] = True
+        try:
+            row_path = self.dependency_row_references[dependency_path].get_path()
+            treestore[row_path][1] = progress
+            treestore[row_path][2] = progress_string
+            treestore[row_path][3] = True
+        except KeyError:
+            print 'No row reference for %s' % dependency_path
         
 
 gobject.threads_init()
