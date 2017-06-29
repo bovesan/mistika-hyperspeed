@@ -9,6 +9,7 @@ import tempfile
 import threading
 import platform
 import gobject
+import re
 
 try:
     os.chdir(os.path.dirname(sys.argv[0]))
@@ -24,14 +25,15 @@ class PyApp(gtk.Window):
         super(PyApp, self).__init__()
         screen = self.get_screen()
         self.set_title("Consolidate Mistika structures")
-        self.set_size_request(800, screen.get_height()-200)
+        self.set_size_request(screen.get_width()*0.5-100, screen.get_height()-200)
         self.set_border_width(20)
         self.set_position(gtk.WIN_POS_CENTER)
         if 'darwin' in platform.system().lower():
             self.set_resizable(False) # Because resizing crashes the app on Mac
 
         self.stacks = {}
-        self.dependency_names = []
+        self.dependency_row_references = {}
+        self.dependency_paths = []
         self.threads = []
 
 
@@ -81,14 +83,14 @@ class PyApp(gtk.Window):
         cell.set_property("editable", True)
         column = gtk.TreeViewColumn('', cell, text=0)
         column.set_resizable(True)
-        column.set_expand(True)
+        # column.set_expand(True)
         self.linksTree.append_column(column)
-        cell = gtk.CellRendererText()
-        cell.set_property("foreground", "gray")
-        cell.set_property("editable", True)
-        column = gtk.TreeViewColumn('Path', cell, text=1)
-        column.set_resizable(True)
+        cell = gtk.CellRendererProgress()
+        column = gtk.TreeViewColumn('Progress', cell, value=1, text=2)
+        column.add_attribute(cell, 'visible', 3)
         column.set_expand(True)
+        column.set_resizable(True)
+        self.linksTree.append_column(column)
         self.dependencies_treestore = gtk.TreeStore(str, float, str, bool) # Name, progress float, progress text, progress visible
         treestore = self.dependencies_treestore
         # linksTreestore.append(None, ["Horten", 'horten.hocusfocus.no', 'mistika', 22, '/Volumes/SLOW_HF/PROJECTS/'])
@@ -219,20 +221,59 @@ class PyApp(gtk.Window):
                 return
         if not destination_folder.endswith('/'):
             destination_folder += '/'
-        self.copy_queue = []
         for stack_path in self.stacks:
+            stack = self.stacks[stack_path]
+            row_path = stack.row_reference.get_path()
+            self.stacks_treestore[row_path][1] = 0.0
+            self.stacks_treestore[row_path][2] = 'Copying'
+            self.stacks_treestore[row_path][3] = True
             cmd = ['rsync', '-ua', stack_path, destination_folder]
             subprocess.call(cmd)
-            for dependency in self.stacks[stack_path].dependencies:
-                self.copy_queue.append(dependency.path)
-        print repr(self.copy_queue)
+            self.stacks_treestore[row_path][1] = 100.0
+            self.stacks_treestore[row_path][2] = 'Copied'
+        self.copy_queue = []
+        for dependency_path in self.dependency_row_references:
+            row_path = self.dependency_row_references[dependency_path].get_path()
+            self.copy_queue.append(self.dependencies_treestore[row_path][0])
+        # print repr(self.copy_queue)
         with tempfile.NamedTemporaryFile() as temp:
             temp.write('\n'.join(self.copy_queue) + '\n')
             temp.flush()
             # subprocess.call(['cat', temp.name])
             # rsync -a --files-from=/tmp/foo /usr remote:/backup
-            cmd = ['rsync', '-ua', '--files-from=%s' % temp.name, '/', destination_folder]
-            status = subprocess.call(cmd)
+            cmd = ['rsync', '--progress', '-uavv', '--files-from=%s' % temp.name, '/', destination_folder]
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            while proc.returncode == None:
+                proc.poll()
+                output = proc.stdout.readline()
+                print output,
+                if output.strip().endswith('is uptodate'):
+                    f_path = output.strip()[:-11].strip()
+                    if not f_path.startswith('/'):
+                        f_path = '/'+f_path
+                    self.gui_dependency_update(f_path, 100.0, 'Up to date')
+                elif output.strip().endswith('failed: No such file or directory (2)'):
+                    f_path = output.split('"', 1)[1].rsplit('"')[0]
+                    if not f_path.startswith('/'):
+                        f_path = '/'+f_path
+                    self.gui_dependency_update(f_path, 0.0, 'Not found')
+                elif '/'+output.strip() in self.dependency_row_references:
+                    f_path = output.strip()
+                    if not f_path.startswith('/'):
+                        f_path = '/'+f_path
+                    self.gui_dependency_update(f_path, 0.0, 'Copying')
+                    current_path = f_path
+                elif 'to-check' in output:
+                    self.gui_dependency_update(current_path, 100.0, 'Copied')
+                    m = re.findall(r'to-check=(\d+)/(\d+)', output)
+                    progress = (100 * (int(m[0][1]) - int(m[0][0]))) / len(self.copy_queue)
+                    sys.stdout.write('\rDone: ' + str(progress) + '%')
+                    sys.stdout.flush()
+                    if int(m[0][0]) == 0:
+                        break
+            status = proc.returncode
+            # status = subprocess.call(cmd)
+            # gobject.idle_add(self.gui_dependency_add, dependency)
             if status == 0:
                 self.status_label.set_text('Finished successfully')
             else:
@@ -247,8 +288,8 @@ class PyApp(gtk.Window):
         # print 'get_dependencies(%s)' % repr(stack)
         for dependency in stack.iter_dependencies(progress_callback=self.stack_read_progress):
             #print dependency.name
-            if not dependency.name in self.dependency_names:
-                self.dependency_names.append(dependency.name)
+            if not dependency.path in self.dependency_paths:
+                self.dependency_paths.append(dependency.path)
                 gobject.idle_add(self.gui_dependency_add, dependency)
 
 
@@ -267,7 +308,18 @@ class PyApp(gtk.Window):
         self.stacks_treestore[row_path][3] = True
     def gui_dependency_add(self, dependency):
         # print self, dependency
-        self.dependencies_treestore.append(None, [dependency.name, 0, '', False])
+        row_iter = self.dependencies_treestore.append(None, [dependency.path, 0, '', False])
+        row_path = self.dependencies_treestore.get_path(row_iter)
+        self.dependency_row_references[dependency.path] = gtk.TreeRowReference(self.dependencies_treestore, row_path)
+    def gui_dependency_update(self, dependency_path, progress, progress_string):
+        # print self, dependency
+        treestore = self.dependencies_treestore
+        # print repr(self.dependency_row_references)
+        row_path = self.dependency_row_references[dependency_path].get_path()
+        treestore[row_path][1] = progress
+        treestore[row_path][2] = progress_string
+        treestore[row_path][3] = True
+        
 
 gobject.threads_init()
 PyApp()
