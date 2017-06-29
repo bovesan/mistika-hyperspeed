@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<tool>
+<alias>Consolidate</alias>
+<description>Copies a stack (.env, .grp etc.) including all dependencies (media, glsl, LUTs etc.) to a given location.</description>
+<executable>consolidate.py</executable>
+</tool>
