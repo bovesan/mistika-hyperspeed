@@ -4,6 +4,15 @@ import os
 import time
 import mistika
 
+DEPENDENCY_TYPES = {
+    'dat' : '.dat files' ,
+    'glsl' : 'GLSL filters',
+    'lut' : 'Look-up-tables',
+    'highres' : 'Highres media',
+    'lowres' : 'Proxy media',
+    'audio' : 'Audio files',
+    'lnk' : 'Media links',
+}
 class Dependency(object):
     def __init__(self, name, f_type, start = False, end = False):
         self.name = name
@@ -167,7 +176,7 @@ class Stack(object):
                             CdIe = int(char_buffer)
                         elif object_path.endswith('C/d/I/H/n'): # Clip media name
                             f_path = CdIHp + char_buffer
-                            f_type = 'media'
+                            f_type = 'highres'
                         elif object_path.endswith('F/D'): # .dat file relative path (from projects_path)
                             f_path = char_buffer
                             f_type = 'dat'

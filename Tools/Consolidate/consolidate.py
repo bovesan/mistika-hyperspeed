@@ -14,7 +14,7 @@ import re
 try:
     os.chdir(os.path.dirname(sys.argv[0]))
     sys.path.append("../..") 
-    from hyperspeed.stack import Stack
+    from hyperspeed import stack
     from hyperspeed import mistika
 except ImportError:
     mistika = False
@@ -43,29 +43,25 @@ class PyApp(gtk.Window):
         hbox.pack_start(gtk.Label('Environments, groups or other structures to consolidate:'), False, False, 0)
         vbox.pack_start(hbox, False, False, 0)
 
-        self.linksTree = gtk.TreeView()
+        treestore = self.stacks_treestore = gtk.TreeStore(str, float, str, bool) # Name, progress float, progress text, progress visible
+        treeview = self.stacks_treeview = gtk.TreeView()
         cell = gtk.CellRendererText()
         cell.set_property("editable", True)
         column = gtk.TreeViewColumn('', cell, text=0)
         column.set_resizable(True)
         column.set_expand(True)
-        self.linksTree.append_column(column)
+        treeview.append_column(column)
         cell = gtk.CellRendererProgress()
         column = gtk.TreeViewColumn('', cell, value=1, text=2)
         column.add_attribute(cell, 'visible', 3)
         column.set_expand(True)
         column.set_resizable(True)
-        self.linksTree.append_column(column)
-
-        self.stacks_treestore = gtk.TreeStore(str, float, str, bool) # Name, progress float, progress text, progress visible
-        treestore = self.stacks_treestore
-        self.linksTree.set_model(treestore)
-        self.linksTree.expand_all()
-
+        treeview.append_column(column)
+        treeview.set_model(treestore)
+        treeview.expand_all()
         scrolled_window = gtk.ScrolledWindow()
-        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
-        scrolled_window.add(self.linksTree)
-        #vbox.pack_start(scrolled_window)
+        scrolled_window.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+        scrolled_window.add(treeview)
         vbox.pack_start(scrolled_window)
 
         hbox = gtk.HBox(False, 10)
@@ -78,27 +74,30 @@ class PyApp(gtk.Window):
         hbox.pack_start(gtk.Label('Dependencies in loaded structures:'), False, False, 0)
         vbox.pack_start(hbox, False, False, 0)
 
-        self.linksTree = gtk.TreeView()
+        treestore = self.dependencies_treestore = gtk.TreeStore(str, float=0.0, str='', bool=False) # Name, progress float, progress text, progress visible
+        for dependency_type, dependency_type_description in stack.DEPENDENCY_TYPES.iterate():
+            treestore.append(None, [dependency_type_description])
+        treestore.append(None, '')
+        treeview = self.dependencies_tree = gtk.TreeView()
         cell = gtk.CellRendererText()
         cell.set_property("editable", True)
         column = gtk.TreeViewColumn('', cell, text=0)
         column.set_resizable(True)
         # column.set_expand(True)
-        self.linksTree.append_column(column)
+        treeview.append_column(column)
         cell = gtk.CellRendererProgress()
         column = gtk.TreeViewColumn('Progress', cell, value=1, text=2)
         column.add_attribute(cell, 'visible', 3)
         column.set_expand(True)
         column.set_resizable(True)
-        self.linksTree.append_column(column)
-        self.dependencies_treestore = gtk.TreeStore(str, float, str, bool) # Name, progress float, progress text, progress visible
+        treeview.append_column(column)
         treestore = self.dependencies_treestore
         # linksTreestore.append(None, ["Horten", 'horten.hocusfocus.no', 'mistika', 22, '/Volumes/SLOW_HF/PROJECTS/'])
         self.linksTree.set_model(treestore)
         self.linksTree.expand_all()
 
         scrolled_window = gtk.ScrolledWindow()
-        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+        scrolled_window.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(self.linksTree)
         #vbox.pack_start(scrolled_window)
         vbox.pack_start(scrolled_window)
@@ -177,7 +176,7 @@ class PyApp(gtk.Window):
         if response == gtk.RESPONSE_OK:
             stack_path = dialog.get_filename()
             print stack_path
-            self.stacks[stack_path] = Stack(stack_path)
+            self.stacks[stack_path] = stack.Stack(stack_path)
             stack = self.stacks[stack_path]
             row_iter = self.stacks_treestore.append(None, [stack_path, 0.0, '0%', False])
             row_path = self.stacks_treestore.get_path(row_iter)
