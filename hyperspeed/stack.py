@@ -4,14 +4,23 @@ import os
 import time
 import mistika
 
+class DependencyType(object):
+    def __init__(self, id, description):
+        self.id = id
+        self.description = description
+    def __str__(self):
+        return self.id
+    def __repr__(self):
+        return self.id + ' ' + self.description
+
 DEPENDENCY_TYPES = {
-    'dat' : '.dat files' ,
-    'glsl' : 'GLSL filters',
-    'lut' : 'Look-up-tables',
-    'highres' : 'Highres media',
-    'lowres' : 'Proxy media',
-    'audio' : 'Audio files',
-    'lnk' : 'Media links',
+    'dat' : DependencyType('dat', '.dat files'),
+    'glsl' : DependencyType('glsl', 'GLSL filters'),
+    'lut' : DependencyType('lut', 'Look-up-tables'),
+    'highres' : DependencyType('highres', 'Highres media'),
+    'lowres' : DependencyType('lowres', 'Proxy media'),
+    'audio' : DependencyType('audio', 'Audio files'),
+    'lnk' : DependencyType('lnk', 'Media links'),
 }
 class Dependency(object):
     def __init__(self, name, f_type, start = False, end = False):
@@ -19,6 +28,7 @@ class Dependency(object):
         self.type = f_type
         self.start = start
         self.end = end
+        self.parents = []
     def __str__(self):
         return self.name
     def __repr__(self):

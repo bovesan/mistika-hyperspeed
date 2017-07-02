@@ -14,7 +14,7 @@ import re
 try:
     os.chdir(os.path.dirname(sys.argv[0]))
     sys.path.append("../..") 
-    from hyperspeed import stack
+    from hyperspeed.stack import Stack, Dependency, DEPENDENCY_TYPES
     from hyperspeed import mistika
 except ImportError:
     mistika = False
@@ -30,8 +30,10 @@ class PyApp(gtk.Window):
         self.set_position(gtk.WIN_POS_CENTER)
         if 'darwin' in platform.system().lower():
             self.set_resizable(False) # Because resizing crashes the app on Mac
+        self.connect("key-press-event",self.on_key_press_event)
 
         self.stacks = {}
+        self.dependencies = {}
         self.dependency_row_references = {}
         self.dependency_paths = []
         self.threads = []
@@ -74,11 +76,12 @@ class PyApp(gtk.Window):
         hbox.pack_start(gtk.Label('Dependencies in loaded structures:'), False, False, 0)
         vbox.pack_start(hbox, False, False, 0)
 
-        treestore = self.dependencies_treestore = gtk.TreeStore(str, float=0.0, str='', bool=False) # Name, progress float, progress text, progress visible
-        for dependency_type, dependency_type_description in stack.DEPENDENCY_TYPES.iterate():
-            treestore.append(None, [dependency_type_description])
-        treestore.append(None, '')
-        treeview = self.dependencies_tree = gtk.TreeView()
+        treestore = self.dependencies_treestore = gtk.TreeStore(str, float, str, bool) # Name, progress float, progress text, progress visible
+        treeview = self.dependencies_treeview = gtk.TreeView()
+        for dependency_type_id, dependency_type in DEPENDENCY_TYPES.iteritems():
+            row_iter = treestore.append(None, [dependency_type.description, 0.0, '', False])
+            row_path = treestore.get_path(row_iter)
+            dependency_type.row_reference = gtk.TreeRowReference(treestore, row_path)
         cell = gtk.CellRendererText()
         cell.set_property("editable", True)
         column = gtk.TreeViewColumn('', cell, text=0)
@@ -91,15 +94,12 @@ class PyApp(gtk.Window):
         column.set_expand(True)
         column.set_resizable(True)
         treeview.append_column(column)
-        treestore = self.dependencies_treestore
-        # linksTreestore.append(None, ["Horten", 'horten.hocusfocus.no', 'mistika', 22, '/Volumes/SLOW_HF/PROJECTS/'])
-        self.linksTree.set_model(treestore)
-        self.linksTree.expand_all()
+        treeview.set_model(treestore)
+        treeview.expand_all()
 
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
-        scrolled_window.add(self.linksTree)
-        #vbox.pack_start(scrolled_window)
+        scrolled_window.add(treeview)
         vbox.pack_start(scrolled_window)
 
         hbox = gtk.HBox(False, 10)
@@ -176,7 +176,7 @@ class PyApp(gtk.Window):
         if response == gtk.RESPONSE_OK:
             stack_path = dialog.get_filename()
             print stack_path
-            self.stacks[stack_path] = stack.Stack(stack_path)
+            self.stacks[stack_path] = Stack(stack_path)
             stack = self.stacks[stack_path]
             row_iter = self.stacks_treestore.append(None, [stack_path, 0.0, '0%', False])
             row_path = self.stacks_treestore.get_path(row_iter)
@@ -287,9 +287,13 @@ class PyApp(gtk.Window):
         # print 'get_dependencies(%s)' % repr(stack)
         for dependency in stack.iter_dependencies(progress_callback=self.stack_read_progress):
             #print dependency.name
-            if not dependency.path in self.dependency_paths:
-                self.dependency_paths.append(dependency.path)
+            if not dependency.path in self.dependencies:
+                self.dependencies[dependency.path] = dependency
+                self.dependencies[dependency.path].parents.append(stack)
                 gobject.idle_add(self.gui_dependency_add, dependency)
+            elif not stack in self.dependencies[dependency.path].parents:
+                self.dependencies[dependency.path].parents.append(stack)
+                gobject.idle_add(self.gui_dependency_update, dependency.path)
 
 
     def stack_read_progress(self, stack, progress):
@@ -306,21 +310,36 @@ class PyApp(gtk.Window):
         self.stacks_treestore[row_path][2] = progress_string
         self.stacks_treestore[row_path][3] = True
     def gui_dependency_add(self, dependency):
-        # print self, dependency
-        row_iter = self.dependencies_treestore.append(None, [dependency.path, 0, '', False])
+        treestore = self.dependencies_treestore
+        parent_row_path = DEPENDENCY_TYPES[dependency.type].row_reference.get_path()
+        parent_iter = treestore.get_iter(parent_row_path)
+        row_iter = self.dependencies_treestore.append(parent_iter, [dependency.path, 0, '', False])
         row_path = self.dependencies_treestore.get_path(row_iter)
-        self.dependency_row_references[dependency.path] = gtk.TreeRowReference(self.dependencies_treestore, row_path)
+        self.dependencies[dependency.path] = gtk.TreeRowReference(self.dependencies_treestore, row_path)
+        self.dependencies_treeview.expand_all()
     def gui_dependency_update(self, dependency_path, progress, progress_string):
         # print self, dependency
         treestore = self.dependencies_treestore
         # print repr(self.dependency_row_references)
         try:
-            row_path = self.dependency_row_references[dependency_path].get_path()
+            row_path = self.dependencies[dependency_path].row_reference.get_path()
             treestore[row_path][1] = progress
             treestore[row_path][2] = progress_string
             treestore[row_path][3] = True
         except KeyError:
             print 'No row reference for %s' % dependency_path
+
+    def on_key_press_event(self,widget,event):
+        keyval = event.keyval
+        keyval_name = gtk.gdk.keyval_name(keyval)
+        state = event.state
+        ctrl = (state & gtk.gdk.CONTROL_MASK)
+        command = (state & gtk.gdk.MOD1_MASK)
+        if ctrl or command and keyval_name == 'q':
+            self.on_quit(widget)
+        else:
+            return False
+        return True
         
 
 gobject.threads_init()
