@@ -21,8 +21,9 @@ def get_mistikarc_path(env_folder):
     return mistikarc_paths[0]
 
 def get_mistika_projects_folder(env_folder):
-    for line in open(os.path.join(env_folder, 'MISTIKA_WORK')):
-        if line.startswith('MISTIKA_WORK'):
+    product_work = '%s_WORK' % product.upper()
+    for line in open(os.path.join(env_folder, product_work)):
+        if line.startswith(product_work):
             return line.strip().split(' ', 1)[1].strip()
 
 def reload():
@@ -41,7 +42,10 @@ def reload():
             product = False
     shared_folder = os.path.join(env_folder, 'shared')
     try:
-        version = LooseVersion('.'.join(re.findall(r'\d+',subprocess.Popen(['mistika', '-V'], stdout=subprocess.PIPE).communicate()[0].splitlines()[0])))
+        version = LooseVersion('.'.join(re.findall(r'\d+',subprocess.Popen([product.lower(), '-V'], stdout=subprocess.PIPE).communicate()[0].splitlines()[0])))
+    except OSError:
+        version = LooseVersion('.'.join(re.findall(r'\d+',subprocess.Popen(['/Applications/SGOMambaFX.app/Contents/MacOS/mamba', '-V'], stdout=subprocess.PIPE).communicate()[0].splitlines()[0])))
+    try:
         version.vstring
     except AttributeError:
         version = LooseVersion('0')

@@ -16,7 +16,7 @@ try:
     sys.path.append("../..") 
     from hyperspeed.stack import Stack
     from hyperspeed import mistika
-except (OSError):
+except ImportError:
     mistika = False
 
 class PyApp(gtk.Window):
@@ -162,7 +162,7 @@ class PyApp(gtk.Window):
         dialog = gtk.FileChooserDialog(title="Add files", parent=None, action=gtk.FILE_CHOOSER_ACTION_OPEN, buttons=(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL, gtk.STOCK_OPEN, gtk.RESPONSE_OK), backend=None)
         dialog.set_select_multiple(True)
         #dialog.add_filter(filter)
-        dialog.add_shortcut_folder('/home/mistika/MISTIKA-ENV')
+        dialog.add_shortcut_folder(mistika.env_folder)
         dialog.add_shortcut_folder(folder)
         dialog.set_current_folder(folder)
         filter = gtk.FileFilter()
