@@ -34,8 +34,6 @@ class PyApp(gtk.Window):
 
         self.stacks = {}
         self.dependencies = {}
-        self.dependency_row_references = {}
-        self.dependency_paths = []
         self.threads = []
 
 
@@ -76,10 +74,11 @@ class PyApp(gtk.Window):
         hbox.pack_start(gtk.Label('Dependencies in loaded structures:'), False, False, 0)
         vbox.pack_start(hbox, False, False, 0)
 
-        treestore = self.dependencies_treestore = gtk.TreeStore(str, float, str, bool) # Name, progress float, progress text, progress visible
+        treestore = self.dependencies_treestore = gtk.TreeStore(str, float, str, bool, str) # Name, progress float, progress text, progress visible, details
         treeview = self.dependencies_treeview = gtk.TreeView()
+        treeview.set_tooltip_column(4)
         for dependency_type_id, dependency_type in DEPENDENCY_TYPES.iteritems():
-            row_iter = treestore.append(None, [dependency_type.description, 0.0, '', False])
+            row_iter = treestore.append(None, [dependency_type.description, 0.0, '', False, dependency_type.description])
             row_path = treestore.get_path(row_iter)
             dependency_type.row_reference = gtk.TreeRowReference(treestore, row_path)
         cell = gtk.CellRendererText()
@@ -174,22 +173,21 @@ class PyApp(gtk.Window):
         filter.add_pattern("*.lnk")
         response = dialog.run()
         if response == gtk.RESPONSE_OK:
-            stack_path = dialog.get_filename()
-            print stack_path
-            self.stacks[stack_path] = Stack(stack_path)
-            stack = self.stacks[stack_path]
-            row_iter = self.stacks_treestore.append(None, [stack_path, 0.0, '0%', False])
-            row_path = self.stacks_treestore.get_path(row_iter)
-            stack.row_reference = gtk.TreeRowReference(self.stacks_treestore, row_path)
-            # for dependency in stack.dependencies:
-            #     self.dependencies_treestore.append(None, [dependency.name])
-            # print 'creating thread'
-            t = threading.Thread(target=self.get_dependencies, args=[stack])
-            self.threads.append(t)
-            t.setDaemon(True)
-            t.start()
-            # print 'started thread'
-            # print threading.active_count()
+            for stack_path in dialog.get_filenames():
+                self.stacks[stack_path] = Stack(stack_path)
+                stack = self.stacks[stack_path]
+                row_iter = self.stacks_treestore.append(None, [stack_path, 0.0, '0%', False])
+                row_path = self.stacks_treestore.get_path(row_iter)
+                stack.row_reference = gtk.TreeRowReference(self.stacks_treestore, row_path)
+                # for dependency in stack.dependencies:
+                #     self.dependencies_treestore.append(None, [dependency.name])
+                # print 'creating thread'
+                t = threading.Thread(target=self.get_dependencies, args=[stack])
+                self.threads.append(t)
+                t.setDaemon(True)
+                t.start()
+                # print 'started thread'
+                # print threading.active_count()
         elif response == gtk.RESPONSE_CANCEL:
             print 'Closed, no files selected'
         dialog.destroy()
@@ -231,8 +229,8 @@ class PyApp(gtk.Window):
             self.stacks_treestore[row_path][1] = 100.0
             self.stacks_treestore[row_path][2] = 'Copied'
         self.copy_queue = []
-        for dependency_path in self.dependency_row_references:
-            row_path = self.dependency_row_references[dependency_path].get_path()
+        for dependency_path, dependency in self.dependencies.iteritems():
+            row_path = dependency.row_reference.get_path()
             self.copy_queue.append(self.dependencies_treestore[row_path][0])
         # print repr(self.copy_queue)
         with tempfile.NamedTemporaryFile() as temp:
@@ -256,7 +254,7 @@ class PyApp(gtk.Window):
                     if not f_path.startswith('/'):
                         f_path = '/'+f_path
                     self.gui_dependency_update(f_path, 0.0, 'Not found')
-                elif '/'+output.strip() in self.dependency_row_references:
+                elif '/'+output.strip() in self.dependencies:
                     f_path = output.strip()
                     if not f_path.startswith('/'):
                         f_path = '/'+f_path
@@ -293,7 +291,7 @@ class PyApp(gtk.Window):
                 gobject.idle_add(self.gui_dependency_add, dependency)
             elif not stack in self.dependencies[dependency.path].parents:
                 self.dependencies[dependency.path].parents.append(stack)
-                gobject.idle_add(self.gui_dependency_update, dependency.path)
+                gobject.idle_add(self.gui_dependency_add_parent, dependency.path, stack.path)
 
 
     def stack_read_progress(self, stack, progress):
@@ -304,23 +302,31 @@ class PyApp(gtk.Window):
         progress_string = '%5.2f%%' % progress_percent
         progress_string = 'Looking for dependencies'
         # print stack, progress, progress_string
+        show_progress = True
         if progress == 1.0:
             progress_string = 'Loaded dependencies'
+            show_progress = False
         self.stacks_treestore[row_path][1] = progress_percent
         self.stacks_treestore[row_path][2] = progress_string
-        self.stacks_treestore[row_path][3] = True
+        self.stacks_treestore[row_path][3] = show_progress
     def gui_dependency_add(self, dependency):
         treestore = self.dependencies_treestore
+        parent_stacks = []
+        for parent_stack in dependency.parents:
+            parent_stacks.append(parent_stack.path)
+        details = '\n'.join(parent_stacks)
         parent_row_path = DEPENDENCY_TYPES[dependency.type].row_reference.get_path()
         parent_iter = treestore.get_iter(parent_row_path)
-        row_iter = self.dependencies_treestore.append(parent_iter, [dependency.path, 0, '', False])
+        row_iter = self.dependencies_treestore.append(parent_iter, [dependency.path, 0, '', False, details])
         row_path = self.dependencies_treestore.get_path(row_iter)
-        self.dependencies[dependency.path] = gtk.TreeRowReference(self.dependencies_treestore, row_path)
+        self.dependencies[dependency.path].row_reference = gtk.TreeRowReference(self.dependencies_treestore, row_path)
         self.dependencies_treeview.expand_all()
-    def gui_dependency_update(self, dependency_path, progress, progress_string):
-        # print self, dependency
+    def gui_dependency_add_parent(self, dependency_path, parent):
         treestore = self.dependencies_treestore
-        # print repr(self.dependency_row_references)
+        row_path = self.dependencies[dependency_path].row_reference.get_path()
+        treestore[row_path][4] += parent + '\n'
+    def gui_dependency_update(self, dependency_path, progress=0.0, progress_string=''):
+        treestore = self.dependencies_treestore
         try:
             row_path = self.dependencies[dependency_path].row_reference.get_path()
             treestore[row_path][1] = progress
