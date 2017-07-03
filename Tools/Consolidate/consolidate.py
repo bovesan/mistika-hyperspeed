@@ -13,11 +13,16 @@ import re
 
 try:
     os.chdir(os.path.dirname(sys.argv[0]))
-    sys.path.append("../..") 
-    from hyperspeed.stack import Stack, Dependency, DEPENDENCY_TYPES
+    sys.path.append("../..")
+    from hyperspeed.stack import Stack, DEPENDENCY_TYPES
     from hyperspeed import mistika
+    from hyperspeed import human
 except ImportError:
     mistika = False
+
+COLOR_DEFAULT = '#000000'
+COLOR_DISABLED = '#888888'
+COLOR_ALERT = '#cc0000'
 
 class PyApp(gtk.Window):
 
@@ -35,6 +40,7 @@ class PyApp(gtk.Window):
         self.stacks = {}
         self.dependencies = {}
         self.threads = []
+        self.queue_size = 0
 
 
         vbox = gtk.VBox(False, 10)
@@ -45,6 +51,7 @@ class PyApp(gtk.Window):
 
         treestore = self.stacks_treestore = gtk.TreeStore(str, float, str, bool) # Name, progress float, progress text, progress visible
         treeview = self.stacks_treeview = gtk.TreeView()
+        treeview.set_rules_hint(True)
         cell = gtk.CellRendererText()
         cell.set_property("editable", True)
         column = gtk.TreeViewColumn('', cell, text=0)
@@ -74,23 +81,33 @@ class PyApp(gtk.Window):
         hbox.pack_start(gtk.Label('Dependencies in loaded structures:'), False, False, 0)
         vbox.pack_start(hbox, False, False, 0)
 
-        treestore = self.dependencies_treestore = gtk.TreeStore(str, float, str, bool, str) # Name, progress float, progress text, progress visible, details
+        treestore = self.dependencies_treestore = gtk.TreeStore(str, float, str, bool, str, str, str, str) # Name, progress float, progress text, progress visible, details, human size, status, text color
         treeview = self.dependencies_treeview = gtk.TreeView()
         treeview.set_tooltip_column(4)
+        treeview.set_rules_hint(True)
+        treeselection = treeview.get_selection()
+        treeselection.set_mode(gtk.SELECTION_MULTIPLE)
         for dependency_type_id, dependency_type in DEPENDENCY_TYPES.iteritems():
-            row_iter = treestore.append(None, [dependency_type.description, 0.0, '', False, dependency_type.description])
+            row_iter = treestore.append(None, [dependency_type.description, 0.0, '', False, dependency_type.description, '', '', COLOR_DISABLED])
             row_path = treestore.get_path(row_iter)
             dependency_type.row_reference = gtk.TreeRowReference(treestore, row_path)
         cell = gtk.CellRendererText()
-        cell.set_property("editable", True)
-        column = gtk.TreeViewColumn('', cell, text=0)
+        column = gtk.TreeViewColumn('', cell, text=0, foreground=7)
         column.set_resizable(True)
-        # column.set_expand(True)
+        column.set_expand(True)
+        treeview.append_column(column)
+        cell = gtk.CellRendererText()
+        column = gtk.TreeViewColumn('Size', cell, text=5, foreground=7)
+        column.set_resizable(True)
+        treeview.append_column(column)
+        cell = gtk.CellRendererText()
+        column = gtk.TreeViewColumn('Status', cell, text=6, foreground=7)
+        column.set_resizable(True)
         treeview.append_column(column)
         cell = gtk.CellRendererProgress()
         column = gtk.TreeViewColumn('Progress', cell, value=1, text=2)
         column.add_attribute(cell, 'visible', 3)
-        column.set_expand(True)
+        # column.set_expand(True)
         column.set_resizable(True)
         treeview.append_column(column)
         treeview.set_model(treestore)
@@ -100,6 +117,25 @@ class PyApp(gtk.Window):
         scrolled_window.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(treeview)
         vbox.pack_start(scrolled_window)
+
+
+
+        hbox = gtk.HBox(False, 10)
+        self.status_label = gtk.Label('No stacks loaded')
+        hbox.pack_start(self.status_label, False, False, 5)
+        spinner = self.spinner_queue = gtk.Image()
+        try:
+            spinner.set_from_file('../../res/img/spinner01.gif')
+        except:
+            pass
+        hbox.pack_start(spinner, False, False, 5)
+        button = gtk.Button('Include selected')
+        button.connect("clicked", self.gui_on_selected_dependencies, 'unskip')
+        hbox.pack_end(button, False, False, 0)
+        button = gtk.Button('Skip selected')
+        button.connect("clicked", self.gui_on_selected_dependencies, 'skip')
+        hbox.pack_end(button, False, False, 0)
+        vbox.pack_start(hbox, False, False, 0)
 
         hbox = gtk.HBox(False, 10)
         vbox2 = gtk.HBox(False, 10)
@@ -128,8 +164,6 @@ class PyApp(gtk.Window):
         button = gtk.Button('Copy')
         button.connect("clicked", self.copy_start)
         hbox.pack_start(button, False, False, 5)
-        self.status_label = gtk.Label('Not started')
-        hbox.pack_start(self.status_label, False, False, 5)
         vbox.pack_start(hbox, False, False, 0)
 
         #menu = ['Sync project', 'Sync media']
@@ -145,6 +179,7 @@ class PyApp(gtk.Window):
 
         self.connect("destroy", self.on_quit)
         self.show_all()
+        spinner.set_property('visible', False)
         #self.set_keep_above(True)
         #self.present()
 
@@ -272,9 +307,9 @@ class PyApp(gtk.Window):
             # status = subprocess.call(cmd)
             # gobject.idle_add(self.gui_dependency_add, dependency)
             if status == 0:
-                self.status_label.set_text('Finished successfully')
+                gobject.idle_add(self.gui_status_set, 'Finished successfully')
             else:
-                self.status_label.set_text('Finished with errors')
+                gobject.idle_add(self.gui_status_set, 'Finished with errors')
     def launch_thread(self, method):
         t = threading.Thread(target=method)
         self.threads.append(t)
@@ -287,13 +322,14 @@ class PyApp(gtk.Window):
             #print dependency.name
             if not dependency.path in self.dependencies:
                 self.dependencies[dependency.path] = dependency
+                if dependency.size != None:
+                    self.queue_size += dependency.size
                 self.dependencies[dependency.path].parents.append(stack)
                 gobject.idle_add(self.gui_dependency_add, dependency)
             elif not stack in self.dependencies[dependency.path].parents:
                 self.dependencies[dependency.path].parents.append(stack)
                 gobject.idle_add(self.gui_dependency_add_parent, dependency.path, stack.path)
-
-
+        gobject.idle_add(self.gui_status_set, '%s in queue' % human.size(self.queue_size))
     def stack_read_progress(self, stack, progress):
         gobject.idle_add(self.gui_stack_set_progress, stack, progress)
     def gui_stack_set_progress(self, stack, progress):
@@ -315,9 +351,17 @@ class PyApp(gtk.Window):
         for parent_stack in dependency.parents:
             parent_stacks.append(parent_stack.path)
         details = '\n'.join(parent_stacks)
+        if dependency.size == None:
+            human_size = ''
+            status = 'Missing'
+            text_color = COLOR_ALERT
+        else:
+            human_size = human.size(dependency.size)
+            status = ''
+            text_color = COLOR_DEFAULT
         parent_row_path = DEPENDENCY_TYPES[dependency.type].row_reference.get_path()
         parent_iter = treestore.get_iter(parent_row_path)
-        row_iter = self.dependencies_treestore.append(parent_iter, [dependency.path, 0, '', False, details])
+        row_iter = self.dependencies_treestore.append(parent_iter, [dependency.path, 0, '', False, details, human_size, status, text_color])
         row_path = self.dependencies_treestore.get_path(row_iter)
         self.dependencies[dependency.path].row_reference = gtk.TreeRowReference(self.dependencies_treestore, row_path)
         self.dependencies_treeview.expand_all()
@@ -334,6 +378,52 @@ class PyApp(gtk.Window):
             treestore[row_path][3] = True
         except KeyError:
             print 'No row reference for %s' % dependency_path
+    def gui_status_set(self, status):
+        self.status_label.set_text(status)
+    def gui_on_selected_dependencies(self, widget, action):
+        treeview = self.dependencies_treeview
+        selection = treeview.get_selection()
+        (model, row_paths) = selection.get_selected_rows()
+        for row_path in row_paths:
+            row_iter = model.get_iter(row_path)
+            if model.iter_has_child(row_iter):
+                child_row_iter = model.iter_children(row_iter)
+                while child_row_iter != None:
+                    child_row_path = model.get_path(child_row_iter)
+                    self.gui_row_actions(child_row_path, action)
+                    child_row_iter = model.iter_next(child_row_iter)
+            else:
+                self.gui_row_actions(row_path, action)
+        if action in ['skip', 'unskip']:
+            self.launch_thread(self.calculate_queue_size)
+    def gui_row_actions(self, row_path, action):
+        model = self.dependencies_treestore
+        dependency = self.dependencies[model[row_path][0]]
+        if dependency.size == None:
+            return
+        if action == 'skip':
+            dependency.ignore = True
+            model[row_path][6] = 'Skip'
+            model[row_path][7] = COLOR_DISABLED
+        if action == 'unskip':
+            dependency.ignore = False
+            model[row_path][6] = ''
+            model[row_path][7] = COLOR_DEFAULT
+    def calculate_queue_size(self):
+        gobject.idle_add(self.status_label.set_property, 'visible', False)
+        gobject.idle_add(self.spinner_queue.set_property, 'visible', True)
+        total = 0
+        for dependency_path, dependency in self.dependencies.iteritems():
+            if dependency.size == None:
+                continue
+            elif dependency.ignore == True:
+                continue
+            else:
+                total += dependency.size
+        self.queue_size = total
+        gobject.idle_add(self.spinner_queue.set_property, 'visible', False)
+        gobject.idle_add(self.status_label.set_text, '%s in queue' % human.size(self.queue_size))
+        gobject.idle_add(self.status_label.set_property, 'visible', True)
 
     def on_key_press_event(self,widget,event):
         keyval = event.keyval
@@ -347,7 +437,6 @@ class PyApp(gtk.Window):
             return False
         return True
         
-
 gobject.threads_init()
 PyApp()
 gtk.main()

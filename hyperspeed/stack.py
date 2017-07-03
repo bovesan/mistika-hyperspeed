@@ -28,14 +28,19 @@ class Dependency(object):
         self.type = f_type
         self.start = start
         self.end = end
+        self.ignore = False
         self.parents = []
+        self._path = False
+        self._size = False
     def __str__(self):
         return self.name
     def __repr__(self):
         return self.name
     @property
     def path(self):
-        if self.name.startswith('/'):
+        if self._path:
+            return self._path
+        elif self.name.startswith('/'):
             return self.name
         elif self.type == 'dat':
             return os.path.join(mistika.projects_folder, self.name)
@@ -43,6 +48,14 @@ class Dependency(object):
             return os.path.join(mistika.glsl_folder, self.name)
         else: # should not happen
             return self.name
+    @property
+    def size(self):
+        if not self._size:
+            try:
+                self._size = os.path.getsize(self.path)
+            except OSError:
+                self._size = None
+        return self._size
     def check(self):
         return os.path.exists(self.path)
 
@@ -50,6 +63,7 @@ class Stack(object):
     def __init__(self, path):
         self.path = path
         self.size = os.path.getsize(self.path)
+        self.dependencies_size = None
         self.ctime = os.path.getctime(self.path)
         self.read_header()
     def read_header(self):
