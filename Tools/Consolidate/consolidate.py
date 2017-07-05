@@ -22,6 +22,7 @@ except ImportError:
 
 COLOR_DEFAULT = '#000000'
 COLOR_DISABLED = '#888888'
+COLOR_WARNING = '#ff8800'
 COLOR_ALERT = '#cc0000'
 
 class PyApp(gtk.Window):
@@ -344,15 +345,12 @@ class PyApp(gtk.Window):
                 if dependency.size != None:
                     self.queue_size += dependency.size
                 self.dependencies[dependency.path].parents.append(stack)
-                these_frames = dependency.frames[0]
                 gobject.idle_add(self.gui_dependency_add, dependency)
-                if dependency.size == None and '%' in dependency.path:
-                    gobject.idle_add(self.gui_dependency_add_frames, dependency.path, these_frames)
             else:
-                these_frames = dependency.frames[0]
-                if not these_frames in self.dependencies[dependency.path].frames:
-                    self.dependencies[dependency.path].frame_ranges.append(these_frames)
-                    gobject.idle_add(self.gui_dependency_add_frames, dependency.path, these_frames)
+                this_frame_range = dependency.raw_frame_ranges[0]
+                if '%' in dependency.path and not this_frame_range in self.dependencies[dependency.path].raw_frame_ranges:
+                    self.dependencies[dependency.path].frames_range_add(this_frame_range)
+                    gobject.idle_add(self.gui_dependency_frames_update, dependency.path)
                 if not stack in self.dependencies[dependency.path].parents:
                     self.dependencies[dependency.path].parents.append(stack)
                     gobject.idle_add(self.gui_dependency_add_parent, dependency.path, stack.path)
@@ -392,19 +390,39 @@ class PyApp(gtk.Window):
         row_path = self.dependencies_treestore.get_path(row_iter)
         self.dependencies[dependency.path].row_reference = gtk.TreeRowReference(self.dependencies_treestore, row_path)
         self.dependencies_treeview.expand_all()
-    def gui_dependency_add_frames(self, dependency_path, frames):
+        if '%' in dependency.path:
+            gobject.idle_add(self.gui_dependency_frames_update, dependency.path)
+    def gui_dependency_frames_update(self, dependency_path):
         treestore = self.dependencies_treestore
         parent_row_path = self.dependencies[dependency_path].row_reference.get_path()
         parent_row_iter = treestore.get_iter(parent_row_path)
-        if frames[0] == frames[1]:
-            frames_name = str(frames[0])
-        else:
-            frames_name = '%i - %i' % frames
-        details = ''
-        human_size = ''
-        status = ''
-        text_color = COLOR_DEFAULT
-        frames_row_iter = self.dependencies_treestore.append(parent_row_iter, [frames_name, 0, '', False, details, human_size, status, text_color])
+        child_row_iter = treestore.iter_children(parent_row_iter)
+        while child_row_iter != None:
+            treestore.remove(child_row_iter)
+            child_row_iter = treestore.iter_next(child_row_iter)
+        for frame_range in self.dependencies[dependency_path].frames:
+            if frame_range.start == frame_range.end:
+                frames_name = str(frame_range.start)
+            else:
+                frames_name = '%i - %i' % (frame_range.start, frame_range.end)
+            details = ''
+            status = ''
+            if frame_range.size > 0:
+                human_size = human.size(frame_range.size)
+                if frame_range.complete:
+                    text_color = COLOR_DEFAULT
+                else:
+                    text_color = COLOR_WARNING
+                    details = 'Some frames are missing.'
+                    gobject.idle_add(self.gui_row_update, treestore, self.dependencies[dependency_path].row_reference, {'7': COLOR_WARNING})
+            else:
+                human_size = ''
+                text_color = COLOR_ALERT
+                details = 'The whole range is missing.'
+                gobject.idle_add(self.gui_row_update, treestore, self.dependencies[dependency_path].row_reference, {'7': COLOR_WARNING})
+                status = 'Missing'
+            frames_row_iter = self.dependencies_treestore.append(parent_row_iter, [frames_name, 0, '', False, details, human_size, status, text_color])
+        self.dependencies_treeview.expand_all()
     def gui_dependency_add_parent(self, dependency_path, parent):
         treestore = self.dependencies_treestore
         row_path = self.dependencies[dependency_path].row_reference.get_path()
@@ -476,6 +494,11 @@ class PyApp(gtk.Window):
         else:
             return False
         return True
+    def gui_delete_frame_range(self):
+        for model, row_reference in self.row_references:
+            row_path = row_reference.get_path()
+            row_iter = model.get_iter(row_path)
+            model.remove(row_iter)
         
 gobject.threads_init()
 PyApp()

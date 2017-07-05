@@ -21,18 +21,46 @@ DEPENDENCY_TYPES = {
     'lowres' : DependencyType('lowres', 'Proxy media'),
     'audio' : DependencyType('audio', 'Audio files'),
     'lnk' : DependencyType('lnk', 'Media links'),
+    'font' : DependencyType('font', 'Fonts'),
 }
+class DependencyFrameRange(object):
+    def __init__(self, path, start = False, end = False, delete_callback = None):
+        self.path = path
+        self.start = start
+        self.end = end
+        self._size = False
+        self.complete = True
+        self.row_references = []
+        self.delete_callback = delete_callback
+    @property
+    def size(self):
+        if not self._size:
+            self._size = 0
+            for i in range(self.start, self.end+1):
+                try:
+                    self._size += os.path.getsize(self.path % i)
+                except OSError:
+                    self.complete = False
+        return self._size
+
+    def delete(self,*args,**kwargs):
+        self.delete_callback(self)
+        super(DependencyFrameRange, self).delete(*args,**kwargs)
+
 class Dependency(object):
     def __init__(self, name, f_type, start = False, end = False):
         self.name = name
         self.type = f_type
         self.start = min(start, end)
         self.end = max(start, end)
-        self._parsed_frame_ranges = self.frame_ranges = [(start, end)]
         self.ignore = False
         self.parents = []
         self._path = False
         self._size = False
+        self.raw_frame_ranges = [(start, end)]
+        self.frame_ranges = [DependencyFrameRange(self.path, start, end)]
+        self._parsed_frame_ranges = None
+        self.complete = True
     def __str__(self):
         return self.name
     def __repr__(self):
@@ -49,26 +77,37 @@ class Dependency(object):
             return os.path.join(mistika.glsl_folder, self.name)
         else: # should not happen
             return self.name
+    def frames_range_add(self, start, end):
+        self.raw_frame_ranges.append(start, end)
+        self.frame_ranges.append(DependencyFrameRange(self.path, start, end))
     @property
     def frames(self):
-        if self._parsed_frame_ranges != self.frame_ranges:
-            self.frame_ranges = sorted(self.frame_ranges, key=lambda tup: tup[0])
-            i = -1
+        if True or self._parsed_frame_ranges != self.frame_ranges:
+            self.frame_ranges = sorted(self.frame_ranges, key=lambda frame_range: frame_range.start)
+            i = 0
             while i < len(self.frame_ranges):
-                i += 1
-                if self.frame_ranges[i][0] <= self.frame_ranges[i-1][1]:
-                     self.frame_ranges[i-1][1] = self.frame_ranges[i][1]
+                if i > 0 and self.frame_ranges[i].start <= self.frame_ranges[i-1].end:
+                     self.frame_ranges[i-1].end = self.frame_ranges[i].end
                      del(self.frame_ranges[i])
                      i -= 1
+                i += 1
             self._parsed_frame_ranges = self.frame_ranges
         return self.frame_ranges
     @property
     def size(self):
         if not self._size:
-            try:
-                self._size = os.path.getsize(self.path)
-            except OSError:
-                self._size = None
+            if '%' in self.path:
+                self._size = 0
+                for frame_range in self.frame_ranges:
+                    if frame_range.size > 0:
+                        self._size += frame_range.size
+                    else:
+                        self.complete = False
+            else:
+                try:
+                    self._size = os.path.getsize(self.path)
+                except OSError:
+                    self._size = None
         return self._size
     def check(self):
         return os.path.exists(self.path)
