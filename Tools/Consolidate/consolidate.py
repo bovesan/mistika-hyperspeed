@@ -162,7 +162,7 @@ class PyApp(gtk.Window):
         self.destination_folder_entry = gtk.Entry()
         hbox.pack_start(self.destination_folder_entry, False, False, 5)
         button = gtk.Button('Copy')
-        button.connect("clicked", self.copy_start)
+        button.connect("clicked", self.on_copy_start)
         hbox.pack_start(button, False, False, 5)
         vbox.pack_start(hbox, False, False, 0)
 
@@ -243,7 +243,16 @@ class PyApp(gtk.Window):
         elif response == gtk.RESPONSE_CANCEL:
             print 'Closed, no files selected'
         dialog.destroy()
-    def copy_start(self, widget):
+    def on_copy_start(self, widget):
+        # print 'Launching copy thread'
+        self.launch_thread(self.io_copy)
+    def gui_row_update(self, treestore, row_reference, values):
+        row_path = row_reference.get_path()
+        for key, value in values.iteritems():
+            print treestore, row_path, key, value
+            treestore[row_path][int(key)] = value
+    def io_copy(self):
+        # self.dependencies_treestore.handler_block()
         destination_folder = self.destination_folder_entry.get_text()
         if not os.path.isdir(destination_folder):
             try:
@@ -253,16 +262,26 @@ class PyApp(gtk.Window):
                 return
         if not destination_folder.endswith('/'):
             destination_folder += '/'
+        treestore = self.stacks_treestore
         for stack_path in self.stacks:
             stack = self.stacks[stack_path]
             row_path = stack.row_reference.get_path()
-            self.stacks_treestore[row_path][1] = 0.0
-            self.stacks_treestore[row_path][2] = 'Copying'
-            self.stacks_treestore[row_path][3] = True
+            treestore[row_path][1] = 0.0
+            gobject.idle_add(self.gui_row_update, treestore, stack.row_reference, {'1': 0.0, '3': True})
             cmd = ['rsync', '-ua', stack_path, destination_folder]
             subprocess.call(cmd)
-            self.stacks_treestore[row_path][1] = 100.0
-            self.stacks_treestore[row_path][2] = 'Copied'
+            gobject.idle_add(self.gui_row_update, treestore, stack.row_reference, {'1': 0.0, '2' : 'Copied', '3': False})
+        treestore = self.dependencies_treestore
+        for dependency_path, dependency in self.dependencies.iteritems():
+            if dependency.size == None:
+                continue
+            row_path = dependency.row_reference.get_path()
+            gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': 0.0,  '3': True})
+            destination_path = os.path.join(dependency_path.lstrip('/'), destination_folder).rstrip('/')
+            cmd = ['rsync', '-ua', stack_path, destination_path]
+            subprocess.call(cmd)
+            gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': 100.0, '6' : 'Copied', '3': False})
+        return
         self.copy_queue = []
         for dependency_path, dependency in self.dependencies.iteritems():
             row_path = dependency.row_reference.get_path()
@@ -325,10 +344,18 @@ class PyApp(gtk.Window):
                 if dependency.size != None:
                     self.queue_size += dependency.size
                 self.dependencies[dependency.path].parents.append(stack)
+                these_frames = dependency.frames[0]
                 gobject.idle_add(self.gui_dependency_add, dependency)
-            elif not stack in self.dependencies[dependency.path].parents:
-                self.dependencies[dependency.path].parents.append(stack)
-                gobject.idle_add(self.gui_dependency_add_parent, dependency.path, stack.path)
+                if dependency.size == None and '%' in dependency.path:
+                    gobject.idle_add(self.gui_dependency_add_frames, dependency.path, these_frames)
+            else:
+                these_frames = dependency.frames[0]
+                if not these_frames in self.dependencies[dependency.path].frames:
+                    self.dependencies[dependency.path].frame_ranges.append(these_frames)
+                    gobject.idle_add(self.gui_dependency_add_frames, dependency.path, these_frames)
+                if not stack in self.dependencies[dependency.path].parents:
+                    self.dependencies[dependency.path].parents.append(stack)
+                    gobject.idle_add(self.gui_dependency_add_parent, dependency.path, stack.path)
         gobject.idle_add(self.gui_status_set, '%s in queue' % human.size(self.queue_size))
     def stack_read_progress(self, stack, progress):
         gobject.idle_add(self.gui_stack_set_progress, stack, progress)
@@ -365,6 +392,19 @@ class PyApp(gtk.Window):
         row_path = self.dependencies_treestore.get_path(row_iter)
         self.dependencies[dependency.path].row_reference = gtk.TreeRowReference(self.dependencies_treestore, row_path)
         self.dependencies_treeview.expand_all()
+    def gui_dependency_add_frames(self, dependency_path, frames):
+        treestore = self.dependencies_treestore
+        parent_row_path = self.dependencies[dependency_path].row_reference.get_path()
+        parent_row_iter = treestore.get_iter(parent_row_path)
+        if frames[0] == frames[1]:
+            frames_name = str(frames[0])
+        else:
+            frames_name = '%i - %i' % frames
+        details = ''
+        human_size = ''
+        status = ''
+        text_color = COLOR_DEFAULT
+        frames_row_iter = self.dependencies_treestore.append(parent_row_iter, [frames_name, 0, '', False, details, human_size, status, text_color])
     def gui_dependency_add_parent(self, dependency_path, parent):
         treestore = self.dependencies_treestore
         row_path = self.dependencies[dependency_path].row_reference.get_path()
