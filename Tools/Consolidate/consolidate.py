@@ -82,14 +82,14 @@ class PyApp(gtk.Window):
         hbox.pack_start(gtk.Label('Dependencies in loaded structures:'), False, False, 0)
         vbox.pack_start(hbox, False, False, 0)
 
-        treestore = self.dependencies_treestore = gtk.TreeStore(str, float, str, bool, str, str, str, str) # Name, progress float, progress text, progress visible, details, human size, status, text color
+        treestore = self.dependencies_treestore = gtk.TreeStore(str, float, str, bool, str, str, str, str, bool) # Name, progress float, progress text, progress visible, details, human size, status, text color, status visible
         treeview = self.dependencies_treeview = gtk.TreeView()
         treeview.set_tooltip_column(4)
         treeview.set_rules_hint(True)
         treeselection = treeview.get_selection()
         treeselection.set_mode(gtk.SELECTION_MULTIPLE)
         for dependency_type_id, dependency_type in DEPENDENCY_TYPES.iteritems():
-            row_iter = treestore.append(None, [dependency_type.description, 0.0, '', False, dependency_type.description, '', '', COLOR_DISABLED])
+            row_iter = treestore.append(None, [dependency_type.description, 0.0, '', False, dependency_type.description, '', '', COLOR_DISABLED, False])
             row_path = treestore.get_path(row_iter)
             dependency_type.row_reference = gtk.TreeRowReference(treestore, row_path)
         cell = gtk.CellRendererText()
@@ -102,7 +102,13 @@ class PyApp(gtk.Window):
         column.set_resizable(True)
         treeview.append_column(column)
         cell = gtk.CellRendererText()
-        column = gtk.TreeViewColumn('Status', cell, text=6, foreground=7)
+        column = gtk.TreeViewColumn('Status')
+        column.pack_start(cell, False)
+        column.set_attributes(cell, text=6, foreground=7, visible=8)
+        # column = gtk.TreeViewColumn('Status', cell, text=6, foreground=7)
+        cell = gtk.CellRendererProgress()
+        column.pack_start(cell, True)
+        column.set_attributes(cell, value=1, text=2, visible=3)
         column.set_resizable(True)
         treeview.append_column(column)
         cell = gtk.CellRendererProgress()
@@ -110,7 +116,7 @@ class PyApp(gtk.Window):
         column.add_attribute(cell, 'visible', 3)
         # column.set_expand(True)
         column.set_resizable(True)
-        treeview.append_column(column)
+        # treeview.append_column(column)
         treeview.set_model(treestore)
         treeview.expand_all()
 
@@ -273,20 +279,20 @@ class PyApp(gtk.Window):
             stack = self.stacks[stack_path]
             row_path = stack.row_reference.get_path()
             treestore[row_path][1] = 0.0
-            gobject.idle_add(self.gui_row_update, treestore, stack.row_reference, {'1': 0.0, '3': True})
+            gobject.idle_add(self.gui_row_update, treestore, stack.row_reference, {'1': 0.0, '3': True, '8' : False})
             cmd = ['rsync', '-ua', stack_path, destination_folder]
             subprocess.call(cmd)
-            gobject.idle_add(self.gui_row_update, treestore, stack.row_reference, {'1': 0.0, '2' : 'Copied', '3': False})
+            gobject.idle_add(self.gui_row_update, treestore, stack.row_reference, {'1': 0.0, '2' : 'Copied', '3': False, '8' : True})
         treestore = self.dependencies_treestore
         for dependency_path, dependency in self.dependencies.iteritems():
             if dependency.size == None:
                 continue
             row_path = dependency.row_reference.get_path()
-            gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': 0.0,  '3': True})
+            gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': 0.0,  '3': True, '8' : False})
             destination_path = os.path.join(dependency_path.lstrip('/'), destination_folder).rstrip('/')
-            cmd = ['rsync', '-ua', stack_path, destination_path]
+            cmd = ['rsync', '-ua', dependency_path, destination_path]
             subprocess.call(cmd)
-            gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': 100.0, '6' : 'Copied', '3': False})
+            gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': 100.0, '6' : 'Copied', '3': False, '8' : True})
         return
         self.copy_queue = []
         for dependency_path, dependency in self.dependencies.iteritems():
@@ -391,7 +397,7 @@ class PyApp(gtk.Window):
             text_color = COLOR_DEFAULT
         parent_row_path = DEPENDENCY_TYPES[dependency.type].row_reference.get_path()
         parent_iter = treestore.get_iter(parent_row_path)
-        row_iter = self.dependencies_treestore.append(parent_iter, [dependency.path, 0, '', False, details, human_size, status, text_color])
+        row_iter = self.dependencies_treestore.append(parent_iter, [dependency.path, 0, '', False, details, human_size, status, text_color, True])
         row_path = self.dependencies_treestore.get_path(row_iter)
         self.dependencies[dependency.path].row_reference = gtk.TreeRowReference(self.dependencies_treestore, row_path)
         self.dependencies_treeview.expand_all()
