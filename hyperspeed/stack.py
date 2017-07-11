@@ -262,15 +262,21 @@ class Stack(object):
                         elif object_path.endswith('C/F'): # Clip source link
                             f_path = char_buffer
                             f_type = 'lnk'
-                        elif object_path.endswith('C/d/I/H/p'): # Clip media folder
-                            CdIHp = char_buffer
+                        elif object_path.endswith('C/d/I/H/p') or object_path.endswith('C/d/I/L/p') or object_path.endswith('C/d/S/p'): # Clip media folder
+                            f_folder = char_buffer
                         elif object_path.endswith('C/d/I/s'): # Clip start frame
                             CdIs = int(char_buffer)
                         elif object_path.endswith('C/d/I/e'): # Clip end frame
                             CdIe = int(char_buffer)
-                        elif object_path.endswith('C/d/I/H/n'): # Clip media name
-                            f_path = CdIHp + char_buffer
+                        elif object_path.endswith('C/d/I/H/n'):
+                            f_path = f_folder + char_buffer
                             f_type = 'highres'
+                        elif object_path.endswith('C/d/I/L/n'):
+                            f_path = f_folder + char_buffer
+                            f_type = 'lowres'
+                        elif object_path.endswith('C/d/S/n'):
+                            f_path = f_folder + char_buffer
+                            f_type = 'audio'
                         elif object_path.endswith('F/D'): # .dat file relative path (from projects_path)
                             f_path = char_buffer
                             f_type = 'dat'
@@ -291,8 +297,9 @@ class Stack(object):
                                 dependency = Dependency(f_path, f_type, CdIs, CdIe)
                             else:
                                 dependency = Dependency(f_path, f_type)
-                            if not f_path in self._dependency_paths:
+                            if not dependency.path in self._dependency_paths:
                                 self._dependencies.append(dependency)
+                                self._dependency_paths.append(dependency.path)
                                 yield dependency
                                 for child_dependency in dependency.dependencies:
                                     if not child_dependency.name in self._dependency_paths:
