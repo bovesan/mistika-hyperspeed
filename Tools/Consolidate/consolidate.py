@@ -261,8 +261,21 @@ class PyApp(gtk.Window):
     def gui_row_update(self, treestore, row_reference, values):
         row_path = row_reference.get_path()
         for key, value in values.iteritems():
-            print treestore, row_path, key, value
+            # print treestore, row_path, key, value
             treestore[row_path][int(key)] = value
+    def get_destination_path(self, dependency):
+        name_parts = dependency.name.strip('/').split('/')
+        print repr(name_parts)
+        if dependency.name.startswith('etc/'):
+            return dependency.name.split('/', 1)[1]
+        elif dependency.type == 'font':
+            return os.path.join(DEPENDENCY_TYPES['font'].description, os.path.basename(dependency.path))
+        elif len(name_parts) > 2 and name_parts[1] == 'PRIVATE':
+            return '/'.join(name_parts[1:])
+        elif dependency.name.startswith('/'):
+            return os.path.join('Files', dependency.path.lstrip('/'))
+        else:
+            return os.path.join(dependency.name)
     def io_copy(self):
         # self.dependencies_treestore.handler_block()
         destination_folder = self.destination_folder_entry.get_text()
@@ -279,20 +292,45 @@ class PyApp(gtk.Window):
             stack = self.stacks[stack_path]
             row_path = stack.row_reference.get_path()
             treestore[row_path][1] = 0.0
-            gobject.idle_add(self.gui_row_update, treestore, stack.row_reference, {'1': 0.0, '3': True, '8' : False})
+            gobject.idle_add(self.gui_row_update, treestore, stack.row_reference, {'1': 0.0, '3': True})
             cmd = ['rsync', '-ua', stack_path, destination_folder]
             subprocess.call(cmd)
-            gobject.idle_add(self.gui_row_update, treestore, stack.row_reference, {'1': 0.0, '2' : 'Copied', '3': False, '8' : True})
+            gobject.idle_add(self.gui_row_update, treestore, stack.row_reference, {'1': 0.0, '2' : 'Copied', '3': False})
         treestore = self.dependencies_treestore
         for dependency_path, dependency in self.dependencies.iteritems():
             if dependency.size == None:
                 continue
             row_path = dependency.row_reference.get_path()
             gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': 0.0,  '3': True, '8' : False})
-            destination_path = os.path.join(dependency_path.lstrip('/'), destination_folder).rstrip('/')
-            cmd = ['rsync', '-ua', dependency_path, destination_path]
-            subprocess.call(cmd)
-            gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': 100.0, '6' : 'Copied', '3': False, '8' : True})
+            destination_path = os.path.join(destination_folder, self.get_destination_path(dependency).lstrip('/'))
+            # destination_path = os.path.join(dependency_path.lstrip('/'), destination_folder).rstrip('/')
+            if not os.path.isdir(os.path.dirname(destination_path)):
+                try:
+                    os.makedirs(os.path.dirname(destination_path))
+                except OSError:
+                    print 'Could not create destination directory'
+            cmd = ['rsync', '--progress', '-ua', dependency_path, destination_path]
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            print 'Copying %s' % dependency_path
+            while proc.returncode == None:
+                output = ''
+                char = None
+                while not char in ['\r', '\n']:
+                    proc.poll()
+                    if proc.returncode != None:
+                        break
+                    char = proc.stdout.read(1)
+                    output += char
+                fields = output.split()
+                if len(fields) >= 4 and fields[1].endswith('%'):
+                    progress_percent = float(fields[1].strip('%'))
+                    gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': progress_percent, '2': fields[1]})
+                proc.poll()
+            # subprocess.call(cmd)
+            if proc.returncode == 0:
+                gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': 100.0, '6' : 'Copied', '3': False, '8' : True})
+            else:
+                gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'6' : 'Error #%i' % proc.returncode, '3': False, '7' : COLOR_ALERT, '8' : True})
         return
         self.copy_queue = []
         for dependency_path, dependency in self.dependencies.iteritems():
