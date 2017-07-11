@@ -257,7 +257,7 @@ class Stack(object):
                         elif object_path.endswith('F/D'): # .dat file relative path (from projects_path)
                             f_path = char_buffer
                             f_type = 'dat'
-                        elif fx_type == '146' and object_path.endswith('F/p/s/c/p/s'): # GLSL file
+                        elif fx_type == '146' and object_path.endswith('F/p/s/c/E/s'): # GLSL file
                             f_path = char_buffer
                             f_type = 'glsl'
                         if f_path:
