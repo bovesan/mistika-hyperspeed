@@ -31,6 +31,7 @@ def reload():
     global afterscripts_path
     global scripts_folder
     global glsl_folder
+    global lut_folder
     env_folder = os.path.realpath(os.path.expanduser("~/MISTIKA-ENV"))
     if os.path.exists(env_folder):
         product = 'Mistika'
@@ -89,5 +90,6 @@ def reload():
         if os.path.exists(bin_folder_mac):
             scripts_folder = scripts_folder_mac
     glsl_folder = os.path.join(env_folder, 'etc/GLSL')
+    lut_folder = os.path.join(env_folder, 'etc/LUT')
 
 reload()

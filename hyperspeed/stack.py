@@ -67,16 +67,19 @@ class Dependency(object):
         return self.name
     @property
     def path(self):
-        if self._path:
-            return self._path
-        elif self.name.startswith('/'):
-            return self.name
-        elif self.type == 'dat':
-            return os.path.join(mistika.projects_folder, self.name)
-        elif self.type == 'glsl':
-            return os.path.join(mistika.glsl_folder, self.name)
-        else: # should not happen
-            return self.name
+        if not self._path:
+            if self.name.startswith('/'):
+                self._path = self.name
+            elif self.type == 'dat':
+                self._path = os.path.join(mistika.projects_folder, self.name)
+            elif self.type in ['glsl', 'lut']:
+                if self.name.startswith('/'):
+                    self._path = self.name
+                else:
+                    self._path = os.path.join(mistika.env_folder, self.name)
+            else: # should not happen
+                self._path = self.name
+        return self._path
     def frames_range_add(self, start, end):
         self.raw_frame_ranges.append(start, end)
         self.frame_ranges.append(DependencyFrameRange(self.path, start, end))
@@ -257,9 +260,18 @@ class Stack(object):
                         elif object_path.endswith('F/D'): # .dat file relative path (from projects_path)
                             f_path = char_buffer
                             f_type = 'dat'
-                        elif fx_type == '146' and object_path.endswith('F/p/s/c/E/s'): # GLSL file
-                            f_path = char_buffer
+                        elif fx_type == '146':
                             f_type = 'glsl'
+                            if object_path.endswith('F/p/s/c/c'):
+                                f_folder = char_buffer
+                            elif object_path.endswith('F/p/s/c/E/s'):
+                                f_path = f_folder + '/' + char_buffer
+                        elif fx_type == '143':
+                            f_type = 'lut'
+                            if object_path.endswith('F/p/s/c/c'):
+                                f_folder = char_buffer
+                            elif object_path.endswith('F/p/s/c/F/s'):
+                                f_path = f_folder + '/' + char_buffer
                         if f_path:
                             if '%' in f_path:
                                 dependency = Dependency(f_path, f_type, CdIs, CdIe)
