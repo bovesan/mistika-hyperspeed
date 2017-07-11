@@ -183,6 +183,9 @@ class PyApp(gtk.Window):
         spinner.set_property('visible', False)
         #self.set_keep_above(True)
         #self.present()
+        if len(sys.argv) > 1:
+            for stack_path in sys.argv[1:]:
+                self.gui_stack_add(stack_path)
 
 
     def on_quit(self, widget):
@@ -210,23 +213,25 @@ class PyApp(gtk.Window):
         response = dialog.run()
         if response == gtk.RESPONSE_OK:
             for stack_path in dialog.get_filenames():
-                self.stacks[stack_path] = Stack(stack_path)
-                stack = self.stacks[stack_path]
-                row_iter = self.stacks_treestore.append(None, [stack_path, 0.0, '0%', False])
-                row_path = self.stacks_treestore.get_path(row_iter)
-                stack.row_reference = gtk.TreeRowReference(self.stacks_treestore, row_path)
-                # for dependency in stack.dependencies:
-                #     self.dependencies_treestore.append(None, [dependency.name])
-                # print 'creating thread'
-                t = threading.Thread(target=self.get_dependencies, args=[stack])
-                self.threads.append(t)
-                t.setDaemon(True)
-                t.start()
-                # print 'started thread'
-                # print threading.active_count()
+                self.gui_stack_add(stack_path)
         elif response == gtk.RESPONSE_CANCEL:
             print 'Closed, no files selected'
         dialog.destroy()
+    def gui_stack_add(self, stack_path):
+        self.stacks[stack_path] = Stack(stack_path)
+        stack = self.stacks[stack_path]
+        row_iter = self.stacks_treestore.append(None, [stack_path, 0.0, '0%', False])
+        row_path = self.stacks_treestore.get_path(row_iter)
+        stack.row_reference = gtk.TreeRowReference(self.stacks_treestore, row_path)
+        # for dependency in stack.dependencies:
+        #     self.dependencies_treestore.append(None, [dependency.name])
+        # print 'creating thread'
+        t = threading.Thread(target=self.get_dependencies, args=[stack])
+        self.threads.append(t)
+        t.setDaemon(True)
+        t.start()
+        # print 'started thread'
+        # print threading.active_count()
     def set_destination_dialog(self, widget):
         if mistika:
             folder = os.path.join(mistika.projects_folder, mistika.project)
