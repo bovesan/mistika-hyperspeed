@@ -189,11 +189,19 @@ class PyApp(gtk.Window):
         spinner.set_property('visible', False)
         #self.set_keep_above(True)
         #self.present()
+        self.parse_command_line_arguments()
+
+    def parse_command_line_arguments(self):
         if len(sys.argv) > 1:
-            for stack_path in sys.argv[1:]:
-                self.gui_stack_add(stack_path)
-
-
+            i = 0
+            while i < len(sys.argv) - 1:
+                i += 1
+                arg = sys.argv[i]
+                if arg in ['-d']:
+                    i += 1
+                    self.destination_folder_entry.set_text(sys.argv[i])
+                else:
+                    self.gui_stack_add(arg)
     def on_quit(self, widget):
         print 'Closed by: ' + repr(widget)
         gtk.main_quit()
@@ -265,7 +273,6 @@ class PyApp(gtk.Window):
             treestore[row_path][int(key)] = value
     def get_destination_path(self, dependency):
         name_parts = dependency.name.strip('/').split('/')
-        print repr(name_parts)
         if dependency.name.startswith('etc/'):
             return dependency.name.split('/', 1)[1]
         elif dependency.type == 'font':
@@ -311,7 +318,6 @@ class PyApp(gtk.Window):
                     print 'Could not create destination directory'
             cmd = ['rsync', '--progress', '-ua', dependency_path, destination_path]
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-            print 'Copying %s' % dependency_path
             while proc.returncode == None:
                 output = ''
                 char = None
