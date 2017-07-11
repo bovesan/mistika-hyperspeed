@@ -3,6 +3,7 @@
 import os
 import time
 import mistika
+import text
 
 class DependencyType(object):
     def __init__(self, id, description):
@@ -55,12 +56,16 @@ class Dependency(object):
         self.end = max(start, end)
         self.ignore = False
         self.parents = []
+        self.dependencies = [] # Used for .dat files with font dependencies etc.
         self._path = False
         self._size = False
         self.raw_frame_ranges = [(start, end)]
         self.frame_ranges = [DependencyFrameRange(self.path, start, end)]
         self._parsed_frame_ranges = None
         self.complete = True
+        if f_type == 'dat':
+            for font in text.Title(self.path).fonts:
+                self.dependencies.append(Dependency(font, 'font'))
     def __str__(self):
         return self.name
     def __repr__(self):
@@ -77,6 +82,12 @@ class Dependency(object):
                     self._path = self.name
                 else:
                     self._path = os.path.join(mistika.env_folder, self.name)
+            elif self.type == 'font':
+                if self.name in mistika.fonts:
+                    self._path = mistika.fonts[self.name]
+                else:
+                    self._path = self.name
+                    self._size = None
             else: # should not happen
                 self._path = self.name
         return self._path
@@ -223,12 +234,15 @@ class Stack(object):
                         progress_float = float(env_bytes_read) / float(self.size)
                         if progress_callback:
                             progress_callback(self, progress_float)
-                    if char == '(':
+                    if char == '\\':
+                        escape = True
+                        continue
+                    elif char == '(' and not escape:
                         char_buffer = char_buffer.replace('\n', '').strip()
                         level += 1
                         level_names.append(char_buffer)
                         char_buffer = ''
-                    elif char == ')':
+                    elif char == ')' and not escape:
                         level -= 1
                         if hidden_level:
                             if hidden_level <= level:
@@ -280,12 +294,18 @@ class Stack(object):
                             if not f_path in self._dependency_paths:
                                 self._dependencies.append(dependency)
                                 yield dependency
+                                for child_dependency in dependency.dependencies:
+                                    if not child_dependency.name in self._dependency_paths:
+                                        self._dependencies.append(child_dependency)
+                                        yield child_dependency
+
                         char_buffer = ''
                         del level_names[-1]
                     elif len(level_names) > 0 and level_names[-1] == 'Shape':
                         continue
                     elif char:
                         char_buffer += char
+                    escape = False
             if progress_callback:
                 progress_callback(self, 1.0)
         except IOError as e:

@@ -29,9 +29,11 @@ def get_mistika_projects_folder(env_folder):
 def reload():
     global env_folder, tools_path, shared_folder, version, project, user, settings, product, projects_folder
     global afterscripts_path
+    global fonts_config_path
     global scripts_folder
     global glsl_folder
     global lut_folder
+    global fonts
     env_folder = os.path.realpath(os.path.expanduser("~/MISTIKA-ENV"))
     if os.path.exists(env_folder):
         product = 'Mistika'
@@ -81,7 +83,7 @@ def reload():
     if not os.path.isfile(afterscripts_path):
         try:
             open(afterscripts_path, 'a').write('None')
-        except OSError:
+        except IOError:
             print 'Afterscripts config not available: %s' % afterscripts_path
     scripts_folder = os.path.join(env_folder, 'bin/scripts/')
     if not os.path.exists(scripts_folder):
@@ -91,5 +93,13 @@ def reload():
             scripts_folder = scripts_folder_mac
     glsl_folder = os.path.join(env_folder, 'etc/GLSL')
     lut_folder = os.path.join(env_folder, 'etc/LUT')
+    fonts_config_path = os.path.join(env_folder, 'extern/.fontParseOut')
+    fonts = {}
+    try:
+        for line in open(fonts_config_path):
+            font_path, font_name = line.strip().strip('"').split('"   "')
+            fonts[font_name] = font_path
+    except IOError:
+        print 'Could not read fonts config: %s' % fonts_config_path
 
 reload()
