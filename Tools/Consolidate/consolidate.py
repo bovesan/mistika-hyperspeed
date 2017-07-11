@@ -324,6 +324,7 @@ class PyApp(gtk.Window):
                 fields = output.split()
                 if len(fields) >= 4 and fields[1].endswith('%'):
                     progress_percent = float(fields[1].strip('%'))
+                    self.status_set(fields[2])
                     gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': progress_percent, '2': fields[1]})
                 proc.poll()
             # subprocess.call(cmd)
@@ -376,9 +377,9 @@ class PyApp(gtk.Window):
             # status = subprocess.call(cmd)
             # gobject.idle_add(self.gui_dependency_add, dependency)
             if status == 0:
-                gobject.idle_add(self.gui_status_set, 'Finished successfully')
+                self.status_set('Finished successfully')
             else:
-                gobject.idle_add(self.gui_status_set, 'Finished with errors')
+                self.status_set('Finished with errors')
     def launch_thread(self, method):
         t = threading.Thread(target=method)
         self.threads.append(t)
@@ -403,7 +404,7 @@ class PyApp(gtk.Window):
                 if not stack in self.dependencies[dependency.path].parents:
                     self.dependencies[dependency.path].parents.append(stack)
                     gobject.idle_add(self.gui_dependency_add_parent, dependency.path, stack.path)
-        gobject.idle_add(self.gui_status_set, '%s in queue' % human.size(self.queue_size))
+        self.status_set('%s in queue' % human.size(self.queue_size))
     def stack_read_progress(self, stack, progress):
         gobject.idle_add(self.gui_stack_set_progress, stack, progress)
     def gui_stack_set_progress(self, stack, progress):
@@ -485,8 +486,8 @@ class PyApp(gtk.Window):
             treestore[row_path][3] = True
         except KeyError:
             print 'No row reference for %s' % dependency_path
-    def gui_status_set(self, status):
-        self.status_label.set_text(status)
+    def status_set(self, status):
+        gobject.idle_add(self.status_label.set_text, status)
     def gui_on_selected_dependencies(self, widget, action):
         treeview = self.dependencies_treeview
         selection = treeview.get_selection()
