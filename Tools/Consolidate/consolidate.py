@@ -328,7 +328,6 @@ class PyApp(gtk.Window):
         for dependency_path, dependency in self.dependencies.iteritems():
             if self.abort:
                 return
-            print dependency_path, str(dependency.size)
             if dependency.size in [None, 0] or dependency.ignore:
                 continue
             row_path = dependency.row_reference.get_path()
@@ -347,10 +346,12 @@ class PyApp(gtk.Window):
                 for frame_range in dependency.frame_ranges:
                     for frame_n in range(frame_range.start, frame_range.end+1):
                         sequence_files.append(basename % frame_n)
+                sequence_length = len(sequence_files)
+                frames_done = 0
                 temp_handle = tempfile.NamedTemporaryFile()
                 temp_handle.write('\n'.join(sequence_files) + '\n')
                 temp_handle.flush()
-                cmd = ['rsync', '--progress', '-ua', '--files-from=%s' % temp_handle.name, os.path.dirname(dependency_path)+'/', os.path.dirname(destination_path)+'/']
+                cmd = ['rsync', '-uavv', '--out-format="%n was copied"', '--files-from=%s' % temp_handle.name, os.path.dirname(dependency_path)+'/', os.path.dirname(destination_path)+'/']
             else:
                 cmd = ['rsync', '--progress', '-ua', dependency_path, destination_path]
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -375,6 +376,11 @@ class PyApp(gtk.Window):
                     gobject.idle_add(self.gui_dependency_summary_update, dependency.type, int(fields[0]))
                     # self.status_set(fields[2])
                     gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': progress_percent, '2': fields[1]})
+                elif is_sequence and output.strip().endswith('is uptodate') or output.strip().endswith('was copied'):
+                    frames_done += 1
+                    progress_percent = float(frames_done) / float(sequence_length)
+                    progress_string = '%5.2f%%' % progress_percent
+                    gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': progress_percent, '2': progress_string})
                 proc.poll()
             # subprocess.call(cmd)
             if is_sequence:
