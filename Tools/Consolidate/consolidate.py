@@ -333,13 +333,19 @@ class PyApp(gtk.Window):
             row_path = dependency.row_reference.get_path()
             gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': 0.0,  '3': True, '8' : False})
             is_sequence = '%' in dependency_path
-            destination_path = os.path.join(destination_folder, self.get_destination_path(dependency).lstrip('/'))
+            destination_path = destination_folder.rstrip('/') + self.get_destination_path(dependency).lstrip('/')
             # destination_path = os.path.join(dependency_path.lstrip('/'), destination_folder).rstrip('/')
-            if not os.path.isdir(os.path.dirname(destination_path)):
-                try:
-                    os.makedirs(os.path.dirname(destination_path))
-                except OSError:
-                    print 'Could not create destination directory'
+            if ':' in destination_folder:
+                host, target_folder = destination_folder.split(':', 1)
+                destination_path_on_host = destination_path.split(':', 1)[1]
+                cmd = ['ssh', host, 'mkdir', '-p', os.path.dirname(destination_path_on_host)]
+                subprocess.call(cmd)
+            else:
+                if not os.path.isdir(os.path.dirname(destination_path)):
+                    try:
+                        os.makedirs(os.path.dirname(destination_path))
+                    except OSError:
+                        print 'Could not create destination directory'
             if is_sequence:
                 sequence_files = []
                 basename = os.path.basename(dependency_path)
@@ -391,7 +397,7 @@ class PyApp(gtk.Window):
                 gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': 100.0, '6' : 'Copied', '3': False, '8' : True})
                 self.set_progress()
             else:
-                gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'6' : 'Error %i' % proc.returncode, '3': False, '7' : COLOR_ALERT, '8' : True})
+                gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'4': ' '.join(cmd) ,'6' : 'Error %i' % proc.returncode, '3': False, '7' : COLOR_ALERT, '8' : True})
             gobject.idle_add(self.gui_dependency_summary_update, dependency.type)
         time_delta = time.time() - copy_start_time
         self.status_set('Copy finished in %s' % human.duration(time_delta))
