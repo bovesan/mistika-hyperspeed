@@ -4,6 +4,7 @@ import os
 import time
 import mistika
 import text
+import threading
 
 class DependencyType(object):
     def __init__(self, id, description):
@@ -53,22 +54,25 @@ class DependencyFrameRange(object):
 
 class Dependency(object):
     def __init__(self, name, f_type, start = False, end = False, parent=None):
-        self.name = name
-        self.type = f_type
-        self.start = min(start, end)
-        self.end = max(start, end)
-        self.ignore = False
-        self.parents = [parent]
-        self.dependencies = [] # Used for .dat files with font dependencies etc.
-        self._path = False
-        self._size = False
-        # self.raw_frame_ranges = [(start, end, parent)]
-        self.frame_ranges = [DependencyFrameRange(self.path, start, end, parent)]
-        self._parsed_frame_ranges = None
-        self.complete = True
-        if f_type == 'dat':
-            for font in text.Title(self.path).fonts:
-                self.dependencies.append(Dependency(font, 'font', parent=parent))
+        self.lock = threading.Lock()
+        with self.lock:
+            self.name = name
+            self.type = f_type
+            self.start = min(start, end)
+            self.end = max(start, end)
+            self.ignore = False
+            self.parents = [parent]
+            self.dependencies = [] # Used for .dat files with font dependencies etc.
+            self._path = False
+            self._size = False
+            self.row_reference = None
+            # self.raw_frame_ranges = [(start, end, parent)]
+            self.frame_ranges = [DependencyFrameRange(self.path, start, end, parent)]
+            self._parsed_frame_ranges = None
+            self.complete = True
+            if f_type == 'dat':
+                for font in text.Title(self.path).fonts:
+                    self.dependencies.append(Dependency(font, 'font', parent=parent))
     def __str__(self):
         return self.name
     def __repr__(self):
@@ -107,33 +111,35 @@ class Dependency(object):
         self.frame_ranges.append(DependencyFrameRange(self.path, start, end, parent))
     @property
     def frames(self):
-        if True or self._parsed_frame_ranges != self.frame_ranges:
-            self.frame_ranges = sorted(self.frame_ranges, key=lambda frame_range: frame_range.start)
-            i = 0
-            while i < len(self.frame_ranges):
-                if i > 0 and self.frame_ranges[i].start <= self.frame_ranges[i-1].end:
-                     self.frame_ranges[i-1].end = self.frame_ranges[i].end
-                     del(self.frame_ranges[i])
-                     i -= 1
-                i += 1
-            self._parsed_frame_ranges = self.frame_ranges
-        return self.frame_ranges
+        with self.lock:
+            if True or self._parsed_frame_ranges != self.frame_ranges:
+                self.frame_ranges = sorted(self.frame_ranges, key=lambda frame_range: frame_range.start)
+                i = 0
+                while i < len(self.frame_ranges):
+                    if i > 0 and self.frame_ranges[i].start <= self.frame_ranges[i-1].end:
+                         self.frame_ranges[i-1].end = self.frame_ranges[i].end
+                         del(self.frame_ranges[i])
+                         i -= 1
+                    i += 1
+                self._parsed_frame_ranges = self.frame_ranges
+            return self.frame_ranges
     @property
     def size(self):
-        if not self._size:
-            if '%' in self.path:
-                self._size = 0
-                for frame_range in self.frame_ranges:
-                    if frame_range.size > 0:
-                        self._size += frame_range.size
-                    else:
-                        self.complete = False
-            else:
-                try:
-                    self._size = os.path.getsize(self.path)
-                except OSError:
-                    self._size = None
-        return self._size
+        with self.lock:
+            if not self._size:
+                if '%' in self.path:
+                    self._size = 0
+                    for frame_range in self.frame_ranges:
+                        if frame_range.size > 0:
+                            self._size += frame_range.size
+                        else:
+                            self.complete = False
+                else:
+                    try:
+                        self._size = os.path.getsize(self.path)
+                    except OSError:
+                        self._size = None
+            return self._size
     def check(self):
         return os.path.exists(self.path)
 

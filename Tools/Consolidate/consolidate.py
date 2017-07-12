@@ -120,6 +120,8 @@ class PyApp(gtk.Window):
         #self.set_keep_above(True)
         #self.present()
         self.parse_command_line_arguments()
+        # self.init_dependencies_daemon()
+
     def init_stacks_window(self):
         treestore = self.stacks_treestore = gtk.TreeStore(str, float, str, bool, bool) # Name, progress float, progress text, progress visible, status visible
         treeview = self.stacks_treeview = gtk.TreeView()
@@ -230,6 +232,8 @@ class PyApp(gtk.Window):
             print 'Closed, no files selected'
         dialog.destroy()
     def gui_stack_add(self, stack_path):
+        if stack_path in self.stacks:
+            return
         self.stacks[stack_path] = Stack(stack_path)
         stack = self.stacks[stack_path]
         row_iter = self.stacks_treestore.append(None, [stack_path, 0.0, '0%', False, False])
@@ -244,6 +248,13 @@ class PyApp(gtk.Window):
         t.start()
         # print 'started thread'
         # print threading.active_count()
+    def init_dependencies_daemon(self):
+        t = self.dependencies_daemon_thread = threading.Thread(target=self.dependencies_daemon)
+        self.threads.append(t)
+        t.setDaemon(True)
+        t.start()
+    # def dependencies_daemon(self):
+
     def set_destination_dialog(self, widget):
         if mistika:
             folder = os.path.join(mistika.projects_folder, mistika.project)
@@ -286,7 +297,7 @@ class PyApp(gtk.Window):
         elif len(name_parts) > 2 and name_parts[1] == 'PRIVATE':
             return '/'.join(name_parts[1:])
         elif dependency.name.startswith('/'):
-            return os.path.join('Files', dependency.path.lstrip('/'))
+            return os.path.join('Media', dependency.path.lstrip('/'))
         else:
             return os.path.join(dependency.name)
     def io_copy(self):
@@ -394,13 +405,14 @@ class PyApp(gtk.Window):
                 # self.dependencies[dependency.path].parents.append(stack)
                 gobject.idle_add(self.gui_dependency_add, dependency)
             else:
-                this_frame_range = dependency.frame_ranges[0]
-                if '%' in dependency.path and not this_frame_range in self.dependencies[dependency.path].frame_ranges:
-                    self.dependencies[dependency.path].frames_ranges.append(this_frame_range)
-                    gobject.idle_add(self.gui_dependency_frames_update, dependency)
-                if not stack in self.dependencies[dependency.path].parents:
-                    self.dependencies[dependency.path].parents.append(stack)
-                    gobject.idle_add(self.gui_dependency_add_parent, dependency.path, stack.path)
+                with self.dependencies[dependency.path].lock:
+                    this_frame_range = dependency.frame_ranges[0]
+                    if '%' in dependency.path and not this_frame_range in self.dependencies[dependency.path].frame_ranges:
+                        self.dependencies[dependency.path].frame_ranges.append(this_frame_range)
+                        gobject.idle_add(self.gui_dependency_frames_update, dependency)
+                    if not stack in self.dependencies[dependency.path].parents:
+                        self.dependencies[dependency.path].parents.append(stack)
+                        gobject.idle_add(self.gui_dependency_add_parent, dependency.path, stack.path)
         self.status_set('%s in queue' % human.size(self.queue_size))
     def stack_read_progress(self, stack, progress):
         treestore = self.stacks_treestore
@@ -513,7 +525,7 @@ class PyApp(gtk.Window):
             dependency.size = dependency_size
             self.queue_size += dependency_size
             self.dependency_types[dependency.type].meta['size'] += dependency_size
-        self.gui_dependency_header_update(dependency.type)
+        self.gui_dependency_summary_update(dependency.type)
         # self.dependencies_treeview.expand_all()
     def gui_dependency_add_parent(self, dependency_path, parent):
         treestore = self.dependencies_treestore
