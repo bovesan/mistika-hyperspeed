@@ -50,7 +50,7 @@ class PyApp(gtk.Window):
         hbox.pack_start(gtk.Label('Environments, groups or other structures to consolidate:'), False, False, 0)
         vbox.pack_start(hbox, False, False, 0)
 
-        treestore = self.stacks_treestore = gtk.TreeStore(str, float, str, bool) # Name, progress float, progress text, progress visible
+        treestore = self.stacks_treestore = gtk.TreeStore(str, float, str, bool, bool) # Name, progress float, progress text, progress visible, status visible
         treeview = self.stacks_treeview = gtk.TreeView()
         treeview.set_rules_hint(True)
         cell = gtk.CellRendererText()
@@ -59,10 +59,13 @@ class PyApp(gtk.Window):
         column.set_resizable(True)
         column.set_expand(True)
         treeview.append_column(column)
+        cell = gtk.CellRendererText()
+        column = gtk.TreeViewColumn('Status')
+        column.pack_start(cell, False)
+        column.set_attributes(cell, text=2, visible=4)
         cell = gtk.CellRendererProgress()
-        column = gtk.TreeViewColumn('', cell, value=1, text=2)
-        column.add_attribute(cell, 'visible', 3)
-        column.set_expand(True)
+        column.pack_start(cell, True)
+        column.set_attributes(cell, value=1, text=2, visible=3)
         column.set_resizable(True)
         treeview.append_column(column)
         treeview.set_model(treestore)
@@ -105,18 +108,11 @@ class PyApp(gtk.Window):
         column = gtk.TreeViewColumn('Status')
         column.pack_start(cell, False)
         column.set_attributes(cell, text=6, foreground=7, visible=8)
-        # column = gtk.TreeViewColumn('Status', cell, text=6, foreground=7)
         cell = gtk.CellRendererProgress()
         column.pack_start(cell, True)
         column.set_attributes(cell, value=1, text=2, visible=3)
         column.set_resizable(True)
         treeview.append_column(column)
-        cell = gtk.CellRendererProgress()
-        column = gtk.TreeViewColumn('Progress', cell, value=1, text=2)
-        column.add_attribute(cell, 'visible', 3)
-        # column.set_expand(True)
-        column.set_resizable(True)
-        # treeview.append_column(column)
         treeview.set_model(treestore)
         treeview.expand_all()
 
@@ -234,7 +230,7 @@ class PyApp(gtk.Window):
     def gui_stack_add(self, stack_path):
         self.stacks[stack_path] = Stack(stack_path)
         stack = self.stacks[stack_path]
-        row_iter = self.stacks_treestore.append(None, [stack_path, 0.0, '0%', False])
+        row_iter = self.stacks_treestore.append(None, [stack_path, 0.0, '0%', False, False])
         row_path = self.stacks_treestore.get_path(row_iter)
         stack.row_reference = gtk.TreeRowReference(self.stacks_treestore, row_path)
         # for dependency in stack.dependencies:
@@ -299,10 +295,10 @@ class PyApp(gtk.Window):
             stack = self.stacks[stack_path]
             row_path = stack.row_reference.get_path()
             treestore[row_path][1] = 0.0
-            gobject.idle_add(self.gui_row_update, treestore, stack.row_reference, {'1': 0.0, '3': True})
+            gobject.idle_add(self.gui_row_update, treestore, stack.row_reference, {'1': 0.0, '2' : 'Copying', '3': True, '4': False})
             cmd = ['rsync', '-ua', stack_path, destination_folder]
             subprocess.call(cmd)
-            gobject.idle_add(self.gui_row_update, treestore, stack.row_reference, {'1': 0.0, '2' : 'Copied', '3': False})
+            gobject.idle_add(self.gui_row_update, treestore, stack.row_reference, {'1': 0.0, '2' : 'Copied', '3': False, '4': True})
         treestore = self.dependencies_treestore
         for dependency_path, dependency in self.dependencies.iteritems():
             if dependency.size == None:
@@ -337,7 +333,7 @@ class PyApp(gtk.Window):
             if proc.returncode == 0:
                 gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': 100.0, '6' : 'Copied', '3': False, '8' : True})
             else:
-                gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'6' : 'Error #%i' % proc.returncode, '3': False, '7' : COLOR_ALERT, '8' : True})
+                gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'6' : 'Error %i' % proc.returncode, '3': False, '7' : COLOR_ALERT, '8' : True})
         return
         self.copy_queue = []
         for dependency_path, dependency in self.dependencies.iteritems():
@@ -393,7 +389,6 @@ class PyApp(gtk.Window):
         t.start()
         return t
     def get_dependencies(self, stack):
-        # print 'get_dependencies(%s)' % repr(stack)
         for dependency in stack.iter_dependencies(progress_callback=self.stack_read_progress):
             #print dependency.name
             if not dependency.path in self.dependencies:
@@ -412,8 +407,7 @@ class PyApp(gtk.Window):
                     gobject.idle_add(self.gui_dependency_add_parent, dependency.path, stack.path)
         self.status_set('%s in queue' % human.size(self.queue_size))
     def stack_read_progress(self, stack, progress):
-        gobject.idle_add(self.gui_stack_set_progress, stack, progress)
-    def gui_stack_set_progress(self, stack, progress):
+        treestore = self.stacks_treestore
         row_path = stack.row_reference.get_path()
         progress_percent = progress * 100.0
         progress_string = '%5.2f%%' % progress_percent
@@ -421,11 +415,9 @@ class PyApp(gtk.Window):
         # print stack, progress, progress_string
         show_progress = True
         if progress == 1.0:
-            progress_string = 'Loaded dependencies'
+            progress_string = 'Dependencies loaded'
             show_progress = False
-        self.stacks_treestore[row_path][1] = progress_percent
-        self.stacks_treestore[row_path][2] = progress_string
-        self.stacks_treestore[row_path][3] = show_progress
+        gobject.idle_add(self.gui_row_update, treestore, stack.row_reference, {'1': progress_percent, '2' : progress_string, '3': show_progress, '4': not show_progress})
     def gui_dependency_add(self, dependency):
         treestore = self.dependencies_treestore
         parent_stacks = []
