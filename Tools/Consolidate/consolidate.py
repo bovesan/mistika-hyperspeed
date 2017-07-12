@@ -469,7 +469,7 @@ class PyApp(gtk.Window):
                 details = 'The whole range is missing.'
                 gobject.idle_add(self.gui_row_update, treestore, self.dependencies[dependency_path].row_reference, {'7': COLOR_WARNING})
                 status = 'Missing'
-            frames_row_iter = self.dependencies_treestore.append(parent_row_iter, [frames_name, 0, '', False, details, human_size, status, text_color])
+            frames_row_iter = self.dependencies_treestore.append(parent_row_iter, [frames_name, 0, '', False, details, human_size, status, text_color, True])
         self.dependencies_treeview.expand_all()
     def gui_dependency_add_parent(self, dependency_path, parent):
         treestore = self.dependencies_treestore
