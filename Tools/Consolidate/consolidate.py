@@ -50,7 +50,68 @@ class PyApp(gtk.Window):
         hbox = gtk.HBox(False, 10)
         hbox.pack_start(gtk.Label('Environments, groups or other structures to consolidate:'), False, False, 0)
         vbox.pack_start(hbox, False, False, 0)
+        vbox.pack_start(self.init_stacks_window())
 
+        hbox = gtk.HBox(False, 10)
+        button = gtk.Button('Add structure ...')
+        button.connect("clicked", self.add_file_dialog)
+        hbox.pack_end(button, False, False, 0)
+        button = gtk.Button('Remove selected')
+        button.connect("clicked", self.gui_on_selected_stacks, 'remove')
+        hbox.pack_end(button, False, False, 0)
+        vbox.pack_start(hbox, False, False, 0)
+
+        hbox = gtk.HBox(False, 10)
+        hbox.pack_start(gtk.Label('Dependencies in loaded structures:'), False, False, 0)
+        vbox.pack_start(hbox, False, False, 0)
+        vbox.pack_start(self.init_dependencies_window())
+
+        hbox = gtk.HBox(False, 10)
+        self.status_label = gtk.Label('No stacks loaded')
+        hbox.pack_start(self.status_label, False, False, 5)
+        spinner = self.spinner_queue = gtk.Image()
+        try:
+            spinner.set_from_file('../../res/img/spinner01.gif')
+        except:
+            pass
+        hbox.pack_start(spinner, False, False, 5)
+        button = gtk.Button('Include selected')
+        button.connect("clicked", self.gui_on_selected_dependencies, 'unskip')
+        hbox.pack_end(button, False, False, 0)
+        button = gtk.Button('Skip selected')
+        button.connect("clicked", self.gui_on_selected_dependencies, 'skip')
+        hbox.pack_end(button, False, False, 0)
+        vbox.pack_start(hbox, False, False, 0)
+
+        hbox = gtk.HBox(False, 10)
+        button = gtk.Button('Destination folder ...')
+        button.connect("clicked", self.set_destination_dialog)
+        hbox.pack_start(button, False, False, 5)
+        self.destination_folder_entry = gtk.Entry()
+        hbox.pack_start(self.destination_folder_entry, False, False, 5)
+        button = gtk.Button('Copy')
+        button.connect("clicked", self.on_copy_start)
+        hbox.pack_start(button, False, False, 5)
+        vbox.pack_start(hbox, False, False, 0)
+
+        #menu = ['Sync project', 'Sync media']
+        footer = gtk.HBox(False, 10)
+        quitButton = gtk.Button('Quit')
+        quitButton.set_size_request(70, 30)
+        quitButton.connect("clicked", self.on_quit)
+        footer.pack_end(quitButton, False, False)
+
+        vbox.pack_end(footer, False, False, 10)
+
+        self.add(vbox)
+
+        self.connect("destroy", self.on_quit)
+        self.show_all()
+        spinner.set_property('visible', False)
+        #self.set_keep_above(True)
+        #self.present()
+        self.parse_command_line_arguments()
+    def init_stacks_window(self):
         treestore = self.stacks_treestore = gtk.TreeStore(str, float, str, bool, bool) # Name, progress float, progress text, progress visible, status visible
         treeview = self.stacks_treeview = gtk.TreeView()
         treeview.set_rules_hint(True)
@@ -74,21 +135,8 @@ class PyApp(gtk.Window):
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(treeview)
-        vbox.pack_start(scrolled_window)
-
-        hbox = gtk.HBox(False, 10)
-        button = gtk.Button('Add structure ...')
-        button.connect("clicked", self.add_file_dialog)
-        hbox.pack_end(button, False, False, 0)
-        button = gtk.Button('Remove selected')
-        button.connect("clicked", self.gui_on_selected_stacks, 'remove')
-        hbox.pack_end(button, False, False, 0)
-        vbox.pack_start(hbox, False, False, 0)
-
-        hbox = gtk.HBox(False, 10)
-        hbox.pack_start(gtk.Label('Dependencies in loaded structures:'), False, False, 0)
-        vbox.pack_start(hbox, False, False, 0)
-
+        return scrolled_window
+    def init_dependencies_window(self):
         treestore = self.dependencies_treestore = gtk.TreeStore(str, float, str, bool, str, str, str, str, bool) # Name, progress float, progress text, progress visible, details, human size, status, text color, status visible
         treeview = self.dependencies_treeview = gtk.TreeView()
         treeview.set_tooltip_column(4)
@@ -127,74 +175,7 @@ class PyApp(gtk.Window):
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(treeview)
-        vbox.pack_start(scrolled_window)
-
-
-
-        hbox = gtk.HBox(False, 10)
-        self.status_label = gtk.Label('No stacks loaded')
-        hbox.pack_start(self.status_label, False, False, 5)
-        spinner = self.spinner_queue = gtk.Image()
-        try:
-            spinner.set_from_file('../../res/img/spinner01.gif')
-        except:
-            pass
-        hbox.pack_start(spinner, False, False, 5)
-        button = gtk.Button('Include selected')
-        button.connect("clicked", self.gui_on_selected_dependencies, 'unskip')
-        hbox.pack_end(button, False, False, 0)
-        button = gtk.Button('Skip selected')
-        button.connect("clicked", self.gui_on_selected_dependencies, 'skip')
-        hbox.pack_end(button, False, False, 0)
-        vbox.pack_start(hbox, False, False, 0)
-
-        hbox = gtk.HBox(False, 10)
-        vbox2 = gtk.HBox(False, 10)
-        hbox2 = gtk.HBox(False, 10)
-        hbox2.pack_start(gtk.Label('Include:'), False, False, 0)
-        vbox2.pack_start(hbox2, False, False, 0)
-        button = gtk.CheckButton('.js')
-        vbox2.pack_start(button, False, False, 0)
-        button = gtk.CheckButton('.dat')
-        vbox2.pack_start(button, False, False, 0)
-        button = gtk.CheckButton('All other files')
-        vbox2.pack_start(button, False, False, 0)
-        button = gtk.CheckButton('Files stored in current project')
-        vbox2.pack_start(button, False, False, 0)
-        vbox2.pack_start(button, False, False, 0)
-        hbox.pack_start(vbox2, False, False, 0)
-        # vbox.pack_start(hbox, False, False, 0)
-
-
-        hbox = gtk.HBox(False, 10)
-        button = gtk.Button('Destination folder ...')
-        button.connect("clicked", self.set_destination_dialog)
-        hbox.pack_start(button, False, False, 5)
-        self.destination_folder_entry = gtk.Entry()
-        hbox.pack_start(self.destination_folder_entry, False, False, 5)
-        button = gtk.Button('Copy')
-        button.connect("clicked", self.on_copy_start)
-        hbox.pack_start(button, False, False, 5)
-        vbox.pack_start(hbox, False, False, 0)
-
-        #menu = ['Sync project', 'Sync media']
-        footer = gtk.HBox(False, 10)
-        quitButton = gtk.Button('Quit')
-        quitButton.set_size_request(70, 30)
-        quitButton.connect("clicked", self.on_quit)
-        footer.pack_end(quitButton, False, False)
-
-        vbox.pack_end(footer, False, False, 10)
-
-        self.add(vbox)
-
-        self.connect("destroy", self.on_quit)
-        self.show_all()
-        spinner.set_property('visible', False)
-        #self.set_keep_above(True)
-        #self.present()
-        self.parse_command_line_arguments()
-
+        return scrolled_window
     def parse_command_line_arguments(self):
         os.chdir(cwd)
         if len(sys.argv) > 1:
@@ -566,7 +547,7 @@ class PyApp(gtk.Window):
                 treestore = self.dependencies_treestore
                 row_path = dependency.row_reference.get_path()
                 row_iter = treestore.get_iter(row_path)
-                treestore.remove(row_iter)
+                treestore.remove(row_iter)  
                 del self.dependencies[dependency.path]
         treestore = self.stacks_treestore
         row_path = stack.row_reference.get_path()
