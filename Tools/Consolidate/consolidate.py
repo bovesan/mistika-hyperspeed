@@ -328,10 +328,12 @@ class PyApp(gtk.Window):
         for dependency_path, dependency in self.dependencies.iteritems():
             if self.abort:
                 return
-            if dependency.size == None or dependency.ignore:
+            print dependency_path, str(dependency.size)
+            if dependency.size in [None, 0] or dependency.ignore:
                 continue
             row_path = dependency.row_reference.get_path()
             gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': 0.0,  '3': True, '8' : False})
+            is_sequence = '%' in dependency_path
             destination_path = os.path.join(destination_folder, self.get_destination_path(dependency).lstrip('/'))
             # destination_path = os.path.join(dependency_path.lstrip('/'), destination_folder).rstrip('/')
             if not os.path.isdir(os.path.dirname(destination_path)):
@@ -339,11 +341,24 @@ class PyApp(gtk.Window):
                     os.makedirs(os.path.dirname(destination_path))
                 except OSError:
                     print 'Could not create destination directory'
-            cmd = ['rsync', '--progress', '-ua', dependency_path, destination_path]
+            if is_sequence:
+                sequence_files = []
+                basename = os.path.basename(dependency_path)
+                for frame_range in dependency.frame_ranges:
+                    for frame_n in range(frame_range.start, frame_range.end+1):
+                        sequence_files.append(basename % frame_n)
+                temp_handle = tempfile.NamedTemporaryFile()
+                temp_handle.write('\n'.join(sequence_files) + '\n')
+                temp_handle.flush()
+                cmd = ['rsync', '--progress', '-ua', '--files-from=%s' % temp_handle.name, os.path.dirname(dependency_path)+'/', os.path.dirname(destination_path)+'/']
+            else:
+                cmd = ['rsync', '--progress', '-ua', dependency_path, destination_path]
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             while proc.returncode == None:
                 if self.abort:
                     proc.kill()
+                    if is_sequence:
+                        temp_handle.close()
                     return
                 output = ''
                 char = None
@@ -362,6 +377,8 @@ class PyApp(gtk.Window):
                     gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': progress_percent, '2': fields[1]})
                 proc.poll()
             # subprocess.call(cmd)
+            if is_sequence:
+                temp_handle.close()
             if proc.returncode == 0:
                 # dependency.ignore = True
                 self.dependency_types[dependency.type].meta['copied'] += dependency.size
@@ -399,7 +416,7 @@ class PyApp(gtk.Window):
         for dependency in stack.iter_dependencies(progress_callback=self.stack_read_progress):
             #print dependency.name
             if not dependency.path in self.dependencies:
-                self.dependencies[dependency.path] = dependency
+                self.dependencies[dependency.path] = dependency = copy.copy(dependency)
                 if dependency.size != None:
                     self.queue_size += dependency.size
                 # self.dependencies[dependency.path].parents.append(stack)
@@ -409,7 +426,7 @@ class PyApp(gtk.Window):
                     this_frame_range = dependency.frame_ranges[0]
                     if '%' in dependency.path and not this_frame_range in self.dependencies[dependency.path].frame_ranges:
                         self.dependencies[dependency.path].frame_ranges.append(this_frame_range)
-                        gobject.idle_add(self.gui_dependency_frames_update, dependency)
+                        gobject.idle_add(self.gui_dependency_frames_update, dependency.path)
                     if not stack in self.dependencies[dependency.path].parents:
                         self.dependencies[dependency.path].parents.append(stack)
                         gobject.idle_add(self.gui_dependency_add_parent, dependency.path, stack.path)
@@ -448,7 +465,7 @@ class PyApp(gtk.Window):
         row_path = self.dependencies_treestore.get_path(row_iter)
         self.dependencies[dependency.path].row_reference = gtk.TreeRowReference(self.dependencies_treestore, row_path)
         if '%' in dependency.path:
-            gobject.idle_add(self.gui_dependency_frames_update, dependency)
+            gobject.idle_add(self.gui_dependency_frames_update, dependency.path)
         if dependency.size != None:
             self.dependency_types[dependency.type].meta['size'] += dependency.size
         self.gui_dependency_summary_update(dependency.type)
@@ -473,7 +490,8 @@ class PyApp(gtk.Window):
             treestore[row_path][3] = True
         else:
             treestore[row_path][3] = False
-    def gui_dependency_frames_update(self, dependency):
+    def gui_dependency_frames_update(self, dependency_path):
+        dependency = self.dependencies[dependency_path]
         treestore = self.dependencies_treestore
         parent_row_path = dependency.row_reference.get_path()
         parent_row_iter = treestore.get_iter(parent_row_path)
@@ -482,8 +500,9 @@ class PyApp(gtk.Window):
             treestore.remove(child_row_iter)
             child_row_iter = treestore.iter_next(child_row_iter)
         good_frame_ranges = 0
-        self.dependency_types[dependency.type].meta['size'] -= dependency.size
-        self.queue_size -= dependency.size
+        if dependency.size != None:
+            self.dependency_types[dependency.type].meta['size'] -= dependency.size
+            self.queue_size -= dependency.size
         dependency_size = 0
         for frame_range in dependency.frames:
             if frame_range.start == frame_range.end:
@@ -522,9 +541,11 @@ class PyApp(gtk.Window):
             gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'5' : dependency_size_human, '6' : dependency_status, '7': dependency_color})
             frames_row_iter = self.dependencies_treestore.append(parent_row_iter, [frames_name, 0, '', False, details, human_size, status, text_color, True])
         if dependency_size > 0:
-            dependency.size = dependency_size
+            # dependency.size = dependency_size
             self.queue_size += dependency_size
             self.dependency_types[dependency.type].meta['size'] += dependency_size
+        # else:
+        #     dependency.size = None
         self.gui_dependency_summary_update(dependency.type)
         # self.dependencies_treeview.expand_all()
     def gui_dependency_add_parent(self, dependency_path, parent):
@@ -604,14 +625,16 @@ class PyApp(gtk.Window):
         dependency = self.dependencies[model[row_path][0]]
         if dependency.size == None:
             return
-        if action == 'skip':
+        if action == 'skip' and model[row_path][6] != 'Skip':
             dependency.ignore = True
             model[row_path][6] = 'Skip'
             model[row_path][7] = COLOR_DISABLED
-        if action == 'unskip':
+            self.dependency_types[dependency.type].meta['size'] -= dependency.size
+        if action == 'unskip' and model[row_path][6] == 'Skip':
             dependency.ignore = False
             model[row_path][6] = ''
             model[row_path][7] = COLOR_DEFAULT
+            self.dependency_types[dependency.type].meta['size'] += dependency.size
     def calculate_queue_size(self):
         gobject.idle_add(self.status_label.set_property, 'visible', False)
         gobject.idle_add(self.spinner_queue.set_property, 'visible', True)
@@ -623,6 +646,8 @@ class PyApp(gtk.Window):
                 continue
             else:
                 total += dependency.size
+        for dependency_type in self.dependency_types:
+            gobject.idle_add(self.gui_dependency_summary_update, dependency_type)
         self.queue_size = total
         gobject.idle_add(self.spinner_queue.set_property, 'visible', False)
         gobject.idle_add(self.status_label.set_text, '%s in queue' % human.size(self.queue_size))
