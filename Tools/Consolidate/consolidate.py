@@ -12,6 +12,7 @@ import gobject
 import re
 
 try:
+    cwd = os.getcwd()
     os.chdir(os.path.dirname(sys.argv[0]))
     sys.path.append("../..")
     from hyperspeed.stack import Stack, DEPENDENCY_TYPES
@@ -55,7 +56,7 @@ class PyApp(gtk.Window):
         treeview.set_rules_hint(True)
         cell = gtk.CellRendererText()
         cell.set_property("editable", True)
-        column = gtk.TreeViewColumn('', cell, text=0)
+        column = gtk.TreeViewColumn('Stack', cell, text=0)
         column.set_resizable(True)
         column.set_expand(True)
         treeview.append_column(column)
@@ -69,7 +70,7 @@ class PyApp(gtk.Window):
         column.set_resizable(True)
         treeview.append_column(column)
         treeview.set_model(treestore)
-        treeview.expand_all()
+        # treeview.expand_all()
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(treeview)
@@ -78,6 +79,9 @@ class PyApp(gtk.Window):
         hbox = gtk.HBox(False, 10)
         button = gtk.Button('Add structure ...')
         button.connect("clicked", self.add_file_dialog)
+        hbox.pack_end(button, False, False, 0)
+        button = gtk.Button('Remove selected')
+        button.connect("clicked", self.gui_on_selected_stacks, 'remove')
         hbox.pack_end(button, False, False, 0)
         vbox.pack_start(hbox, False, False, 0)
 
@@ -92,6 +96,10 @@ class PyApp(gtk.Window):
         treeselection = treeview.get_selection()
         treeselection.set_mode(gtk.SELECTION_MULTIPLE)
         for dependency_type_id, dependency_type in DEPENDENCY_TYPES.iteritems():
+            dependency_type.meta = {
+                'count' : 0,
+                'size' : 0
+            }
             row_iter = treestore.append(None, [dependency_type.description, 0.0, '', False, dependency_type.description, '', '', COLOR_DISABLED, False])
             row_path = treestore.get_path(row_iter)
             dependency_type.row_reference = gtk.TreeRowReference(treestore, row_path)
@@ -114,7 +122,7 @@ class PyApp(gtk.Window):
         column.set_resizable(True)
         treeview.append_column(column)
         treeview.set_model(treestore)
-        treeview.expand_all()
+        # treeview.expand_all()
 
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
@@ -188,6 +196,7 @@ class PyApp(gtk.Window):
         self.parse_command_line_arguments()
 
     def parse_command_line_arguments(self):
+        os.chdir(cwd)
         if len(sys.argv) > 1:
             i = 0
             while i < len(sys.argv) - 1:
@@ -395,13 +404,13 @@ class PyApp(gtk.Window):
                 self.dependencies[dependency.path] = dependency
                 if dependency.size != None:
                     self.queue_size += dependency.size
-                self.dependencies[dependency.path].parents.append(stack)
+                # self.dependencies[dependency.path].parents.append(stack)
                 gobject.idle_add(self.gui_dependency_add, dependency)
             else:
-                this_frame_range = dependency.raw_frame_ranges[0]
-                if '%' in dependency.path and not this_frame_range in self.dependencies[dependency.path].raw_frame_ranges:
-                    self.dependencies[dependency.path].frames_range_add(this_frame_range)
-                    gobject.idle_add(self.gui_dependency_frames_update, dependency.path)
+                this_frame_range = dependency.frame_ranges[0]
+                if '%' in dependency.path and not this_frame_range in self.dependencies[dependency.path].frame_ranges:
+                    self.dependencies[dependency.path].frames_ranges.append(this_frame_range)
+                    gobject.idle_add(self.gui_dependency_frames_update, dependency)
                 if not stack in self.dependencies[dependency.path].parents:
                     self.dependencies[dependency.path].parents.append(stack)
                     gobject.idle_add(self.gui_dependency_add_parent, dependency.path, stack.path)
@@ -411,15 +420,17 @@ class PyApp(gtk.Window):
         row_path = stack.row_reference.get_path()
         progress_percent = progress * 100.0
         progress_string = '%5.2f%%' % progress_percent
-        progress_string = 'Looking for dependencies'
+        progress_string = '   Looking for dependencies   '
         # print stack, progress, progress_string
         show_progress = True
         if progress == 1.0:
-            progress_string = 'Dependencies loaded'
+            progress_string = '   Dependencies loaded   '
             show_progress = False
         gobject.idle_add(self.gui_row_update, treestore, stack.row_reference, {'1': progress_percent, '2' : progress_string, '3': show_progress, '4': not show_progress})
+        self.status_set('%s in queue' % human.size(self.queue_size))
     def gui_dependency_add(self, dependency):
         treestore = self.dependencies_treestore
+        DEPENDENCY_TYPES[dependency.type].meta['count'] += 1
         parent_stacks = []
         for parent_stack in dependency.parents:
             parent_stacks.append(parent_stack.path)
@@ -437,18 +448,26 @@ class PyApp(gtk.Window):
         row_iter = self.dependencies_treestore.append(parent_iter, [dependency.path, 0, '', False, details, human_size, status, text_color, True])
         row_path = self.dependencies_treestore.get_path(row_iter)
         self.dependencies[dependency.path].row_reference = gtk.TreeRowReference(self.dependencies_treestore, row_path)
-        self.dependencies_treeview.expand_all()
         if '%' in dependency.path:
-            gobject.idle_add(self.gui_dependency_frames_update, dependency.path)
-    def gui_dependency_frames_update(self, dependency_path):
+            gobject.idle_add(self.gui_dependency_frames_update, dependency)
+        if dependency.size != None:
+            DEPENDENCY_TYPES[dependency.type].meta['size'] += dependency.size
+        dependency_type_header = '%s (%i)' % (DEPENDENCY_TYPES[dependency.type].description, DEPENDENCY_TYPES[dependency.type].meta['count'])
+        gobject.idle_add(self.gui_row_update, treestore, DEPENDENCY_TYPES[dependency.type].row_reference, {'0': dependency_type_header, '5' : human.size(DEPENDENCY_TYPES[dependency.type].meta['size'])})
+
+    def gui_dependency_frames_update(self, dependency):
         treestore = self.dependencies_treestore
-        parent_row_path = self.dependencies[dependency_path].row_reference.get_path()
+        parent_row_path = dependency.row_reference.get_path()
         parent_row_iter = treestore.get_iter(parent_row_path)
         child_row_iter = treestore.iter_children(parent_row_iter)
         while child_row_iter != None:
             treestore.remove(child_row_iter)
             child_row_iter = treestore.iter_next(child_row_iter)
-        for frame_range in self.dependencies[dependency_path].frames:
+        good_frame_ranges = 0
+        DEPENDENCY_TYPES[dependency.type].meta['size'] -= dependency.size
+        self.queue_size -= dependency.size
+        dependency_size = 0
+        for frame_range in dependency.frames:
             if frame_range.start == frame_range.end:
                 frames_name = str(frame_range.start)
             else:
@@ -456,21 +475,39 @@ class PyApp(gtk.Window):
             details = ''
             status = ''
             if frame_range.size > 0:
+                dependency_size += frame_range.size
                 human_size = human.size(frame_range.size)
                 if frame_range.complete:
                     text_color = COLOR_DEFAULT
+                    good_frame_ranges += 1
                 else:
                     text_color = COLOR_WARNING
                     details = 'Some frames are missing.'
-                    gobject.idle_add(self.gui_row_update, treestore, self.dependencies[dependency_path].row_reference, {'7': COLOR_WARNING})
             else:
                 human_size = ''
                 text_color = COLOR_ALERT
                 details = 'The whole range is missing.'
-                gobject.idle_add(self.gui_row_update, treestore, self.dependencies[dependency_path].row_reference, {'7': COLOR_WARNING})
                 status = 'Missing'
+
+            if len(dependency.frames) == good_frame_ranges:
+                dependency_status = ''
+                dependency_color = COLOR_DEFAULT
+                dependency_size_human = human.size(dependency_size)
+            elif good_frame_ranges > 0:
+                dependency_status = 'Incomplete'
+                dependency_color = COLOR_WARNING
+                dependency_size_human = human.size(dependency_size)
+            else:
+                dependency_status = 'Missing'
+                dependency_color = COLOR_ALERT
+                dependency_size_human = ''
+            gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'5' : dependency_size_human, '6' : dependency_status, '7': dependency_color})
             frames_row_iter = self.dependencies_treestore.append(parent_row_iter, [frames_name, 0, '', False, details, human_size, status, text_color, True])
-        self.dependencies_treeview.expand_all()
+        if dependency_size > 0:
+            dependency.size = dependency_size
+            self.queue_size += dependency_size
+            DEPENDENCY_TYPES[dependency.type].meta['size'] += dependency_size
+        # self.dependencies_treeview.expand_all()
     def gui_dependency_add_parent(self, dependency_path, parent):
         treestore = self.dependencies_treestore
         row_path = self.dependencies[dependency_path].row_reference.get_path()
@@ -493,15 +530,49 @@ class PyApp(gtk.Window):
         for row_path in row_paths:
             row_iter = model.get_iter(row_path)
             if model.iter_has_child(row_iter):
-                child_row_iter = model.iter_children(row_iter)
-                while child_row_iter != None:
-                    child_row_path = model.get_path(child_row_iter)
-                    self.gui_row_actions(child_row_path, action)
-                    child_row_iter = model.iter_next(child_row_iter)
+                if model.iter_parent(row_iter) == None:
+                    child_row_iter = model.iter_children(row_iter)
+                    while child_row_iter != None:
+                        child_row_path = model.get_path(child_row_iter)
+                        self.gui_row_actions(child_row_path, action)
+                        child_row_iter = model.iter_next(child_row_iter)
+                else:
+                    child_row_iter = model.iter_children(row_iter)
+                    while child_row_iter != None:
+                        child_row_path = model.get_path(child_row_iter)
+                        self.gui_row_actions(child_row_path, action)
+                        child_row_iter = model.iter_next(child_row_iter)
+                    self.gui_row_actions(row_path, action)
             else:
                 self.gui_row_actions(row_path, action)
         if action in ['skip', 'unskip']:
             self.launch_thread(self.calculate_queue_size)
+    def gui_on_selected_stacks(self, widget, action):
+        treeview = self.stacks_treeview
+        selection = treeview.get_selection()
+        (model, row_paths) = selection.get_selected_rows()
+        for row_path in row_paths:
+            row_iter = model.get_iter(row_path)
+            if action == 'remove':
+                self.gui_stack_remove(model[row_path][0])
+    def gui_stack_remove(self, stack):
+        if type(stack) != Stack:
+            stack = self.stacks[stack]
+        for dependency in stack.dependencies:
+            print dependency.path
+            self.dependencies[dependency.path].parent_remove(stack)
+            print self.dependencies[dependency.path].parents
+            if len(self.dependencies[dependency.path].parents) == 0:
+                treestore = self.dependencies_treestore
+                row_path = dependency.row_reference.get_path()
+                row_iter = treestore.get_iter(row_path)
+                treestore.remove(row_iter)
+                del self.dependencies[dependency.path]
+        treestore = self.stacks_treestore
+        row_path = stack.row_reference.get_path()
+        row_iter = treestore.get_iter(row_path)
+        treestore.remove(row_iter)
+
     def gui_row_actions(self, row_path, action):
         model = self.dependencies_treestore
         dependency = self.dependencies[model[row_path][0]]

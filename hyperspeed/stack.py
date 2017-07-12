@@ -9,6 +9,7 @@ class DependencyType(object):
     def __init__(self, id, description):
         self.id = id
         self.description = description
+        self.meta = {}
     def __str__(self):
         return self.id
     def __repr__(self):
@@ -25,10 +26,11 @@ DEPENDENCY_TYPES = {
     'font' : DependencyType('font', 'Fonts'),
 }
 class DependencyFrameRange(object):
-    def __init__(self, path, start = False, end = False, delete_callback = None):
+    def __init__(self, path, start = False, end = False, parent=None, delete_callback = None):
         self.path = path
         self.start = start
         self.end = end
+        self.parent = parent
         self._size = False
         self.complete = True
         self.row_references = []
@@ -45,31 +47,40 @@ class DependencyFrameRange(object):
         return self._size
 
     def delete(self,*args,**kwargs):
-        self.delete_callback(self)
+        if self.delete_callback != None:
+            self.delete_callback(self)
         super(DependencyFrameRange, self).delete(*args,**kwargs)
 
 class Dependency(object):
-    def __init__(self, name, f_type, start = False, end = False):
+    def __init__(self, name, f_type, start = False, end = False, parent=None):
         self.name = name
         self.type = f_type
         self.start = min(start, end)
         self.end = max(start, end)
         self.ignore = False
-        self.parents = []
+        self.parents = [parent]
         self.dependencies = [] # Used for .dat files with font dependencies etc.
         self._path = False
         self._size = False
-        self.raw_frame_ranges = [(start, end)]
-        self.frame_ranges = [DependencyFrameRange(self.path, start, end)]
+        # self.raw_frame_ranges = [(start, end, parent)]
+        self.frame_ranges = [DependencyFrameRange(self.path, start, end, parent)]
         self._parsed_frame_ranges = None
         self.complete = True
         if f_type == 'dat':
             for font in text.Title(self.path).fonts:
-                self.dependencies.append(Dependency(font, 'font'))
+                self.dependencies.append(Dependency(font, 'font', parent=parent))
     def __str__(self):
         return self.name
     def __repr__(self):
         return self.name
+    def parent_remove(self, parent):
+        i = 0
+        while i < len(self.frame_ranges):
+            if self.frame_ranges[i].parent == parent:
+                del self.frame_ranges[i]
+                continue
+            i += 1
+        self.parents.remove(parent)
     @property
     def path(self):
         if not self._path:
@@ -91,9 +102,9 @@ class Dependency(object):
             else: # should not happen
                 self._path = self.name
         return self._path
-    def frames_range_add(self, start, end):
-        self.raw_frame_ranges.append(start, end)
-        self.frame_ranges.append(DependencyFrameRange(self.path, start, end))
+    def frames_range_add(self, start, end, parent=None):
+        # self.raw_frame_ranges.append((start, end, parent))
+        self.frame_ranges.append(DependencyFrameRange(self.path, start, end, parent))
     @property
     def frames(self):
         if True or self._parsed_frame_ranges != self.frame_ranges:
@@ -294,9 +305,9 @@ class Stack(object):
                                 f_path = f_folder + '/' + char_buffer
                         if f_path:
                             if '%' in f_path:
-                                dependency = Dependency(f_path, f_type, CdIs, CdIe)
+                                dependency = Dependency(f_path, f_type, CdIs, CdIe, parent=self)
                             else:
-                                dependency = Dependency(f_path, f_type)
+                                dependency = Dependency(f_path, f_type, parent=self)
                             if not dependency.path in self._dependency_paths:
                                 self._dependencies.append(dependency)
                                 self._dependency_paths.append(dependency.path)
