@@ -84,7 +84,8 @@ class Dependency(object):
                 del self.frame_ranges[i]
                 continue
             i += 1
-        self.parents.remove(parent)
+        if parent in self.parents:
+            self.parents.remove(parent)
     @property
     def path(self):
         if not self._path:

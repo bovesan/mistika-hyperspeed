@@ -142,6 +142,7 @@ class PyApp(gtk.Window):
         column.set_resizable(True)
         treeview.append_column(column)
         treeview.set_model(treestore)
+        treeview.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
         # treeview.expand_all()
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
@@ -184,6 +185,7 @@ class PyApp(gtk.Window):
         column.set_resizable(True)
         treeview.append_column(column)
         treeview.set_model(treestore)
+        treeview.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
         # treeview.expand_all()
 
         scrolled_window = gtk.ScrolledWindow()
@@ -333,7 +335,7 @@ class PyApp(gtk.Window):
             row_path = dependency.row_reference.get_path()
             gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': 0.0,  '3': True, '8' : False})
             is_sequence = '%' in dependency_path
-            destination_path = destination_folder.rstrip('/') + self.get_destination_path(dependency).lstrip('/')
+            destination_path = destination_folder + self.get_destination_path(dependency).lstrip('/')
             # destination_path = os.path.join(dependency_path.lstrip('/'), destination_folder).rstrip('/')
             extra_args = []
             if ':' in destination_folder:
@@ -605,10 +607,13 @@ class PyApp(gtk.Window):
         treeview = self.stacks_treeview
         selection = treeview.get_selection()
         (model, row_paths) = selection.get_selected_rows()
+        stack_list = []
         for row_path in row_paths:
             row_iter = model.get_iter(row_path)
+            stack_list.append(model[row_path][0])
+        for stack_path in stack_list:
             if action == 'remove':
-                self.gui_stack_remove(model[row_path][0])
+                self.gui_stack_remove(stack_path)
     def gui_stack_remove(self, stack):
         if type(stack) != Stack:
             stack = self.stacks[stack]
@@ -617,7 +622,7 @@ class PyApp(gtk.Window):
             self.dependencies[dependency.path].parent_remove(stack)
             if len(self.dependencies[dependency.path].parents) == 0:
                 treestore = self.dependencies_treestore
-                row_path = dependency.row_reference.get_path()
+                row_path = self.dependencies[dependency.path].row_reference.get_path()
                 row_iter = treestore.get_iter(row_path)
                 treestore.remove(row_iter)  
                 if self.dependencies[dependency.path].size != None:
