@@ -335,7 +335,9 @@ class PyApp(gtk.Window):
             is_sequence = '%' in dependency_path
             destination_path = destination_folder.rstrip('/') + self.get_destination_path(dependency).lstrip('/')
             # destination_path = os.path.join(dependency_path.lstrip('/'), destination_folder).rstrip('/')
+            extra_args = []
             if ':' in destination_folder:
+                extra_args += ['-e', 'ssh']
                 host, target_folder = destination_folder.split(':', 1)
                 destination_path_on_host = destination_path.split(':', 1)[1]
                 cmd = ['ssh', host, 'mkdir', '-p', os.path.dirname(destination_path_on_host)]
@@ -357,9 +359,9 @@ class PyApp(gtk.Window):
                 temp_handle = tempfile.NamedTemporaryFile()
                 temp_handle.write('\n'.join(sequence_files) + '\n')
                 temp_handle.flush()
-                cmd = ['rsync', '-uavv', '--out-format="%n was copied"', '--files-from=%s' % temp_handle.name, os.path.dirname(dependency_path)+'/', os.path.dirname(destination_path)+'/']
+                cmd = ['rsync'] + extra_args + ['-uavv', '--out-format="%n was copied"', '--files-from=%s' % temp_handle.name, os.path.dirname(dependency_path)+'/', os.path.dirname(destination_path)+'/']
             else:
-                cmd = ['rsync', '--progress', '-ua', dependency_path, destination_path]
+                cmd = ['rsync'] + extra_args + ['--progress', '-ua', dependency_path, destination_path]
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             while proc.returncode == None:
                 if self.abort:
