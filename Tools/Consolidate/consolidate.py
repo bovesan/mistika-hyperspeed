@@ -121,6 +121,9 @@ class PyApp(gtk.Window):
         #self.present()
         self.parse_command_line_arguments()
         # self.init_dependencies_daemon()
+        gobject.idle_add(self.bring_to_front)
+    def bring_to_front(self):
+        self.present()      
 
     def init_stacks_window(self):
         treestore = self.stacks_treestore = gtk.TreeStore(str, float, str, bool, bool) # Name, progress float, progress text, progress visible, status visible
@@ -203,7 +206,7 @@ class PyApp(gtk.Window):
                     i += 1
                     self.destination_folder_entry.set_text(sys.argv[i])
                 else:
-                    self.gui_stack_add(arg)
+                    self.gui_stack_add(arg)              
     def on_quit(self, widget):
         print 'Closed by: ' + repr(widget)
         gtk.main_quit()

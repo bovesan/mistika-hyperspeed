@@ -226,10 +226,11 @@ class PyApp(gtk.Window):
 
         self.connect("destroy", self.on_quit)
         self.show_all()
-        self.set_keep_above(True)
 
         self.comboEditable = None
-        #self.present()
+        gobject.idle_add(self.bring_to_front)
+    def bring_to_front(self):
+        self.present()   
     def init_toolbar(self):
         filterEntry = self.filterEntry
         toolbarBox = gtk.HBox(False, 10)
