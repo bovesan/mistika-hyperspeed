@@ -1,11 +1,11 @@
 # mistika-hyperspeed
 This project provides a framework for extending or tweaking a SGO Mistika or Mamba system, and also includes several such extensions.
 They are divided into the following categories:
-* Tools
-* Afterscripts
-* Stacks
-* Configs
-* Web links
+* [Tools](#tools)
+* [Afterscripts](#afterscripts)
+* [Stacks](#stacks)
+* [Configs](#configs)
+* [Web links](#web-links)
 
 To get started, run **./hyperspeed-dashboard.py**
 ## Tools
