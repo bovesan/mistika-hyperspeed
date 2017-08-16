@@ -4,6 +4,8 @@ import xml.etree.ElementTree as ET
 import os
 import sys
 import time
+import gtk
+import platform
 
 USAGE = '''Attempts to fix certain problems with mixed framerate projects from Adobe Premiere.
 Writes the new sequence to a separate file.
@@ -93,13 +95,35 @@ class xmlfix:
         except:
             raise
 
+def add_files_dialog():
+    folder = '/'
+    dialog = gtk.FileChooserDialog(title="Select .xml files", parent=None, action=gtk.FILE_CHOOSER_ACTION_OPEN, buttons=(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL, gtk.STOCK_OPEN, gtk.RESPONSE_OK), backend=None)
+    # if 'darwin' in platform.system().lower():
+    #     dialog.set_resizable(False) # Because resizing crashes the app on Mac
+    dialog.set_select_multiple(True)
+    #dialog.add_filter(filter)
+    dialog.set_current_folder(folder)
+    filter = gtk.FileFilter()
+    filter.set_name("Xml files")
+    filter.add_pattern("*.xml")
+    response = dialog.run()
+    if response == gtk.RESPONSE_OK:
+        files = dialog.get_filenames()
+        dialog.destroy()
+        return files
+    elif response == gtk.RESPONSE_CANCEL:
+        print 'Closed, no files selected'
+        dialog.destroy()
+        return
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        import subprocess
-        try:
-            zenityArgs = ["zenity", "--title=Select .xml files", "--file-selection", "--multiple", "--separator=|", '--file-filter=*.xml']
-            input_files = subprocess.Popen(zenityArgs, stdout=subprocess.PIPE).communicate()[0].splitlines()[0].split("|")
-        except:
+        input_files = add_files_dialog()
+        # import subprocess
+        # try:
+        #     zenityArgs = ["zenity", "--title=Select .xml files", "--file-selection", "--multiple", "--separator=|", '--file-filter=*.xml']
+        #     input_files = subprocess.Popen(zenityArgs, stdout=subprocess.PIPE).communicate()[0].splitlines()[0].split("|")
+        if not input_files:
             print USAGE
             sys.exit(1)
     else:

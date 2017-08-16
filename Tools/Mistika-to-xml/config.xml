@@ -5,7 +5,7 @@
 (c) 2016 Bengt Ove Sannes
 bengtove@bovesan.com
 
-Usage: %s [-s] [-v] [-y] inputfile1 [inputfile2 ...]
+Usage (command line): %s [-s] [-v] [-y] inputfile1 [inputfile2 ...]
 
 The xml file will be stored next to the input file.
 
