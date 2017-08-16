@@ -202,6 +202,7 @@ class Stack(object):
             fx_type = None
             char_buffer = ''
             char_buffer_store = ''
+            ungroup = False
             for line in open(self.path):
                 for char in line:
                     if char == '(':
@@ -211,9 +212,14 @@ class Stack(object):
                     elif char == ')':
                         f_path = False
                         object_path = '/'.join(level_names)
-                        if object_path.endswith('Group/Group/p/n'):
-                            self._groupname = char_buffer
-                            return
+                        if object_path.endswith('ungroup') and char_buffer == '1':
+                            ungroup = True
+                        elif object_path.endswith('p/n'):
+                            if not ungroup:
+                                self._groupname = char_buffer
+                                return
+                            else:
+                                ungroup = False
                         char_buffer = ''
                         del level_names[-1]
                     elif len(level_names) > 0 and level_names[-1] == 'Shape':
@@ -302,7 +308,7 @@ class Stack(object):
                             f_type = 'glsl'
                             if object_path.endswith('F/p/s/c/c'):
                                 f_folder = char_buffer
-                            elif object_path.endswith('F/p/s/c/E/s'):
+                            elif object_path.endswith('F/p/s/c/E/s') or object_path.endswith('F/p/s/c/p/s'):
                                 f_path = f_folder + '/' + char_buffer
                         elif fx_type == '143':
                             f_type = 'lut'
