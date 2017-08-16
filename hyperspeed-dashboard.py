@@ -43,7 +43,10 @@ from hyperspeed import video
 from hyperspeed import human
 
 def config_value_decode(value, parent_folder = False):
-    value = value.replace('$BATCHPATH$', mistika.settings['BATCHPATH'])
+    try:
+        value = value.replace('$BATCHPATH$', mistika.settings['BATCHPATH'])
+    except KeyError:
+        pass
     value = value.replace('$HOSTNAME$', socket.gethostname())
     value = value.replace('$MISTIKA-ENV$', mistika.env_folder)
     value = os.path.expanduser(value)
