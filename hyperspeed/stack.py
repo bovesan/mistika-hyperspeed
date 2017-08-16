@@ -212,9 +212,11 @@ class Stack(object):
                     elif char == ')':
                         f_path = False
                         object_path = '/'.join(level_names)
-                        if object_path.endswith('ungroup') and char_buffer == '1':
+                        if object_path.endswith('/ungroup') and char_buffer == '1':
                             ungroup = True
-                        elif object_path.endswith('p/n'):
+                        elif object_path.endswith('/p') and ungroup:
+                            ungroup = False
+                        elif object_path.endswith('/p/n'):
                             if not ungroup:
                                 self._groupname = char_buffer
                                 return
@@ -227,6 +229,49 @@ class Stack(object):
                     elif char:
                         char_buffer += char
             self._groupname = False
+        except IOError as e:
+            print 'Could not open ' + self.path
+            raise e
+    @property
+    def comment(self):
+        try:
+            self._comment
+        except AttributeError:
+            self.set_comment()
+        return self._comment
+    def set_comment(self):
+        try:
+            level_names = []
+            fx_type = None
+            char_buffer = ''
+            char_buffer_store = ''
+            ungroup = False
+            for line in open(self.path):
+                for char in line:
+                    if char == '(':
+                        char_buffer = char_buffer.replace('\n', '').strip()
+                        level_names.append(char_buffer)
+                        char_buffer = ''
+                    elif char == ')':
+                        f_path = False
+                        object_path = '/'.join(level_names)
+                        if object_path.endswith('/ungroup') and char_buffer == '1':
+                            ungroup = True
+                        elif object_path.endswith('/p') and ungroup:
+                            ungroup = False
+                        elif object_path.endswith('/c'):
+                            if not ungroup:
+                                self._comment = char_buffer
+                                return
+                            else:
+                                ungroup = False
+                        char_buffer = ''
+                        del level_names[-1]
+                    elif len(level_names) > 0 and level_names[-1] == 'Shape':
+                        continue
+                    elif char:
+                        char_buffer += char
+            self._comment = False
         except IOError as e:
             print 'Could not open ' + self.path
             raise e

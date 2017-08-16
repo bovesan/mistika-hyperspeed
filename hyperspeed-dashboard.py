@@ -562,8 +562,11 @@ class PyApp(gtk.Window):
                 continue
             if files[path]['isdir']:
                 continue
+            stack = hyperspeed.Stack(path)
+            if stack.comment:
+                files[path]['comment'] = stack.comment
             if not 'dependencies' in files[path]:
-                files[path]['dependencies'] = hyperspeed.Stack(path).dependencies
+                files[path]['dependencies'] = stack.dependencies
             if len(files[path]['dependencies']) > 0:
                 files[path]['Dependent'] = True
             for dependency in files[path]['dependencies']:
@@ -753,14 +756,14 @@ class PyApp(gtk.Window):
             dir_name = os.path.dirname(item_path)
             base_name = os.path.basename(item_path)
             try:
-                description = item['description']
+                description = item['comment']
             except KeyError:
                 description = base_name
             try:
                 if item['Dependent']:
                     description += '\n\nDependencies:'
                     for dependency in item['dependencies']:
-                        description += '\n* '+dependency.name+' (%s)'%dependency.type
+                        description += '\n* '+os.path.basename(dependency.name)+' (%s)'%dependency.type
             except KeyError:
                 pass
             try:

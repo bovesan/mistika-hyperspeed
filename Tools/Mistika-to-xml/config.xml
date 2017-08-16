@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<tool>
+<alias>Mistika to xml</alias>
+<description>Converts SGO Mistika structures to xml.
+(c) 2016 Bengt Ove Sannes
+bengtove@bovesan.com
+
+Usage: %s [-s] [-v] [-y] inputfile1 [inputfile2 ...]
+
+The xml file will be stored next to the input file.
+
+-a Validate output file
+-s Write output to stdout instead of to file
+-v Verbose output (written to stderr)
+-y Overwrite existing files without interaction</description>
+<executable>mistika-xml.py</executable>
+</tool>
