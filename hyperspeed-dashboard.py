@@ -224,7 +224,8 @@ class PyApp(gtk.Window):
         return scrolled_window
     def init_afterscripts_window(self):
         tree        = self.afterscripts_tree      = gtk.TreeView()
-        treestore   = self.afterscripts_treestore = gtk.TreeStore(str, bool, bool, str) # Name, show in Mistika, is folder, file path
+        treestore   = self.afterscripts_treestore = gtk.TreeStore(str, bool, bool, str, str) # Name, show in Mistika, is folder, file path, description
+        tree.set_tooltip_column(4)
         tree_filter = self.afterscripts_filter    = treestore.filter_new();
         cell = gtk.CellRendererText()
         column = gtk.TreeViewColumn('', cell, text=0)
@@ -252,7 +253,8 @@ class PyApp(gtk.Window):
         return scrolled_window
     def init_stacks_window(self):
         tree        = self.stacks_tree      = gtk.TreeView()
-        treestore   = self.stacks_treestore = gtk.TreeStore(str, bool, bool, str, bool) # Name, installed, is folder, file path, requires installation (has dependencies)
+        treestore   = self.stacks_treestore = gtk.TreeStore(str, bool, bool, str, bool, str) # Name, installed, is folder, file path, requires installation (has dependencies), description
+        tree.set_tooltip_column(5)
         tree_filter = self.stacks_filter    = treestore.filter_new();
         cell = gtk.CellRendererText()
         column = gtk.TreeViewColumn('', cell, text=0)
@@ -282,6 +284,7 @@ class PyApp(gtk.Window):
     def init_configs_window(self):
         tree        = self.configs_tree      = gtk.TreeView()
         treestore   = self.configs_treestore = gtk.TreeStore(str, bool, bool, str, str) # Name, active, is folder, path, description
+        tree.set_tooltip_column(4)
         tree_filter = self.configs_filter    = treestore.filter_new();
         cell = gtk.CellRendererText()
         column = gtk.TreeViewColumn('', cell, text=0)
@@ -684,21 +687,25 @@ class PyApp(gtk.Window):
             else:
                 alias = os.path.basename(item_path)
             try:
+                description = item['description']
+            except KeyError:
+                description = alias
+            try:
                 parent_row_reference = row_references[dir_name]
                 parent_row_path = parent_row_reference.get_path()
                 parent_row_iter = treestore.get_iter(parent_row_path)
             except KeyError:
                 parent_row_iter = None
             if not item_path in row_references:
-                row_iter = treestore.append(parent_row_iter, [alias, False, True, '', item_path, ''])
+                row_iter = treestore.append(parent_row_iter, [alias, False, True, '', item_path, description])
                 row_path = treestore.get_path(row_iter)
                 row_references[item_path] = gtk.TreeRowReference(treestore, row_path)
             else:
                 row_path = row_references[item_path].get_path()
             if item['isdir']:
-                treestore[row_path] = (alias, False, True, '', item_path, '')
+                treestore[row_path] = (alias, False, True, '', item_path, description)
             else:
-                treestore[row_path] = (alias, item['Show in Mistika'], False, item['Autorun'], item_path, item['description'])
+                treestore[row_path] = (alias, item['Show in Mistika'], False, item['Autorun'], item_path, description)
     def gui_update_afterscripts(self):
         treestore = self.afterscripts_treestore # Name, show in Mistika, is folder
         row_references = self.row_references_afterscripts
@@ -706,10 +713,14 @@ class PyApp(gtk.Window):
         for item_path in sorted(items):
             item = items[item_path]
             dir_name = os.path.dirname(item_path)
-            if 'alias' in items[item_path]:
+            try:
                 alias = items[item_path]['alias']
-            else:
+            except KeyError:
                 alias = os.path.basename(item_path)
+            try:
+                description = item['description']
+            except KeyError:
+                description = alias
             in_model = False
             for model_row in self.afterscripts_model:
                 if model_row[0] == alias:
@@ -724,15 +735,15 @@ class PyApp(gtk.Window):
             except KeyError:
                 parent_row_iter = None
             if not item_path in row_references:
-                row_iter = treestore.append(parent_row_iter, [alias, False, True, item_path])
+                row_iter = treestore.append(parent_row_iter, [alias, False, True, item_path, description])
                 row_path = treestore.get_path(row_iter)
                 row_references[item_path] = gtk.TreeRowReference(treestore, row_path)
             else:
                 row_path = row_references[item_path].get_path()
             if item['isdir']:
-                treestore[row_path] = (alias, False, True, item_path)
+                treestore[row_path] = (alias, False, True, item_path, description)
             else:
-                treestore[row_path] = (alias, item['Show in Mistika'], False, item_path)
+                treestore[row_path] = (alias, item['Show in Mistika'], False, item_path, description)
     def gui_update_stacks(self):
         treestore = self.stacks_treestore # Name, installed, is folder, file path, requires installation (has dependencies)
         row_references = self.row_references_stacks
@@ -742,21 +753,32 @@ class PyApp(gtk.Window):
             dir_name = os.path.dirname(item_path)
             base_name = os.path.basename(item_path)
             try:
+                description = item['description']
+            except KeyError:
+                description = base_name
+            try:
+                if item['Dependent']:
+                    description += '\n\nDependencies:'
+                    for dependency in item['dependencies']:
+                        description += '\n* '+dependency.name+' (%s)'%dependency.type
+            except KeyError:
+                pass
+            try:
                 parent_row_reference = row_references[dir_name]
                 parent_row_path = parent_row_reference.get_path()
                 parent_row_iter = treestore.get_iter(parent_row_path)
             except KeyError:
                 parent_row_iter = None
             if not item_path in row_references:
-                row_iter = treestore.append(parent_row_iter, [base_name, False, True, item_path, False])
+                row_iter = treestore.append(parent_row_iter, [base_name, False, True, item_path, False, description])
                 row_path = treestore.get_path(row_iter)
                 row_references[item_path] = gtk.TreeRowReference(treestore, row_path)
             else:
                 row_path = row_references[item_path].get_path()
             if item['isdir']:
-                treestore[row_path] = (base_name, False, True, item_path, False)
+                treestore[row_path] = (base_name, False, True, item_path, False, description)
             else:
-                treestore[row_path] = (base_name, item['Installed'], False, item_path, item['Dependent'])
+                treestore[row_path] = (base_name, item['Installed'], False, item_path, item['Dependent'], description)
     def gui_update_configs(self):
         treestore = self.configs_treestore # Name, show in Mistika, is folder
         row_references = self.row_references_configs
@@ -764,10 +786,14 @@ class PyApp(gtk.Window):
         for item_path in sorted(items):
             item = items[item_path]
             dir_name = os.path.dirname(item_path)
-            if 'alias' in items[item_path]:
+            try:
                 alias = items[item_path]['alias']
-            else:
+            except KeyError:
                 alias = os.path.basename(item_path)
+            try:
+                description = items[item_path]['description']
+            except KeyError:
+                description = ''
             try:
                 parent_row_reference = row_references[dir_name]
                 parent_row_path = parent_row_reference.get_path()
