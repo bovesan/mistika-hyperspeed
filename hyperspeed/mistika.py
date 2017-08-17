@@ -3,6 +3,7 @@
 import os
 import re
 import subprocess
+import platform as platform_module
 
 from xml.etree import ElementTree
 from distutils.version import LooseVersion
@@ -34,6 +35,8 @@ def reload():
     global glsl_folder
     global lut_folder
     global fonts
+    global fonts_folder
+    global platform
     env_folder = os.path.realpath(os.path.expanduser("~/MISTIKA-ENV"))
     if os.path.exists(env_folder):
         product = 'Mistika'
@@ -43,6 +46,15 @@ def reload():
             product = 'Mamba'
         else:
             product = False
+    if 'linux' in platform_module.system().lower():
+        platform = 'linux'
+        fonts_folder = '/usr/share/fonts/mistika/'
+    elif 'darwin' in platform_module.system().lower():
+        platform = 'mac'
+        fonts_folder = os.path.expanduser('~/Library/Fonts/')
+    elif 'windows' in platform_module.system().lower():
+        platform = 'windows'
+        fonts_folder = 'C:/Windows/Fonts/'
     shared_folder = os.path.join(env_folder, 'shared')
     try:
         version = LooseVersion('.'.join(re.findall(r'\d+',subprocess.Popen([product.lower(), '-V'], stdout=subprocess.PIPE).communicate()[0].splitlines()[0])))

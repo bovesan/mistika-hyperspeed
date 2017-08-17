@@ -357,13 +357,19 @@ class Stack(object):
                             if object_path.endswith('F/p/s/c/c'):
                                 f_folder = char_buffer
                             elif object_path.endswith('F/p/s/c/E/s') or object_path.endswith('F/p/s/c/p/s'):
-                                f_path = f_folder + '/' + char_buffer
+                                if char_buffer.startswith('/'):
+                                    f_path = char_buffer
+                                else:
+                                    f_path = f_folder + '/' + char_buffer
                         elif fx_type == '143':
                             f_type = 'lut'
                             if object_path.endswith('F/p/s/c/c'):
                                 f_folder = char_buffer
                             elif object_path.endswith('F/p/s/c/F/s'):
-                                f_path = f_folder + '/' + char_buffer
+                                if char_buffer.startswith('/'):
+                                    f_path = char_buffer
+                                else:
+                                    f_path = f_folder + '/' + char_buffer
                         if f_path:
                             if '%' in f_path:
                                 dependency = Dependency(f_path, f_type, CdIs, CdIe, parent=self)
@@ -371,7 +377,7 @@ class Stack(object):
                                 dependency = Dependency(f_path, f_type, parent=self)
                             if relink and not dependency.check():
                                 print 'Missing dependency: ', dependency.name
-                                line = self.relink_line(line, f_type, dependency.path)
+                                line = self.relink_line(line, dependency)
                                 # dependency needs to be updated at this point
                             if not dependency.path in self._dependency_paths:
                                 self._dependencies.append(dependency)
@@ -403,22 +409,31 @@ class Stack(object):
             print 'Could not open ' + self.path
             raise e
     def relink_dependencies(self, progress_callback=False):
-        list(self.iter_dependencies(progress_callback=progress_callback, relink=True))
-    def relink_line(self, line, dependency_type, dependency_path):
-        print 'relink_line(%s)' % line
-        dependency_basename = os.path.basename(dependency_path)
-        dependency_foldername = os.path.dirname(dependency_path)
-        print dependency_type, dependency_foldername, dependency_basename
+        for dependency in self.iter_dependencies(progress_callback=progress_callback, relink=True):
+            if dependency.type == 'font':
+                try:
+                    destination = os.path.join(mistika.fonts_folder, os.path.basename(dependency_path))
+                    shutils.copy2(dependency.path, destination)
+                except IOError:
+                    print 'Could not copy %s to %s' % (dependency.path, destination)
+                # copy to /usr/share/fonts/mistika/
+            else:
+                pass # relinking is handled in iter_dependencies(relink=True)
+    def relink_line(self, line, dependency):
+        dependency_basename = os.path.basename(dependency.path)
+        dependency_foldername = os.path.dirname(dependency.path)
+        print dependency.type, dependency_foldername, dependency_basename
         for root, dirs, files in os.walk(os.path.dirname(self.path)):
             for basename in files:
                 if basename == dependency_basename:
-                    print 'Found it'
                     abspath = os.path.join(root, basename)
-                    if dependency_type in ['dat', 'lnk']:
-                        return line.replace('('+dependency_path+')', '('+escape_par(abspath)+')')
-                    elif dependency_type in ['glsl', 'lut']:
+                    if dependency.type in ['dat']:
+                        return line.replace('('+escape_par(dependency.name)+')', '('+escape_par(abspath)+')')
+                    elif dependency.type in ['lnk']:
+                        return line.replace('('+escape_par(dependency.path)+')', '('+escape_par(abspath)+')')
+                    elif dependency.type in ['glsl', 'lut']:
                         return line.replace('('+dependency_basename+')', '('+escape_par(abspath)+')')
-                    elif dependency_type in ['highres', 'lowres', 'audio']:
-                        return line.replace('('+dependency_foldername+'/)', '('+escape_par(root)+'/)')
+                    elif dependency.type in ['highres', 'lowres', 'audio']:
+                        return line.replace('('+escape_par(dependency_foldername)+'/)', '('+escape_par(root)+'/)')
         return line
 

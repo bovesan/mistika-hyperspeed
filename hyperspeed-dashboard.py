@@ -107,7 +107,7 @@ class PyApp(gtk.Window):
         self.files = {}
         screen = self.get_screen()
         self.set_title("Hyperspeed")
-        self.set_size_request(screen.get_width()/2, screen.get_height()-200)
+        self.set_size_request(screen.get_width()/2, screen.get_height()/2)
         self.set_border_width(20)
         self.set_position(gtk.WIN_POS_CENTER)
         if 'darwin' in platform.system().lower():
@@ -769,9 +769,14 @@ class PyApp(gtk.Window):
                 description = base_name
             try:
                 if item['Dependent']:
-                    description += '\n\nDependencies:'
+                    dependency_lines = []
+                    description += '\n\nDependencies:\n'
                     for dependency in item['dependencies']:
-                        description += '\n* '+os.path.basename(dependency.name)+' (%s)'%dependency.type
+                        dependency_line = '* '+dependency.type+': '+dependency.path
+                        if not dependency.check():
+                            dependency_line += ' <b>missing</b>'
+                        dependency_lines.append(dependency_line)
+                    description += '\n'.join(sorted(dependency_lines))
             except KeyError:
                 pass
             try:
