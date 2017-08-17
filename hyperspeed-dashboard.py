@@ -469,6 +469,8 @@ class PyApp(gtk.Window):
         crontab = get_crontab_lines()
         for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
             for name in dirs:
+                if name.startswith('.'):
+                    continue
                 path = os.path.join(root, name)
                 if 'config.xml' in os.listdir(path):
                     tree = ET.parse(os.path.join(path, 'config.xml'))
@@ -515,6 +517,8 @@ class PyApp(gtk.Window):
             afterscripts_installed.append(os.path.realpath(link_path))
         for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
             for name in dirs:
+                if name.startswith('.'):
+                    continue
                 path = os.path.join(root, name)
                 if 'config.xml' in os.listdir(path):
                     tree = ET.parse(os.path.join(path, 'config.xml'))
@@ -550,9 +554,13 @@ class PyApp(gtk.Window):
         files = self.files[file_type]
         for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
             for name in dirs:
+                if name.startswith('.'):
+                    continue
                 path = os.path.join(root, name)
                 files[path] = {'isdir' : True}
             for name in filenames:
+                if name.startswith('.'):
+                    continue
                 path = os.path.join(root, name)
                 if os.path.splitext(name)[1].lower() in STACK_EXTENSIONS:
                     files[path] = {'isdir' : False}
@@ -570,7 +578,7 @@ class PyApp(gtk.Window):
             if len(files[path]['dependencies']) > 0:
                 files[path]['Dependent'] = True
             for dependency in files[path]['dependencies']:
-                if not dependency.check():
+                if not dependency.type == 'lowres' and not dependency.check():
                     files[path]['Installed'] = False
             for key, value in file_type_defaults.iteritems():
                 files[path].setdefault(key, value)
@@ -1115,8 +1123,13 @@ class PyApp(gtk.Window):
         print new_config
         open(mistika.afterscripts_path, 'w').write(new_config)
         self.launch_thread(self.io_populate_afterscripts)
-    def on_stacks_toggle(self, cellrenderertoggle, path, *ignore):
-        print 'Not yet implemented'
+    def on_stacks_toggle(self, cellrenderertoggle, treepath, *ignore):
+        tree = self.stacks_treestore
+        name = tree[treepath][0]
+        state = not tree[treepath][1]
+        path = tree[treepath][3]
+        if state:
+            stack.Stack(path).relink_dependencies()
         self.launch_thread(self.io_populate_stacks)
     def on_configs_toggle(self, cellrenderertoggle, treepath, *ignore):
         tree = self.configs_treestore

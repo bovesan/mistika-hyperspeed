@@ -5,7 +5,10 @@ import time
 import mistika
 import text
 import threading
+import tempfile
 
+def escape_par(string):
+    return string.replace('(', '\(').replace(')', '\)')
 class DependencyType(object):
     def __init__(self, id, description):
         self.id = id
@@ -187,8 +190,6 @@ class Stack(object):
         except IOError as e:
             print 'Could not open ' + self.path
             raise e
-
-
     @property
     def groupname(self):
         try:
@@ -282,7 +283,7 @@ class Stack(object):
         except AttributeError:
             list(self.iter_dependencies())
         return self._dependencies
-    def iter_dependencies(self, progress_callback=False):
+    def iter_dependencies(self, progress_callback=False, relink=False):
         self._dependencies = []
         self._dependency_paths = []
         try:
@@ -294,6 +295,8 @@ class Stack(object):
             last_progress_update_time = 0
             level = 0
             hidden_level = False
+            if relink:
+                temp_handle = tempfile.NamedTemporaryFile(delete=False)
             for line in open(self.path):
                 for char in line:
                     env_bytes_read += 1
@@ -366,6 +369,10 @@ class Stack(object):
                                 dependency = Dependency(f_path, f_type, CdIs, CdIe, parent=self)
                             else:
                                 dependency = Dependency(f_path, f_type, parent=self)
+                            if relink and not dependency.check():
+                                print 'Missing dependency: ', dependency.name
+                                line = self.relink_line(line, f_type, dependency.path)
+                                # dependency needs to be updated at this point
                             if not dependency.path in self._dependency_paths:
                                 self._dependencies.append(dependency)
                                 self._dependency_paths.append(dependency.path)
@@ -382,8 +389,36 @@ class Stack(object):
                     elif char:
                         char_buffer += char
                     escape = False
+                if relink:
+                    temp_handle.write(line)
+            if relink:        
+                temp_handle.flush()
+                temp_handle.close()
+                backup_path = os.path.join(os.path.dirname(self.path), '.'+os.path.basename(self.path))
+                os.rename(self.path, backup_path)
+                os.rename(temp_handle.name, self.path)
             if progress_callback:
                 progress_callback(self, 1.0)
         except IOError as e:
             print 'Could not open ' + self.path
             raise e
+    def relink_dependencies(self, progress_callback=False):
+        list(self.iter_dependencies(progress_callback=progress_callback, relink=True))
+    def relink_line(self, line, dependency_type, dependency_path):
+        print 'relink_line(%s)' % line
+        dependency_basename = os.path.basename(dependency_path)
+        dependency_foldername = os.path.dirname(dependency_path)
+        print dependency_type, dependency_foldername, dependency_basename
+        for root, dirs, files in os.walk(os.path.dirname(self.path)):
+            for basename in files:
+                if basename == dependency_basename:
+                    print 'Found it'
+                    abspath = os.path.join(root, basename)
+                    if dependency_type in ['dat', 'lnk']:
+                        return line.replace('('+dependency_path+')', '('+escape_par(abspath)+')')
+                    elif dependency_type in ['glsl', 'lut']:
+                        return line.replace('('+dependency_basename+')', '('+escape_par(abspath)+')')
+                    elif dependency_type in ['highres', 'lowres', 'audio']:
+                        return line.replace('('+dependency_foldername+'/)', '('+escape_par(root)+'/)')
+        return line
+
