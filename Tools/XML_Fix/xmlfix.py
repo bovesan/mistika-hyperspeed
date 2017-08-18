@@ -7,6 +7,15 @@ import time
 import gtk
 import platform
 
+try:
+    cwd = os.getcwd()
+    os.chdir(os.path.dirname(sys.argv[0]))
+    sys.path.append("../..")
+    from hyperspeed import mistika
+    from hyperspeed import human
+except ImportError:
+    mistika = False
+    
 USAGE = '''Attempts to fix certain problems with mixed framerate projects from Adobe Premiere.
 Writes the new sequence to a separate file.
 Usage: %s sequence.xml [sequence2.xml ...]''' % os.path.basename(sys.argv[0])
@@ -96,7 +105,10 @@ class xmlfix:
             raise
 
 def add_files_dialog():
-    folder = '/'
+    if mistika:
+        folder = os.path.join(mistika.projects_folder, mistika.project)
+    else:
+        folder = '/'
     dialog = gtk.FileChooserDialog(title="Select .xml files", parent=None, action=gtk.FILE_CHOOSER_ACTION_OPEN, buttons=(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL, gtk.STOCK_OPEN, gtk.RESPONSE_OK), backend=None)
     # if 'darwin' in platform.system().lower():
     #     dialog.set_resizable(False) # Because resizing crashes the app on Mac

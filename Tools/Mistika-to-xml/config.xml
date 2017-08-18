@@ -2,7 +2,7 @@
 <tool>
 <alias>Mistika to xml</alias>
 <description>Converts SGO Mistika structures to xml.
-(c) 2016 Bengt Ove Sannes
+(c) 2016 - 2017 Bengt Ove Sannes
 bengtove@bovesan.com
 
 Usage (command line): mistika-xml.py [-s] [-v] [-y] inputfile1 [inputfile2 ...]
