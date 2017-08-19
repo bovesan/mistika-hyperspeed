@@ -217,7 +217,4 @@ if __name__ == "__main__":
                 sys.stderr.write(validation+'Validation time:     %.2f seconds\n' % (validationTime-endTime))
                 sys.stderr.flush()
     if not pipeMode:
-        try:
-            hyperspeed.utils.reveal_file(outPath)
-        except:
-            pass
+        hyperspeed.utils.reveal_file(outPath)
