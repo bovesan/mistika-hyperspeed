@@ -78,6 +78,18 @@ def get_crontab_lines():
     except subprocess.CalledProcessError:
         crontab = []
     return crontab
+
+def update():
+    if os.path.isdir('.git'):
+        try:
+            cmd = ['git', 'pull']
+            subprocess.call(cmd)
+        except:
+            print 'Could not pull git repo'
+    else:
+        archive = 'https://github.com/bovesan/mistika-hyperspeed/archive/master.zip'
+        
+
 class RenderItem(hyperspeed.stack.Stack):
     def __init__(self, path):
         super(RenderItem, self).__init__(path)
