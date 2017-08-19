@@ -800,6 +800,7 @@ class PyApp(gtk.Window):
                 treestore[row_path] = (base_name, False, True, item_path, False, description)
             else:
                 treestore[row_path] = (base_name, item['Installed'], False, item_path, item['Dependent'], description)
+        # self.gui_hide_empty_folders(treestore)
     def gui_update_configs(self):
         treestore = self.configs_treestore # Name, show in Mistika, is folder
         row_references = self.row_references_configs
@@ -950,10 +951,11 @@ class PyApp(gtk.Window):
         gtk.main_quit()
     def on_filter(self, widget, event):
         #print widget.get_text()
-        self.toolsFilter.refilter();
-        self.afterscriptsFilter.refilter();
-        self.sharedFilter.refilter();
-        self.linksFilter.refilter();
+        self.tools_filter.refilter();
+        self.afterscripts_filter.refilter();
+        self.stacks_filter.refilter();
+        self.configs_filter.refilter();
+        self.links_filter.refilter();
         #self.toolsTreestore.foreach(self.row_match, widget.get_text())
     def row_match(self, model, path, iter, data):
         name = self.toolsTreestore[path][0]
@@ -966,6 +968,19 @@ class PyApp(gtk.Window):
         # if self.myView.row_expanded(path):
         #    self.expandedLines.append(path)
         #visible_func(model, iter, user_data):
+    def folder_is_empty(self, model, iter):
+        is_empty = True
+        for n in range(model.iter_n_children(iter)):
+            child_iter = model.iter_nth_child(iter, n)
+            child_has_child = model.iter_has_child(child_iter)
+            child_is_folder = model.get_value(child_iter, 2)
+            if not child_is_folder:
+                is_empty = False
+                break
+            elif child_has_child:
+                if not self.folder_is_empty(model, child_iter):
+                    is_empty = False
+        return is_empty
     def filter_tree(self, model, iter, user_data, seek_up=True, seek_down=True, filter=False):
         widget, tree = user_data
         tree.expand_all()
@@ -977,6 +992,11 @@ class PyApp(gtk.Window):
         name = model.get_value(iter, 0).lower()
         parent = model.iter_parent(iter)
         has_child = model.iter_has_child(iter)
+        if model.get_n_columns() > 2:
+            is_folder = model.get_value(iter, 2)
+            if seek_down and is_folder:
+                if self.folder_is_empty(model, iter):
+                    return False
             # print name + ' has child'
             # return True
         #print 'Seeking ' + name
