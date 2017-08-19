@@ -817,7 +817,13 @@ class PyApp(gtk.Window):
         treestore = self.configs_treestore # Name, show in Mistika, is folder
         row_references = self.row_references_configs
         items = self.files['Configs']
+        item_paths = []
         for item_path in sorted(items):
+            if os.path.basename(item_path) == 'Hyperspeed':
+                item_paths.insert(0, item_path)
+            else:
+                item_paths.append(item_path)
+        for item_path in item_paths:
             item = items[item_path]
             dir_name = os.path.dirname(item_path)
             try:
