@@ -216,6 +216,7 @@ class PyApp(gtk.Window):
         tree_filter.set_visible_func(self.filter_tree, (self.filterEntry, tree));
         tree.set_model(tree_filter)
         tree.expand_all()
+        tree.set_rules_hint(True)
         tree.connect('row-activated', self.on_tools_run, tree)
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
@@ -242,6 +243,7 @@ class PyApp(gtk.Window):
         tree_filter.set_visible_func(self.filter_tree, (self.filterEntry, tree));
         tree.set_model(tree_filter)
         tree.expand_all()
+        tree.set_rules_hint(True)
         tree.connect('row-activated', self.on_afterscripts_run, tree)
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
@@ -273,6 +275,7 @@ class PyApp(gtk.Window):
         tree_filter.set_visible_func(self.filter_tree, (self.filterEntry, tree));
         tree.set_model(tree_filter)
         tree.expand_all()
+        tree.set_rules_hint(True)
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(tree)
@@ -302,6 +305,7 @@ class PyApp(gtk.Window):
         tree_filter.set_visible_func(self.filter_tree, (self.filterEntry, tree));
         tree.set_model(tree_filter)
         tree.expand_all()
+        tree.set_rules_hint(True)
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(tree)
@@ -330,6 +334,7 @@ class PyApp(gtk.Window):
         tree.set_model(tree_filter)
         tree.expand_all()
         tree.connect('row-activated', self.on_links_run, tree)
+        tree.set_rules_hint(True)
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(tree)
