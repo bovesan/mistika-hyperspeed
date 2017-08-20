@@ -6,6 +6,9 @@ They are divided into the following categories:
 * [Stacks](#stacks)
 * [Configs](#configs)
 * [Web links](#web-links)
+* [Modules](#modules)
+  * [hyperspeed.mistika](#hyperspeed.mistika)
+  * [hyperspeed.stack](#hyperspeed.stack)
 
 To get started, run **./hyperspeed-dashboard.py**
 ## Tools
@@ -28,8 +31,7 @@ Each afterscript must have its own folder under the Afterscripts directory, and 
 
 ## Stacks
 Effect presets made from standard Mistika effects and/or custom footage, fonts, LUTs or even GLSL shaders.
-If the stack has *dependencies*, these must be included in the same folder. hyperspeed-dashboard.py will let you *install* a stack by linking any dependencies.
-> [Installation is not yet implemented](https://github.com/bovesan/mistika-hyperspeed/issues/5)
+If the stack has *dependencies*, these must be included in the same folder. hyperspeed-dashboard.py will let you *install* a stack by relinking any dependencies.
 ## Configs
 Various tweaks that can be enabled or disabled from the dashboard.
 Each config must have its own folder under the Configs directory, and must include a **config.xml**:
@@ -59,3 +61,70 @@ Stored as xml in the following format:
 	</link>
 </link>
 ```
+## Modules
+The modules found in the *hyperspeed* subfolder are the backbone of the project. These provide classes and functions for Mistika related work. Think of them as an **unofficial** API. Here is a brief overview. For a complete list, please look at the source code.
+### hyperspeed.mistika
+##### mistika.env_folder
+##### mistika.tools_path
+##### mistika.shared_folder
+##### mistika.version
+##### mistika.project
+##### mistika.user
+##### mistika.settings
+A dictionary of all the settings in *.mistikarc*
+##### mistika.product
+*Mistika* or *Mamba*
+##### mistika.projects_folder
+##### mistika.afterscripts_path
+##### mistika.fonts_config_path
+##### mistika.scripts_folder
+##### mistika.glsl_folder
+##### mistika.lut_folder
+##### mistika.fonts
+##### mistika.fonts_folder
+### hyperspeed.stack
+##### stack.Stack(path)
+Loads a Mistika structure (env, grp, fx etc.) and creates a `Stack` object.
+###### Stack.size
+Returnes the size (in bytes) of the file.
+###### Stack.project
+If file is a render, this holds the project as `string`. Else `None`.
+###### Stack.resX
+If file is a render, this holds the horizontal resolution as `int`. Else `None`.
+###### Stack.resY
+If file is a render, this holds the horizontal resolution as `int`. Else `None`.
+###### Stack.fps
+If file is a render, this holds the JobFrameRate as `string`. Else `None`.
+###### Stack.frames
+If file is a render, this holds the render duration (in frames) as `int`. Else `None`.
+###### Stack.groupname
+This property returns the name of the first (top level) group or item in the stack. If there are multiple items on the same level, then *groups* are prioritized over other items, then by vertical position in the timeline.
+###### Stack.comment
+This property returns the first (top level) comment attribute in a stack.
+###### Stack.dependencies
+Returns a full list of file dependencies for a stack, as `Dependency` objects.
+###### Stack.iter_dependencies(self, progress_callback=False, relink=False)
+Get the dependency, one at the time. *progress_callback* let's you monitor the progress monitor the progress from a custom function `progress_callback(float)`
+###### Stack.relink_dependencies()
+This function goes through all missing dependencies and looks for a match in the folder of the stack (and subfolders). Will overwrite the stack, but hides the original (a . is prepended to the file name). Fonts cannot be relinked, but the module will try to copy fonts file to the systems font folder, `hyperspeed.mistika.fonts_folder`
+##### stack.Dependency(name, f_type, start=False, end=False, parent=None))
+###### Dependency.type
+One of the following types:
+* dat
+* glsl
+* lut
+* highres
+* lowres
+* audio
+* lnk
+* font
+###### Dependency.name
+Identifier of the dependency. Depending on `Dependency.type`, this may or may not be a full path.
+###### Dependency.path
+The full path of the file.
+###### Dependency.frame_ranges
+A list of `DependencyFrameRange` objects for the current dependency. If a media item is used multiple times in a stack, this lists all the different frame ranges in use.
+###### Dependency.size
+Returns the size of the file. If the item is an image sequence, returns the combined size of all the frames in use. If file does not exist, returns `None`.
+###### Dependency.complete
+Returns `True` if the file(s) exists. If not, `False`.

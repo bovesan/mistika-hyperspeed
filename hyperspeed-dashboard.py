@@ -597,7 +597,7 @@ class PyApp(gtk.Window):
             if len(files[path]['dependencies']) > 0:
                 files[path]['Dependent'] = True
             for dependency in files[path]['dependencies']:
-                if not dependency.type == 'lowres' and not dependency.check():
+                if not dependency.type == 'lowres' and not dependency.complete:
                     files[path]['Installed'] = False
             for key, value in file_type_defaults.iteritems():
                 files[path].setdefault(key, value)
@@ -792,7 +792,7 @@ class PyApp(gtk.Window):
                     description += '\n\nDependencies:\n'
                     for dependency in item['dependencies']:
                         dependency_line = '* '+dependency.type+': '+dependency.path
-                        if not dependency.check():
+                        if not dependency.complete:
                             dependency_line += ' <b>missing</b>'
                         dependency_lines.append(dependency_line)
                     description += '\n'.join(sorted(dependency_lines))

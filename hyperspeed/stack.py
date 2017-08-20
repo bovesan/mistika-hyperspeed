@@ -72,7 +72,7 @@ class Dependency(object):
             # self.raw_frame_ranges = [(start, end, parent)]
             self.frame_ranges = [DependencyFrameRange(self.path, start, end, parent)]
             self._parsed_frame_ranges = None
-            self.complete = True
+            self._complete = None
             if f_type == 'dat':
                 for font in text.Title(self.path).fonts:
                     self.dependencies.append(Dependency(font, 'font', parent=parent))
@@ -128,8 +128,14 @@ class Dependency(object):
                 self._parsed_frame_ranges = self.frame_ranges
             return self.frame_ranges
     @property
+    def complete(self):
+        if self._complete == None:
+            self.size
+        return self._complete
+    @property
     def size(self):
         with self.lock:
+            self._complete = True
             if not self._size:
                 if '%' in self.path:
                     self._size = 0
@@ -137,15 +143,14 @@ class Dependency(object):
                         if frame_range.size > 0:
                             self._size += frame_range.size
                         else:
-                            self.complete = False
+                            self._complete = False
                 else:
                     try:
                         self._size = os.path.getsize(self.path)
                     except OSError:
                         self._size = None
+                        self._complete = False
             return self._size
-    def check(self):
-        return os.path.exists(self.path)
 
 class Stack(object):
     def __init__(self, path):
@@ -153,6 +158,11 @@ class Stack(object):
         self.size = os.path.getsize(self.path)
         self.dependencies_size = None
         self.ctime = os.path.getctime(self.path)
+        self.project = None
+        self.resX = None
+        self.resY = None
+        self.fps = None
+        self.frames = None
         self.read_header()
     def read_header(self):
         try:
@@ -172,13 +182,13 @@ class Stack(object):
                         if object_path.endswith('D/RenderProject'):
                             self.project = char_buffer
                         elif object_path.endswith('D/X'):
-                            self.resX = char_buffer
+                            self.resX = int(char_buffer)
                         elif object_path.endswith('D/Y'):
-                            self.resY = char_buffer
+                            self.resY = int(char_buffer)
                         elif object_path.endswith('D/JobFrameRate'):
                             self.fps = char_buffer
                         elif object_path.endswith('p/W'):
-                            self.frames = char_buffer
+                            self.frames = int(char_buffer)
                         elif object_path.endswith('Group/p'): # End of header
                             return
                         char_buffer = ''
@@ -375,7 +385,7 @@ class Stack(object):
                                 dependency = Dependency(f_path, f_type, CdIs, CdIe, parent=self)
                             else:
                                 dependency = Dependency(f_path, f_type, parent=self)
-                            if relink and not dependency.check():
+                            if relink and not dependency.complete:
                                 print 'Missing dependency: ', dependency.name
                                 line = self.relink_line(line, dependency)
                                 # dependency needs to be updated at this point
