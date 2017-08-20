@@ -1186,13 +1186,16 @@ class PyApp(gtk.Window):
         state = not tree[treepath][1]
         path = tree[treepath][3]
         f_item = self.files['Configs'][path]
-        links = f_item['links']
-        if state: # Install
-            for link_target, link, link_copy in links:
-                state = state and hyperspeed.manage.install(link_target, link, link_copy)
-        else: # remove
-            for link_target, link, link_copy in links:
-                hyperspeed.manage.remove(link_target, link, link_copy)
+        if f_item['manage']:
+            self.gui_error_dialog('Custom managed configs not yet implemented')
+        else:
+            links = f_item['links']
+            if state: # Install
+                for link_target, link, link_copy in links:
+                    state = state and hyperspeed.manage.install(link_target, link, link_copy)
+            else: # remove
+                for link_target, link, link_copy in links:
+                    hyperspeed.manage.remove(link_target, link, link_copy)
         self.launch_thread(self.io_populate_configs)
     def on_tools_run(self, treeview, path, view_column, *ignore):
 
@@ -1262,6 +1265,16 @@ class PyApp(gtk.Window):
         else:
             return False
         return True
+    def gui_error_dialog(self, message):
+        dialog = gtk.MessageDialog(self, gtk.DIALOG_DESTROY_WITH_PARENT, type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_CLOSE, message_format=message)
+        dialog.set_position(gtk.WIN_POS_CENTER)
+        response = dialog.run()
+        dialog.grab_focus()
+        dialog.destroy()
+        if response == -8:
+            return True
+        else:
+            return False
 
 os.environ['LC_CTYPE'] = 'en_US.utf8'
 os.environ['LC_ALL'] = 'en_US.utf8'
