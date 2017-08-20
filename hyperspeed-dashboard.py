@@ -130,8 +130,8 @@ class PyApp(gtk.Window):
         style "theme-fixes" {
             font_name = "sans normal %i"
         }
-        class "*" style "theme-fixes"''' % (screen.get_width()/300)
-        gtk.rc_parse_string(gtkrc)
+        class "*" style "theme-fixes"''' % (screen.get_width()/100)
+        # gtk.rc_parse_string(gtkrc)
         vbox = gtk.VBox(False, 10)
         self.filterEntry = gtk.Entry()
         vbox.pack_start(self.init_toolbar(), False, False, 10)
