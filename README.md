@@ -7,8 +7,8 @@ They are divided into the following categories:
 * [Configs](#configs)
 * [Web links](#web-links)
 * [Modules](#modules)
-  * [hyperspeed.mistika](#hyperspeed.mistika)
-  * [hyperspeed.stack](#hyperspeed.stack)
+  * [hyperspeed.mistika](#hyperspeedmistika)
+  * [hyperspeed.stack](#hyperspeedstack)
 
 To get started, run **./hyperspeed-dashboard.py**
 ## Tools
