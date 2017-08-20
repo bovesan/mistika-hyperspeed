@@ -15,6 +15,7 @@ import subprocess
 import threading
 import xml.etree.ElementTree as ET
 import webbrowser
+import warnings
 from distutils.spawn import find_executable
 
 VERSION_STRING = '<span color="#ff9900" weight="bold">Development version.</span>'
@@ -128,9 +129,9 @@ class PyApp(gtk.Window):
         self.set_icon_from_file("res/img/hyperspeed_1024px.png")
         gtkrc = '''
         style "theme-fixes" {
-            font_name = "sans normal %i"
+            font_name = "sans normal 12"
         }
-        class "*" style "theme-fixes"''' % (screen.get_width()/100)
+        class "*" style "theme-fixes"'''
         # gtk.rc_parse_string(gtkrc)
         vbox = gtk.VBox(False, 10)
         self.filterEntry = gtk.Entry()
@@ -966,7 +967,11 @@ class PyApp(gtk.Window):
                 self.config[config_item] = config_defaults[config_item]
                 self.config_rw(write=True)
     def on_quit(self, widget):
-        print 'Closed by: ' + repr(widget)
+        if type(widget) is gtk.Button:
+            widget_name = widget.get_label() + ' button'
+        else:
+            widget_name = str(widget)
+        print 'Closed by: ' + widget_name
         gtk.main_quit()
     def on_filter(self, widget, event):
         #print widget.get_text()
@@ -1261,7 +1266,7 @@ class PyApp(gtk.Window):
         ctrl = (state & gtk.gdk.CONTROL_MASK)
         command = (state & gtk.gdk.MOD1_MASK)
         if ctrl or command and keyval_name == 'q':
-            self.on_quit(widget)
+            self.on_quit('Keyboard shortcut')
         else:
             return False
         return True
@@ -1276,6 +1281,7 @@ class PyApp(gtk.Window):
         else:
             return False
 
+warnings.filterwarnings("ignore")
 os.environ['LC_CTYPE'] = 'en_US.utf8'
 os.environ['LC_ALL'] = 'en_US.utf8'
 gobject.threads_init()
