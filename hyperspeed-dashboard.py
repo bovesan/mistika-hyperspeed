@@ -124,6 +124,7 @@ class PyApp(gtk.Window):
         self.set_position(gtk.WIN_POS_CENTER)
         if 'darwin' in platform.system().lower():
             self.set_resizable(False) # Because resizing crashes the app on Mac
+        self.connect("key-press-event",self.on_key_press_event)
         self.set_icon_from_file("res/img/hyperspeed_1024px.png")
         gtkrc = '''
         style "theme-fixes" {
@@ -1250,6 +1251,17 @@ class PyApp(gtk.Window):
                 self.popup.popup( None, None, None, event.button, time)
                 self.render_queue_selected_path = path
             return True
+    def on_key_press_event(self,widget,event):
+        keyval = event.keyval
+        keyval_name = gtk.gdk.keyval_name(keyval)
+        state = event.state
+        ctrl = (state & gtk.gdk.CONTROL_MASK)
+        command = (state & gtk.gdk.MOD1_MASK)
+        if ctrl or command and keyval_name == 'q':
+            self.on_quit(widget)
+        else:
+            return False
+        return True
 
 os.environ['LC_CTYPE'] = 'en_US.utf8'
 os.environ['LC_ALL'] = 'en_US.utf8'
