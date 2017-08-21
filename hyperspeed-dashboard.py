@@ -76,7 +76,7 @@ def md5(fname):
         except OSError:
             pass
     return hash_md5.hexdigest()
-    
+
 def get_crontab_lines():
     try:
         crontab = subprocess.Popen(['crontab', '-l'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0].splitlines()
@@ -1379,6 +1379,7 @@ class PyApp(gtk.Window):
     def io_update(self):
         gobject.idle_add(self.updateButton.hide)
         gobject.idle_add(self.spinner_update.show)
+        pre_update_checksum = md5(sys.argv[0])
         git = os.path.isdir('.git')
         if git:
             print 'git pull'
@@ -1388,12 +1389,18 @@ class PyApp(gtk.Window):
             archive = 'https://github.com/bovesan/mistika-hyperspeed/archive/master.zip'
             download_file(archive, os.path.join(CONFIG_FOLDER, 'hyperspeed.zip'))
             # run update script
+        post_update_checksum = md5(sys.argv[0])
+        if pre_update_checksum != post_update_checksum:
+            version_string = '<span color="#ff9900" weight="bold">Restart to complete update</span>'
+            gobject.idle_add(self.versionLabel.set_markup, version_string)
+            self.updated = True
+        else:
+            version_string = '<span color="#00aa00" weight="bold">Updated</span>'
+            gobject.idle_add(self.versionLabel.set_markup, version_string)
+        self.on_refresh()
         gobject.idle_add(self.updateButton.hide)
         gobject.idle_add(self.spinner_update.hide)
-        version_string = '<span color="#ff9900" weight="bold">Restart to update</span>'
-        gobject.idle_add(self.versionLabel.set_markup, version_string)
-        self.updated = True
-    def on_refresh(self, widget):
+    def on_refresh(self, widget=False):
         self.launch_thread(self.io_populate_tools)
         self.launch_thread(self.io_populate_afterscripts)
         self.launch_thread(self.io_populate_stacks)
