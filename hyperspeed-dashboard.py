@@ -1331,9 +1331,8 @@ class PyApp(gtk.Window):
             for line in subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0].splitlines():
                 head = line.split()[0]
             cmd = ['git', 'rev-list', 'HEAD...'+head, '--count']
-            for line in subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0].splitlines():
-                commits_behind = int(line.strip())
-            if commits_behind == 0:
+            response = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate()
+            if response[0].startswith('0'):
                 version_string = '<span color="#00aa00" weight="bold">Branch: %s (up to date)</span>' % branch
             else:
                 version_string = '<span color="#ff9900" weight="bold">Branch: %s (update available)</span>' % branch
