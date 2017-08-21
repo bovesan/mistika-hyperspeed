@@ -1,0 +1,104 @@
+.gitignore
+Afterscripts/Benchmark/Benchmark.py
+Afterscripts/Benchmark/config.xml
+Configs/2 monitors reversed/2_LAYOUT.sup
+Configs/2 monitors reversed/config.xml
+Configs/2 monitors reversed/manage
+Configs/Hyperspeed/Hyperspeed stacks in Global presets/config.xml
+Hyperspeed Mac.app/Contents/Info.plist
+Hyperspeed Mac.app/Contents/MacOS/Application Stub
+Hyperspeed Mac.app/Contents/Resources/AutomatorApplet.icns
+Hyperspeed Mac.app/Contents/Resources/Dutch.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/English.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/French.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/German.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/Italian.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/Japanese.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/Spanish.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/ar.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/ca.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/cs.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/da.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/el.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/es_419.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/fi.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/he.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/hr.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/hu.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/id.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/ko.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/ms.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/no.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/pl.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/pt.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/pt_PT.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/ro.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/ru.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/sk.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/sv.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/th.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/tr.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/uk.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/vi.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/zh_CN.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/Resources/zh_TW.lproj/ApplicationStub.nib
+Hyperspeed Mac.app/Contents/document.wflow
+LICENSE
+Links/bovesan.xml
+Links/sgo.xml
+README.md
+Samples/007subtest_env_3b4d93b0.dat
+Samples/160912-1745_Gourmet_15sek_tekstet_HF_Delivery_IN_JS422_8B.rnd
+Samples/BatchQueue/auto_0000_0000_A009_C010_0522IN.clp
+Samples/BatchQueue/auto_0001_0000_A009_C010_0522IN.rnd
+Samples/BatchQueue/auto_0043_000.clp
+Samples/BatchQueue/priority.cfg
+Samples/Dependent.env
+Samples/hill14.env
+Samples/lensdist.env
+Stacks/Compositing/Remove old matte.grp
+Stacks/Compositing/Remove white matte.grp
+Stacks/Geometry/Align/Align horizontal.grp
+Stacks/Geometry/Align/Align vertical.grp
+Stacks/Geometry/Align/Align.grp
+Stacks/Geometry/Align/GLSL/Align.01.c
+Stacks/Geometry/SyLens/SyLens.grp
+Stacks/Utilities/Butterfly onion.grp
+Stacks/Utilities/segment.grp
+Stacks/Utilities/segment.js
+Tools/Consolidate/config.xml
+Tools/Consolidate/consolidate.py
+Tools/Mistika-to-xml/config.xml
+Tools/Mistika-to-xml/mistika-xml.py
+Tools/XML_Fix/config.xml
+Tools/XML_Fix/xmlfix.py
+hyperspeed-dashboard.py
+hyperspeed/__init__.py
+hyperspeed/human.py
+hyperspeed/manage.py
+hyperspeed/mistika.py
+hyperspeed/stack.py
+hyperspeed/tests.py
+hyperspeed/text.py
+hyperspeed/utils.py
+hyperspeed/video.py
+res/img/bullet.png
+res/img/cancel.png
+res/img/connect.png
+res/img/equal.png
+res/img/file.png
+res/img/folder.png
+res/img/hyperspeed.psd
+res/img/hyperspeed_1024px.png
+res/img/info.png
+res/img/left.png
+res/img/list.png
+res/img/minus.png
+res/img/msync_icon.png
+res/img/plus.png
+res/img/reset.png
+res/img/right.png
+res/img/search.png
+res/img/spinner01.gif
+res/img/spinner01.svg
+res/scripts/bash_wrapper.sh

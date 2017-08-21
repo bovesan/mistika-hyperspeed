@@ -1323,6 +1323,7 @@ class PyApp(gtk.Window):
             except urllib2.URLError as e:
                 print e.reason
         gobject.idle_add(self.versionLabel.set_markup, version_string)
+        
 
 warnings.filterwarnings("ignore")
 os.environ['LC_CTYPE'] = 'en_US.utf8'
