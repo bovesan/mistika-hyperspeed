@@ -890,6 +890,7 @@ class PyApp(gtk.Window):
                 row_references[item_path] = gtk.TreeRowReference(treestore, row_path)
             else:
                 row_path = row_references[item_path].get_path()
+                row_iter = treestore.get_iter(row_path)
                 treestore[row_path] = (alias, url)
             if 'children' in item:
                 parent_row_iter = row_iter
