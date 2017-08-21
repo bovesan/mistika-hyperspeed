@@ -954,7 +954,6 @@ class PyApp(gtk.Window):
     def error(self, msg):
         print msg
     def config_rw(self, write=False):
-        print 'Reading config'
         config_defaults = {
             'app_folder' : os.path.dirname(os.path.realpath(sys.argv[0]))
         }
@@ -983,7 +982,6 @@ class PyApp(gtk.Window):
             if stored_config != self.config:
                 self.config = stored_config
         for config_item in config_defaults:
-            print 'Checking default config item: ', config_item
             if not config_item in self.config.keys():
                 print 'New default config item: ', config_item
                 self.config[config_item] = config_defaults[config_item]
@@ -1317,16 +1315,16 @@ class PyApp(gtk.Window):
         update_available = False
         git = os.path.isdir('.git')
         if git:
-            cmd = ['git', 'remote', 'get-url', 'origin']
+            cmd = ['git', 'config', '--get', 'remote.origin.url']
             for line in subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0].splitlines():
-                user, repo = line.rsplit('.', 1)[0].split('/')[-2:]
-                print 'User:', user
-                print 'Repo:', repo
+                user, repo = line.split('/')[-2:]
+                # print 'User:', user
+                # print 'Repo:', repo
             cmd = ['git', 'branch']
             for line in subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0].splitlines():
                 if line.startswith('*'):
                     branch = line.strip('*').strip()
-                    print 'Branch:', branch
+                    # print 'Branch:', branch
             cmd = ['git', 'ls-remote', 'origin', '-h', 'refs/heads/'+branch]
             for line in subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0].splitlines():
                 head = line.split()[0]
