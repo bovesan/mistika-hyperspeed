@@ -171,7 +171,7 @@ class PyApp(gtk.Window):
         self.comboEditable = None
         gobject.idle_add(self.bring_to_front)
     def bring_to_front(self):
-        self.present()   
+        self.present()
     def init_toolbar(self):
         filterEntry = self.filterEntry
         toolbarBox = gtk.HBox(False, 10)
@@ -938,6 +938,7 @@ class PyApp(gtk.Window):
     def error(self, msg):
         print msg
     def config_rw(self, write=False):
+        print 'Reading config'
         config_defaults = {
             'app_folder' : os.path.dirname(os.path.realpath(sys.argv[0]))
         }
@@ -952,18 +953,23 @@ class PyApp(gtk.Window):
             stored_config = {}
         if write:
             if stored_config != self.config:
+                print 'Writing config'
                 if not os.path.isdir(CONFIG_FOLDER):
                     os.makedirs(CONFIG_FOLDER)
+                    print 'Created config folder: ', CONFIG_FOLDER
                 try:
                     open(config_path, 'w').write(json.dumps(self.config, sort_keys=True, indent=4, separators=(',', ': ')))
                     stored_config = self.config
+                    print 'Wrote config file: ', CONFIG_FILE
                 except IOError as e:
                     error('Could not write config file')
         else:
             if stored_config != self.config:
                 self.config = stored_config
         for config_item in config_defaults:
+            print 'Checking default config item: ', config_item
             if not config_item in self.config.keys():
+                print 'New default config item: ', config_item
                 self.config[config_item] = config_defaults[config_item]
                 self.config_rw(write=True)
     def on_quit(self, widget):
