@@ -121,6 +121,7 @@ class PyApp(gtk.Window):
         self.threads = []
         self.queue_io = Queue.Queue()
         self.files = {}
+        self.updated = False
         screen = self.get_screen()
         self.set_title("Hyperspeed")
         self.set_size_request(screen.get_width()/2, screen.get_height()/2)
@@ -1372,6 +1373,9 @@ class PyApp(gtk.Window):
             if git:
                 gobject.idle_add(self.updateButton.set_label, 'Update (git pull)')
         gobject.idle_add(self.versionLabel.set_markup, version_string)
+        time.sleep(60)
+        if not self.updated:
+            self.launch_thread(self.io_get_release_status)
     def on_update(self, widget=False):
         self.launch_thread(self.io_update)
     def io_update(self):
@@ -1390,6 +1394,7 @@ class PyApp(gtk.Window):
         gobject.idle_add(self.spinner_update.hide)
         version_string = '<span color="#ff9900" weight="bold">Restart to update</span>'
         gobject.idle_add(self.versionLabel.set_markup, version_string)
+        self.updated = True
     def on_refresh(self, widget):
         self.launch_thread(self.io_populate_tools)
         self.launch_thread(self.io_populate_afterscripts)
