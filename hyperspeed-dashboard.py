@@ -1388,7 +1388,7 @@ class PyApp(gtk.Window):
             # run update script
         gobject.idle_add(self.updateButton.hide)
         gobject.idle_add(self.spinner_update.hide)
-        version_string = '<span color="#ff9900" weight="bold">Restart to update</span>' % branch
+        version_string = '<span color="#ff9900" weight="bold">Restart to update</span>'
         gobject.idle_add(self.versionLabel.set_markup, version_string)
     def on_refresh(self, widget):
         self.launch_thread(self.io_populate_tools)
