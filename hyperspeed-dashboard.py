@@ -111,12 +111,8 @@ class RenderItem(hyperspeed.stack.Stack):
         logfile_h.flush()
 
 class PyApp(gtk.Window):
-
     def __init__(self):
-
-
         super(PyApp, self).__init__()
-
         self.config_rw()
         self.threads = []
         self.queue_io = Queue.Queue()
