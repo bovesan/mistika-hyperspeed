@@ -82,6 +82,17 @@ def get_crontab_lines():
         crontab = []
     return crontab
         
+def download_file(url, destination):
+    if os.path.isdir(destination):
+        destination = os.path.join(destination, os.path.basename(url))
+    response = urllib2.urlopen(url)
+    CHUNK = 256 * 1024
+    with open(destination, 'wb') as f:
+        while True:
+            chunk = response.read(CHUNK)
+            if not chunk:
+                break
+            f.write(chunk)
 
 class RenderItem(hyperspeed.stack.Stack):
     def __init__(self, path):
@@ -182,10 +193,17 @@ class PyApp(gtk.Window):
         self.versionLabel = gtk.Label(versionStr)
         self.versionLabel.set_use_markup(True)
         versionBox.pack_start(self.versionLabel, False, False, 5)
-        updateButton = gtk.Button('Update')
-        # updateButton.set_no_show_all(True)
-        updateButton.connect("clicked", self.io_update)
-        versionBox.pack_start(updateButton, False, False, 5)
+        self.updateButton = gtk.Button('Update')
+        self.updateButton.set_no_show_all(True)
+        self.updateButton.connect("clicked", self.on_update)
+        versionBox.pack_start(self.updateButton, False, False, 5)
+        spinner = self.spinner_update = gtk.Image()
+        spinner.set_no_show_all(True)
+        try:
+            spinner.set_from_file('res/img/spinner01.gif')
+        except:
+            pass
+        versionBox.pack_start(spinner, False, False, 5)
         toolbarBox.pack_end(versionBox, False, False)
         return toolbarBox
     def init_tools_window(self):
@@ -1294,7 +1312,8 @@ class PyApp(gtk.Window):
         repo = 'mistika-hyperspeed'
         branch = 'master'
         update_available = False
-        if os.path.isdir('.git'):
+        git = os.path.isdir('.git')
+        if git:
             cmd = ['git', 'remote', 'get-url', 'origin']
             for line in subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0].splitlines():
                 user, repo = line.rsplit('.', 1)[0].split('/')[-2:]
@@ -1349,15 +1368,27 @@ class PyApp(gtk.Window):
             # except urllib2.URLError as e:
             #     print e.reason
         if update_available:
-            gobject.idle_add(self.updateButton, show)
+            gobject.idle_add(self.updateButton.show)
+            if git:
+                gobject.idle_add(self.updateButton.set_label, 'Update (git pull)')
         gobject.idle_add(self.versionLabel.set_markup, version_string)
-    def io_update(self, widget=False):
+    def on_update(self, widget=False):
+        self.launch_thread(self.io_update)
+    def io_update(self):
+        gobject.idle_add(self.updateButton.hide)
+        gobject.idle_add(self.spinner_update.show)
         git = os.path.isdir('.git')
         if git:
             print 'git pull'
-            self.launch_in_terminal(['git', 'pull'])
+            self.launch_in_terminal([os.path.join(self.config['app_folder'], 'res/scripts/gitpull.sh')])
         else:
             print 'Downloading latest version ...'
+            archive = 'https://github.com/bovesan/mistika-hyperspeed/archive/master.zip'
+            download_file(archive, os.path.join(CONFIG_FOLDER, 'hyperspeed.zip'))
+            # run update script
+        gobject.idle_add(self.updateButton.hide)
+        gobject.idle_add(self.spinner_update.hide)
+
 
 
 warnings.filterwarnings("ignore")
