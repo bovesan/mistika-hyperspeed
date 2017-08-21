@@ -20,7 +20,7 @@ import urllib
 import urllib2
 from distutils.spawn import find_executable
 
-VERSION_STRING = '<span color="#ff9900" weight="bold">Development version.</span>'
+VERSION_STRING = ''
 
 CONFIG_FOLDER = '~/.mistika-hyperspeed/'
 CONFIG_FILE = 'hyperspeed.cfg'
@@ -183,7 +183,9 @@ class PyApp(gtk.Window):
         self.versionLabel.set_use_markup(True)
         versionBox.pack_start(self.versionLabel, False, False, 5)
         updateButton = gtk.Button('Update')
-        #versionBox.pack_start(updateButton, False, False, 5)
+        # updateButton.set_no_show_all(True)
+        updateButton.connect("clicked", self.io_update)
+        versionBox.pack_start(updateButton, False, False, 5)
         toolbarBox.pack_end(versionBox, False, False)
         return toolbarBox
     def init_tools_window(self):
@@ -1201,24 +1203,32 @@ class PyApp(gtk.Window):
                 for link_target, link, link_copy in links:
                     hyperspeed.manage.remove(link_target, link, link_copy)
         self.launch_thread(self.io_populate_configs)
-    def on_tools_run(self, treeview, path, view_column, *ignore):
-
-        file_path = self.tools_treestore[path][4]
-        print file_path
-        try:
-            subprocess.Popen(['konsole', '-e', os.path.join(self.config['app_folder'], 'res/scripts/bash_wrapper.sh'), file_path])
-            return
-        except OSError as e:
+    def launch_in_terminal(self, exec_args):
+        print repr(exec_args)
+        if platform.system() == 'Linux':
             try:
-                subprocess.Popen(['xterm', '-e', os.path.join(self.config['app_folder'], 'res/scripts/bash_wrapper.sh'), file_path])
+                subprocess.Popen(['konsole', '-e', os.path.join(self.config['app_folder'], 'res/scripts/bash_wrapper.sh')] + exec_args)
                 return
             except OSError as e:
                 try:
-                    subprocess.Popen([file_path])
+                    subprocess.Popen(['xterm', '-e', os.path.join(self.config['app_folder'], 'res/scripts/bash_wrapper.sh')] + exec_args)
                     return
-                except:
-                    pass
-        print 'Failed to execute %s' % file_path
+                except OSError as e:
+                    try:
+                        subprocess.Popen([exec_args])
+                        return
+                    except:
+                        pass
+        elif platform.system() == 'Darwin':
+            subprocess.Popen(['open', '-a', 'Terminal.app'] + exec_args)
+            return
+        else:
+            subprocess.Popen(exec_args)
+            return
+        print 'Failed to execute %s' % repr(exec_args)
+    def on_tools_run(self, treeview, path, view_column, *ignore):
+        file_path = self.tools_treestore[path][4]
+        self.launch_in_terminal([file_path])
     def on_afterscripts_run(self, treeview, path, view_column, *ignore):
         print 'Not yet implemented'
     def on_links_run(self, treeview, path, view_column, *ignore):
@@ -1283,6 +1293,7 @@ class PyApp(gtk.Window):
         user = 'bovesan'
         repo = 'mistika-hyperspeed'
         branch = 'master'
+        update_available = False
         if os.path.isdir('.git'):
             cmd = ['git', 'remote', 'get-url', 'origin']
             for line in subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0].splitlines():
@@ -1301,29 +1312,53 @@ class PyApp(gtk.Window):
             for line in subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0].splitlines():
                 commits_behind = int(line.strip())
             if commits_behind == 0:
-                version_string = '<span color="#00dd00" weight="bold">Branch: %s (up to date)</span>' % branch
+                version_string = '<span color="#00aa00" weight="bold">Branch: %s (up to date)</span>' % branch
             else:
                 version_string = '<span color="#ff9900" weight="bold">Branch: %s (update available)</span>' % branch
+                update_available = True
         else:
-            archive = 'https://github.com/bovesan/mistika-hyperspeed/archive/master.zip'
-            server = 'https://api.github.com'
-            headers = {
-                'Accept': 'application/vnd.github.v3+json'
-            }
-            values = {
-                'sha' : branch
-            }
-            path = '/repos/%s/%s/commits' % (user, repo)
-            data = urllib.urlencode(values)
-            print repr(data)
-            req = urllib2.Request(server+path+'?'+data, headers=headers)
             try:
-                response = urllib2.urlopen(req)
-                print response.read()
-            except urllib2.URLError as e:
+                remote_release = urllib2.urlopen('https://raw.githubusercontent.com/%s/%s/%s/RELEASE' % (user, repo, branch)).read()
+            except urllib2.HTTPError as e:
                 print e.reason
+                remote_release = False
+            local_release = open('RELEASE').read()
+            local_release_date = human.time(float(local_release.strip()))
+            if not remote_release:
+                version_string = '<span color="#000000">Last updated: %s</span>' % local_release_date
+            elif local_release == remote_release:
+                version_string = '<span color="#00aa00" weight="bold">Last updated: %s (up to date)</span>' % local_release_date
+            else:
+                version_string = '<span color="#ff9900" weight="bold">Last updated: %s (update available)</span>' % local_release_date
+                update_available = True
+            # archive = 'https://github.com/bovesan/mistika-hyperspeed/archive/master.zip'
+            # server = 'https://api.github.com'
+            # headers = {
+            #     'Accept': 'application/vnd.github.v3+json'
+            # }
+            # values = {
+            #     'sha' : branch
+            # }
+            # path = '/repos/%s/%s/commits' % (user, repo)
+            # data = urllib.urlencode(values)
+            # print repr(data)
+            # req = urllib2.Request(server+path+'?'+data, headers=headers)
+            # try:
+            #     response = urllib2.urlopen(req)
+            #     print response.read()
+            # except urllib2.URLError as e:
+            #     print e.reason
+        if update_available:
+            gobject.idle_add(self.updateButton, show)
         gobject.idle_add(self.versionLabel.set_markup, version_string)
-        
+    def io_update(self, widget=False):
+        git = os.path.isdir('.git')
+        if git:
+            print 'git pull'
+            self.launch_in_terminal(['git', 'pull'])
+        else:
+            print 'Downloading latest version ...'
+
 
 warnings.filterwarnings("ignore")
 os.environ['LC_CTYPE'] = 'en_US.utf8'
