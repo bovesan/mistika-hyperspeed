@@ -1,23 +1,24 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import gtk
 import gobject
+import gtk
 import hashlib
 import imp
 import json
 import os
-import sys
 import platform
 import Queue
 import socket
 import subprocess
+import sys
 import threading
-import xml.etree.ElementTree as ET
-import webbrowser
-import warnings
+import time
 import urllib
 import urllib2
+import warnings
+import webbrowser
+import xml.etree.ElementTree as ET
 from distutils.spawn import find_executable
 
 VERSION_STRING = ''
