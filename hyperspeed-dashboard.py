@@ -76,6 +76,7 @@ def md5(fname):
         except OSError:
             pass
     return hash_md5.hexdigest()
+    
 def get_crontab_lines():
     try:
         crontab = subprocess.Popen(['crontab', '-l'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0].splitlines()
