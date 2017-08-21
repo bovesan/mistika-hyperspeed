@@ -98,7 +98,11 @@ If file is a render, this holds the JobFrameRate as `string`. Else `None`.
 ###### Stack.frames
 If file is a render, this holds the render duration (in frames) as `int`. Else `None`.
 ###### Stack.groupname
-This property returns the name of the first (top level) group or item in the stack. If there are multiple items on the same level, then *groups* are prioritized over other items, then by vertical position in the timeline.
+This property returns the name of the first (top level) group in the stack. Does not work if there are multiple groups on the same level.
+###### Stack.tags
+A list of any tags, specified by `#` in the `Stack.groupname`.
+###### Stack.title
+The `Stack.groupname` with any tags stripped away, or the name of the file, if no groupname was found.
 ###### Stack.comment
 This property returns the first (top level) comment attribute in a stack.
 ###### Stack.dependencies
