@@ -29,12 +29,16 @@ class StackTests(unittest.TestCase):
     	print stack.dependencies
     def test_names(self):
         stack = hyperspeed.stack.Stack('Samples/160912-1745_Gourmet_15sek_tekstet_HF_Delivery_IN_JS422_8B.rnd')
-        correct_name = 'Gourmet_15sek_tekstet'
+        correct_name = 'Gourmet_15sek_tekstet#noupload'
+        correct_title = 'Gourmet_15sek_tekstet'
         correct_tags = ['noupload']
         print 'Group name: ', repr(stack.groupname)
         print 'Correct name: ', repr(correct_name)
+        print 'Group title: ', repr(stack.title)
+        print 'Correct title: ', repr(correct_title)
+        print 'Group tags: ', repr(stack.tags)
         print 'Correct tags: ', repr(correct_tags)
-        if not correct_name == stack.groupname or correct_tags == correct_tags:
+        if correct_name != stack.groupname or correct_title != stack.title or correct_tags != stack.tags:
             self.fail('Mismatch')
 
 

@@ -207,6 +207,20 @@ class Stack(object):
         except AttributeError:
             self.set_groupname()
         return self._groupname
+    @property
+    def title(self):
+        try:
+            self._title
+        except AttributeError:
+            self.set_groupname()
+        return self._title
+    @property
+    def tags(self):
+        try:
+            self._tags
+        except AttributeError:
+            self.set_groupname()
+        return self._tags
     def set_groupname(self):
         try:
             level_names = []
@@ -225,11 +239,18 @@ class Stack(object):
                         object_path = '/'.join(level_names)
                         if object_path.endswith('/ungroup') and char_buffer == '1':
                             ungroup = True
-                        elif object_path.endswith('/p') and ungroup:
+                        elif object_path.endswith('Group/D'): # This is a render
+                            ungroup = True
+                        elif object_path.endswith('Group/p') and ungroup:
                             ungroup = False
-                        elif object_path.endswith('/p/n'):
+                        elif object_path.endswith('Group/p/n'):
                             if not ungroup:
                                 self._groupname = char_buffer
+                                self._title = self._groupname.split('#', 1)[0]
+                                try:
+                                    self._tags = self._groupname.split('#')[1:]
+                                except IndexError:
+                                    self._tags = []
                                 return
                             else:
                                 ungroup = False
@@ -240,6 +261,8 @@ class Stack(object):
                     elif char:
                         char_buffer += char
             self._groupname = False
+            self._title = os.path.splitext(os.path.basename(self.path))[0]
+            self._tags = []
         except IOError as e:
             print 'Could not open ' + self.path
             raise e
