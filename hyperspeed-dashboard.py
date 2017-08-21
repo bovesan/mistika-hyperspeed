@@ -1391,13 +1391,13 @@ class PyApp(gtk.Window):
             download_file(archive, os.path.join(CONFIG_FOLDER, 'hyperspeed.zip'))
             # run update script
         post_update_checksum = md5(sys.argv[0])
-        if pre_update_checksum != post_update_checksum:
+        if True or pre_update_checksum != post_update_checksum:
             version_string = '<span color="#ff9900" weight="bold">Restart to complete update</span>'
             gobject.idle_add(self.versionLabel.set_markup, version_string)
             self.updated = True
-        else:
-            version_string = '<span color="#00aa00" weight="bold">Updated</span>'
-            gobject.idle_add(self.versionLabel.set_markup, version_string)
+        # else:
+        #     version_string = '<span color="#00aa00" weight="bold">Updated</span>'
+        #     gobject.idle_add(self.versionLabel.set_markup, version_string)
         self.on_refresh()
         gobject.idle_add(self.updateButton.hide)
         gobject.idle_add(self.spinner_update.hide)
