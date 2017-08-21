@@ -159,6 +159,9 @@ class PyApp(gtk.Window):
         vbox.pack_start(notebook)
 
         footer = gtk.HBox(False, 10)
+        button = self.refresh_button = gtk.Button(label=None, stock=gtk.STOCK_REFRESH)
+        button.connect('clicked', self.on_refresh)
+        footer.pack_start(button, False, False)
         quitButton = gtk.Button('Quit')
         quitButton.set_size_request(70, 30)
         quitButton.connect("clicked", self.on_quit)
@@ -1388,7 +1391,12 @@ class PyApp(gtk.Window):
             # run update script
         gobject.idle_add(self.updateButton.hide)
         gobject.idle_add(self.spinner_update.hide)
-
+    def on_refresh(self, widget):
+        self.launch_thread(self.io_populate_tools)
+        self.launch_thread(self.io_populate_afterscripts)
+        self.launch_thread(self.io_populate_stacks)
+        self.launch_thread(self.io_populate_configs)
+        self.launch_thread(self.io_populate_links)
 
 
 warnings.filterwarnings("ignore")
