@@ -16,6 +16,8 @@ import threading
 import xml.etree.ElementTree as ET
 import webbrowser
 import warnings
+import urllib
+import urllib2
 from distutils.spawn import find_executable
 
 VERSION_STRING = '<span color="#ff9900" weight="bold">Development version.</span>'
@@ -79,16 +81,6 @@ def get_crontab_lines():
     except subprocess.CalledProcessError:
         crontab = []
     return crontab
-
-def update():
-    if os.path.isdir('.git'):
-        try:
-            cmd = ['git', 'pull']
-            subprocess.call(cmd)
-        except:
-            print 'Could not pull git repo'
-    else:
-        archive = 'https://github.com/bovesan/mistika-hyperspeed/archive/master.zip'
         
 
 class RenderItem(hyperspeed.stack.Stack):
@@ -170,6 +162,7 @@ class PyApp(gtk.Window):
 
         self.comboEditable = None
         gobject.idle_add(self.bring_to_front)
+        self.launch_thread(self.io_get_release_status)
     def bring_to_front(self):
         self.present()
     def init_toolbar(self):
@@ -186,9 +179,9 @@ class PyApp(gtk.Window):
         toolbarBox.pack_start(filterBox, False, False)
         versionBox = gtk.HBox(False, 2)
         versionStr = VERSION_STRING
-        versionLabel = gtk.Label(versionStr)
-        versionLabel.set_use_markup(True)
-        versionBox.pack_start(versionLabel, False, False, 5)
+        self.versionLabel = gtk.Label(versionStr)
+        self.versionLabel.set_use_markup(True)
+        versionBox.pack_start(self.versionLabel, False, False, 5)
         updateButton = gtk.Button('Update')
         #versionBox.pack_start(updateButton, False, False, 5)
         toolbarBox.pack_end(versionBox, False, False)
@@ -1286,6 +1279,50 @@ class PyApp(gtk.Window):
             return True
         else:
             return False
+    def io_get_release_status(self):
+        user = 'bovesan'
+        repo = 'mistika-hyperspeed'
+        branch = 'master'
+        if os.path.isdir('.git'):
+            cmd = ['git', 'remote', 'get-url', 'origin']
+            for line in subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0].splitlines():
+                user, repo = line.rsplit('.', 1)[0].split('/')[-2:]
+                print 'User:', user
+                print 'Repo:', repo
+            cmd = ['git', 'branch']
+            for line in subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0].splitlines():
+                if line.startswith('*'):
+                    branch = line.strip('*').strip()
+                    print 'Branch:', branch
+            cmd = ['git', 'ls-remote', 'origin', '-h', 'refs/heads/'+branch]
+            for line in subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0].splitlines():
+                head = line.split()[0]
+            cmd = ['git', 'rev-list', 'HEAD...'+head, '--count']
+            for line in subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0].splitlines():
+                commits_behind = int(line.strip())
+            if commits_behind == 0:
+                version_string = '<span color="#00dd00" weight="bold">Branch: %s (up to date)</span>' % branch
+            else:
+                version_string = '<span color="#ff9900" weight="bold">Branch: %s (update available)</span>' % branch
+        else:
+            archive = 'https://github.com/bovesan/mistika-hyperspeed/archive/master.zip'
+            server = 'https://api.github.com'
+            headers = {
+                'Accept': 'application/vnd.github.v3+json'
+            }
+            values = {
+                'sha' : branch
+            }
+            path = '/repos/%s/%s/commits' % (user, repo)
+            data = urllib.urlencode(values)
+            print repr(data)
+            req = urllib2.Request(server+path+'?'+data, headers=headers)
+            try:
+                response = urllib2.urlopen(req)
+                print response.read()
+            except urllib2.URLError as e:
+                print e.reason
+        gobject.idle_add(self.versionLabel.set_markup, version_string)
 
 warnings.filterwarnings("ignore")
 os.environ['LC_CTYPE'] = 'en_US.utf8'
