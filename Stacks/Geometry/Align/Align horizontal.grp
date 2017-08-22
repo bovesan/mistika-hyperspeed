@@ -1,0 +1,128 @@
+Group(
+groupType(1)
+trimDesc( head(0) speed(1) )
+ungroup(1)
+p(
+	n((Empty))
+	X(1000) Y(0) W(100) F(0)
+)
+Group(
+groupType(3)
+p(
+	n(Align horizontal)
+	X(1000) Y(0) W(100) F(0)
+	L(-2)
+	Graph(X(-464) Y(90) x(-464) y(121.5))
+)
+F(
+T(146)
+p(
+	n(Align horizontal pass 1)
+	X(1000) Y(-3) W(100) F(99)
+	L(-4)
+	Graph(X(-427) Y(-147) x(-422.593781) y(-88.984871))
+s(
+	T(n(Pass 1) C(16) t(1))
+	NamingRules(2)
+	c(R(0)	n($SECRET$/$SECRET$)	m(0)	M(19)	d(0)		c(etc/GLSL)E(s(/home/mistika/mistika-hyperspeed/Stacks/Geometry/Align/GLSL/Align.01.c))	)
+	c(R(1)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(2)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(1))
+)
+)
+)
+
+F(
+T(146)
+p(
+	n(Align horizontal render pass)
+	X(1000) Y(0) W(100) F(0)
+	L(-4)
+	Graph(X(-422) Y(27) x(-422.000031) y(58.5))
+s(
+	T(n(Render pass) C(16) t(1))
+	NamingRules(2)
+	c(R(0)	n($SECRET$/$SECRET$)	m(0)	M(19)	d(0)		c(etc/GLSL)E(s(/home/mistika/mistika-hyperspeed/Stacks/Geometry/Align/GLSL/Align.01.c))	)
+	c(R(1)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(2))
+	c(R(2)	n(Align/Horizontal)	m(0)	M(3)	d(0) s(None) s(Left) s(Center) s(Right) )
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n(Align/MoveX)	m(-100000)	M(100000)	d(50))
+	c(R(3)	n(Align/MoveY)	m(-100000)	M(100000)	d(50))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(1))
+)
+)
+)
+
+F(
+T(146)
+p(
+	n(Align horizontal pass 2)
+	X(1000) Y(-2) W(100) F(0)
+	L(-4)
+	Graph(X(-421) Y(-68) x(-421.778961) y(6.00029))
+s(
+	T(n(Pass 2) C(16) t(1))
+	NamingRules(2)
+	c(R(0)	n($SECRET$/$SECRET$)	m(0)	M(19)	d(0)		c(etc/GLSL)E(s(/home/mistika/mistika-hyperspeed/Stacks/Geometry/Align/GLSL/Align.01.c))	)
+	c(R(1)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(1))
+	c(R(2)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
+	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(1))
+)
+)
+)
+
+U(
+i(0)
+p(
+	n(Dummy 1)
+	X(1000) Y(-1) W(100) F(0)
+	Graph(X(-507) Y(-27) x(-447.975525) y(10.497932))
+)
+)
+
+U(
+i(0)
+p(
+	n(Dummy 1)
+	X(1000) Y(-4) W(100) F(0)
+	Graph(X(-437) Y(-261) x(-428.840332) y(-167.979828))
+)
+)
+
+)
+
+)
+

@@ -1,23 +1,27 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import gtk
 import gobject
+import gtk
 import hashlib
 import imp
 import json
 import os
-import sys
 import platform
 import Queue
 import socket
 import subprocess
+import sys
 import threading
-import xml.etree.ElementTree as ET
+import time
+import urllib
+import urllib2
+import warnings
 import webbrowser
+import xml.etree.ElementTree as ET
 from distutils.spawn import find_executable
 
-VERSION_STRING = '<span color="#ff9900" weight="bold">Development version.</span>'
+VERSION_STRING = ''
 
 CONFIG_FOLDER = '~/.mistika-hyperspeed/'
 CONFIG_FILE = 'hyperspeed.cfg'
@@ -72,12 +76,26 @@ def md5(fname):
         except OSError:
             pass
     return hash_md5.hexdigest()
+
 def get_crontab_lines():
     try:
         crontab = subprocess.Popen(['crontab', '-l'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0].splitlines()
     except subprocess.CalledProcessError:
         crontab = []
     return crontab
+        
+def download_file(url, destination):
+    if os.path.isdir(destination):
+        destination = os.path.join(destination, os.path.basename(url))
+    response = urllib2.urlopen(url)
+    CHUNK = 256 * 1024
+    with open(destination, 'wb') as f:
+        while True:
+            chunk = response.read(CHUNK)
+            if not chunk:
+                break
+            f.write(chunk)
+
 class RenderItem(hyperspeed.stack.Stack):
     def __init__(self, path):
         super(RenderItem, self).__init__(path)
@@ -95,30 +113,28 @@ class RenderItem(hyperspeed.stack.Stack):
         logfile_h.flush()
 
 class PyApp(gtk.Window):
-
     def __init__(self):
-
-
         super(PyApp, self).__init__()
-
         self.config_rw()
         self.threads = []
         self.queue_io = Queue.Queue()
         self.files = {}
+        self.updated = False
         screen = self.get_screen()
         self.set_title("Hyperspeed")
-        self.set_size_request(screen.get_width()/2, screen.get_height()-200)
+        self.set_size_request(screen.get_width()/2, screen.get_height()/2)
         self.set_border_width(20)
         self.set_position(gtk.WIN_POS_CENTER)
         if 'darwin' in platform.system().lower():
             self.set_resizable(False) # Because resizing crashes the app on Mac
+        self.connect("key-press-event",self.on_key_press_event)
         self.set_icon_from_file("res/img/hyperspeed_1024px.png")
         gtkrc = '''
         style "theme-fixes" {
-            font_name = "sans normal %i"
+            font_name = "sans normal 12"
         }
-        class "*" style "theme-fixes"''' % (screen.get_width()/300)
-        gtk.rc_parse_string(gtkrc)
+        class "*" style "theme-fixes"'''
+        # gtk.rc_parse_string(gtkrc)
         vbox = gtk.VBox(False, 10)
         self.filterEntry = gtk.Entry()
         vbox.pack_start(self.init_toolbar(), False, False, 10)
@@ -140,84 +156,11 @@ class PyApp(gtk.Window):
         notebook.append_page(self.init_configs_window(), gtk.Label('Configs'))
         notebook.append_page(self.init_links_window(), gtk.Label('Web links'))
         vbox.pack_start(notebook)
-        vbox.pack_start(self.init_render_queue_window(), True, True, 5)
-
-
-        headerBox = gtk.HBox(False, 5)
-        headerLabel  = gtk.Label('<span size="large"><b>Afterscript queue:</b></span>')
-        headerLabel.set_use_markup(True)
-        headerBox.pack_start(headerLabel, False, False, 5)
-        vbox.pack_start(headerBox, False, False, 2)
-        afterscriptsToolbar = gtk.HBox(False, 2)
-        #afterscriptsToolbar.pack_start(headerBox, False, False, 2)
-        checkButton = gtk.CheckButton('Process queue')
-        checkButton.set_property("active", True)
-        afterscriptsToolbar.pack_start(checkButton, False, False, 5)
-        checkButton = gtk.CheckButton('Process jobs for other hosts')
-        checkButton.set_property("active", False)
-        afterscriptsToolbar.pack_start(checkButton, False, False, 5)
-        simulBox =  gtk.HBox(False, 5)
-        simulBox.pack_start(gtk.Label('Simultaneous jobs:'), False, False, 0)
-        simulBox.pack_start(gtk.SpinButton(gtk.Adjustment(value=5, lower=0, upper=999, step_incr=1, page_incr=0, page_size=0)), False, False, 0)
-        afterscriptsToolbar.pack_start(simulBox, False, False, 5)
-        vbox.pack_start(afterscriptsToolbar, False, False, 2)
-        afterscriptsBox = gtk.HBox(False, 5)
-        self.queueTree = gtk.TreeView()
-        column = gtk.TreeViewColumn('Project', gtk.CellRendererText(), text=0)
-        column.set_resizable(True)
-        column.set_expand(False)
-        self.queueTree.append_column(column)
-        column = gtk.TreeViewColumn('Name', gtk.CellRendererText(), text=1)
-        column.set_resizable(True)
-        column.set_expand(False)
-        self.queueTree.append_column(column)
-        column = gtk.TreeViewColumn('Progress', gtk.CellRendererProgress())
-        column.set_resizable(True)
-        column.set_expand(False)
-        self.queueTree.append_column(column)
-        column = gtk.TreeViewColumn('Status', gtk.CellRendererText(), text=2)
-        column.set_resizable(True)
-        column.set_expand(True)
-        self.queueTree.append_column(column)
-        column = gtk.TreeViewColumn('Added by', gtk.CellRendererText(), text=3)
-        column.set_resizable(True)
-        column.set_expand(False)
-        self.queueTree.append_column(column)
-        column = gtk.TreeViewColumn('Added time', gtk.CellRendererText(), text=4)
-        column.set_resizable(True)
-        column.set_expand(False)
-        self.queueTree.append_column(column)
-        cell2 = gtk.CellRendererToggle()
-        self.queueTreestore = gtk.TreeStore(str, str, str, str, str)
-        queueTreestore = self.queueTreestore
-        # queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
-        # queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
-        # queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
-        # queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'apollo2', '08:27'])
-        # queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'apollo1', '08:27'])
-        # queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
-        # queueTreestore.append(None, ["RnD", 'test_0001', 'Running on apollo2', 'gaia', '08:27'])
-        # queueTreestore.append(None, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27'])
-        # queueTreestore.append(None, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27'])
-        self.queueTree.set_model(queueTreestore)
-        self.queueTree.expand_all()
-        scrolled_window = gtk.ScrolledWindow()
-        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
-        scrolled_window.add(self.queueTree)
-        afterscriptsBox.pack_start(scrolled_window)
-        afterscriptsButtons = gtk.VBox(False, 3)
-        afterscriptsButtons.set_size_request(30,80)
-        gtk.stock_add([(gtk.STOCK_GO_UP, "", 0, 0, "")])
-        upButton = gtk.Button(stock=gtk.STOCK_GO_UP)
-        afterscriptsButtons.pack_start(upButton)
-        gtk.stock_add([(gtk.STOCK_GO_DOWN, "", 0, 0, "")])
-        downButton = gtk.Button(stock=gtk.STOCK_GO_DOWN)
-        afterscriptsButtons.pack_start(downButton)
-        afterscriptsBox.pack_start(afterscriptsButtons, False, False)
-        vbox.pack_start(afterscriptsBox, True, True, 5)
-
 
         footer = gtk.HBox(False, 10)
+        button = self.refresh_button = gtk.Button(label=None, stock=gtk.STOCK_REFRESH)
+        button.connect('clicked', self.on_refresh)
+        footer.pack_start(button, False, False)
         quitButton = gtk.Button('Quit')
         quitButton.set_size_request(70, 30)
         quitButton.connect("clicked", self.on_quit)
@@ -232,8 +175,9 @@ class PyApp(gtk.Window):
 
         self.comboEditable = None
         gobject.idle_add(self.bring_to_front)
+        self.launch_thread(self.io_get_release_status)
     def bring_to_front(self):
-        self.present()   
+        self.present()
     def init_toolbar(self):
         filterEntry = self.filterEntry
         toolbarBox = gtk.HBox(False, 10)
@@ -248,11 +192,20 @@ class PyApp(gtk.Window):
         toolbarBox.pack_start(filterBox, False, False)
         versionBox = gtk.HBox(False, 2)
         versionStr = VERSION_STRING
-        versionLabel = gtk.Label(versionStr)
-        versionLabel.set_use_markup(True)
-        versionBox.pack_start(versionLabel, False, False, 5)
-        updateButton = gtk.Button('Update')
-        #versionBox.pack_start(updateButton, False, False, 5)
+        self.versionLabel = gtk.Label(versionStr)
+        self.versionLabel.set_use_markup(True)
+        versionBox.pack_start(self.versionLabel, False, False, 5)
+        self.updateButton = gtk.Button('Update')
+        self.updateButton.set_no_show_all(True)
+        self.updateButton.connect("clicked", self.on_update)
+        versionBox.pack_start(self.updateButton, False, False, 5)
+        spinner = self.spinner_update = gtk.Image()
+        spinner.set_no_show_all(True)
+        try:
+            spinner.set_from_file('res/img/spinner01.gif')
+        except:
+            pass
+        versionBox.pack_start(spinner, False, False, 5)
         toolbarBox.pack_end(versionBox, False, False)
         return toolbarBox
     def init_tools_window(self):
@@ -292,6 +245,7 @@ class PyApp(gtk.Window):
         tree_filter.set_visible_func(self.filter_tree, (self.filterEntry, tree));
         tree.set_model(tree_filter)
         tree.expand_all()
+        tree.set_rules_hint(True)
         tree.connect('row-activated', self.on_tools_run, tree)
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
@@ -300,7 +254,8 @@ class PyApp(gtk.Window):
         return scrolled_window
     def init_afterscripts_window(self):
         tree        = self.afterscripts_tree      = gtk.TreeView()
-        treestore   = self.afterscripts_treestore = gtk.TreeStore(str, bool, bool, str) # Name, show in Mistika, is folder, file path
+        treestore   = self.afterscripts_treestore = gtk.TreeStore(str, bool, bool, str, str) # Name, show in Mistika, is folder, file path, description
+        tree.set_tooltip_column(4)
         tree_filter = self.afterscripts_filter    = treestore.filter_new();
         cell = gtk.CellRendererText()
         column = gtk.TreeViewColumn('', cell, text=0)
@@ -317,6 +272,7 @@ class PyApp(gtk.Window):
         tree_filter.set_visible_func(self.filter_tree, (self.filterEntry, tree));
         tree.set_model(tree_filter)
         tree.expand_all()
+        tree.set_rules_hint(True)
         tree.connect('row-activated', self.on_afterscripts_run, tree)
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
@@ -328,7 +284,8 @@ class PyApp(gtk.Window):
         return scrolled_window
     def init_stacks_window(self):
         tree        = self.stacks_tree      = gtk.TreeView()
-        treestore   = self.stacks_treestore = gtk.TreeStore(str, bool, bool, str, bool) # Name, installed, is folder, file path, requires installation (has dependencies)
+        treestore   = self.stacks_treestore = gtk.TreeStore(str, bool, bool, str, bool, str) # Name, installed, is folder, file path, requires installation (has dependencies), description
+        tree.set_tooltip_column(5)
         tree_filter = self.stacks_filter    = treestore.filter_new();
         cell = gtk.CellRendererText()
         column = gtk.TreeViewColumn('', cell, text=0)
@@ -347,6 +304,7 @@ class PyApp(gtk.Window):
         tree_filter.set_visible_func(self.filter_tree, (self.filterEntry, tree));
         tree.set_model(tree_filter)
         tree.expand_all()
+        tree.set_rules_hint(True)
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(tree)
@@ -358,6 +316,7 @@ class PyApp(gtk.Window):
     def init_configs_window(self):
         tree        = self.configs_tree      = gtk.TreeView()
         treestore   = self.configs_treestore = gtk.TreeStore(str, bool, bool, str, str) # Name, active, is folder, path, description
+        tree.set_tooltip_column(4)
         tree_filter = self.configs_filter    = treestore.filter_new();
         cell = gtk.CellRendererText()
         column = gtk.TreeViewColumn('', cell, text=0)
@@ -375,6 +334,7 @@ class PyApp(gtk.Window):
         tree_filter.set_visible_func(self.filter_tree, (self.filterEntry, tree));
         tree.set_model(tree_filter)
         tree.expand_all()
+        tree.set_rules_hint(True)
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(tree)
@@ -403,6 +363,7 @@ class PyApp(gtk.Window):
         tree.set_model(tree_filter)
         tree.expand_all()
         tree.connect('row-activated', self.on_links_run, tree)
+        tree.set_rules_hint(True)
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(tree)
@@ -542,6 +503,8 @@ class PyApp(gtk.Window):
         crontab = get_crontab_lines()
         for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
             for name in dirs:
+                if name.startswith('.'):
+                    continue
                 path = os.path.join(root, name)
                 if 'config.xml' in os.listdir(path):
                     tree = ET.parse(os.path.join(path, 'config.xml'))
@@ -588,6 +551,8 @@ class PyApp(gtk.Window):
             afterscripts_installed.append(os.path.realpath(link_path))
         for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
             for name in dirs:
+                if name.startswith('.'):
+                    continue
                 path = os.path.join(root, name)
                 if 'config.xml' in os.listdir(path):
                     tree = ET.parse(os.path.join(path, 'config.xml'))
@@ -623,9 +588,13 @@ class PyApp(gtk.Window):
         files = self.files[file_type]
         for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
             for name in dirs:
+                if name.startswith('.'):
+                    continue
                 path = os.path.join(root, name)
                 files[path] = {'isdir' : True}
             for name in filenames:
+                if name.startswith('.'):
+                    continue
                 path = os.path.join(root, name)
                 if os.path.splitext(name)[1].lower() in STACK_EXTENSIONS:
                     files[path] = {'isdir' : False}
@@ -635,12 +604,15 @@ class PyApp(gtk.Window):
                 continue
             if files[path]['isdir']:
                 continue
+            stack = hyperspeed.Stack(path)
+            if stack.comment:
+                files[path]['comment'] = stack.comment
             if not 'dependencies' in files[path]:
-                files[path]['dependencies'] = hyperspeed.Stack(path).dependencies
+                files[path]['dependencies'] = stack.dependencies
             if len(files[path]['dependencies']) > 0:
                 files[path]['Dependent'] = True
             for dependency in files[path]['dependencies']:
-                if not dependency.check():
+                if not dependency.type == 'lowres' and not dependency.complete:
                     files[path]['Installed'] = False
             for key, value in file_type_defaults.iteritems():
                 files[path].setdefault(key, value)
@@ -760,21 +732,25 @@ class PyApp(gtk.Window):
             else:
                 alias = os.path.basename(item_path)
             try:
+                description = item['description']
+            except KeyError:
+                description = alias
+            try:
                 parent_row_reference = row_references[dir_name]
                 parent_row_path = parent_row_reference.get_path()
                 parent_row_iter = treestore.get_iter(parent_row_path)
             except KeyError:
                 parent_row_iter = None
             if not item_path in row_references:
-                row_iter = treestore.append(parent_row_iter, [alias, False, True, '', item_path, ''])
+                row_iter = treestore.append(parent_row_iter, [alias, False, True, '', item_path, description])
                 row_path = treestore.get_path(row_iter)
                 row_references[item_path] = gtk.TreeRowReference(treestore, row_path)
             else:
                 row_path = row_references[item_path].get_path()
             if item['isdir']:
-                treestore[row_path] = (alias, False, True, '', item_path, '')
+                treestore[row_path] = (alias, False, True, '', item_path, description)
             else:
-                treestore[row_path] = (alias, item['Show in Mistika'], False, item['Autorun'], item_path, item['description'])
+                treestore[row_path] = (alias, item['Show in Mistika'], False, item['Autorun'], item_path, description)
     def gui_update_afterscripts(self):
         treestore = self.afterscripts_treestore # Name, show in Mistika, is folder
         row_references = self.row_references_afterscripts
@@ -782,10 +758,14 @@ class PyApp(gtk.Window):
         for item_path in sorted(items):
             item = items[item_path]
             dir_name = os.path.dirname(item_path)
-            if 'alias' in items[item_path]:
+            try:
                 alias = items[item_path]['alias']
-            else:
+            except KeyError:
                 alias = os.path.basename(item_path)
+            try:
+                description = item['description']
+            except KeyError:
+                description = alias
             in_model = False
             for model_row in self.afterscripts_model:
                 if model_row[0] == alias:
@@ -800,15 +780,15 @@ class PyApp(gtk.Window):
             except KeyError:
                 parent_row_iter = None
             if not item_path in row_references:
-                row_iter = treestore.append(parent_row_iter, [alias, False, True, item_path])
+                row_iter = treestore.append(parent_row_iter, [alias, False, True, item_path, description])
                 row_path = treestore.get_path(row_iter)
                 row_references[item_path] = gtk.TreeRowReference(treestore, row_path)
             else:
                 row_path = row_references[item_path].get_path()
             if item['isdir']:
-                treestore[row_path] = (alias, False, True, item_path)
+                treestore[row_path] = (alias, False, True, item_path, description)
             else:
-                treestore[row_path] = (alias, item['Show in Mistika'], False, item_path)
+                treestore[row_path] = (alias, item['Show in Mistika'], False, item_path, description)
     def gui_update_stacks(self):
         treestore = self.stacks_treestore # Name, installed, is folder, file path, requires installation (has dependencies)
         row_references = self.row_references_stacks
@@ -818,32 +798,59 @@ class PyApp(gtk.Window):
             dir_name = os.path.dirname(item_path)
             base_name = os.path.basename(item_path)
             try:
+                description = item['comment']
+            except KeyError:
+                description = base_name
+            try:
+                if item['Dependent']:
+                    dependency_lines = []
+                    description += '\n\nDependencies:\n'
+                    for dependency in item['dependencies']:
+                        dependency_line = '* '+dependency.type+': '+dependency.path
+                        if not dependency.complete:
+                            dependency_line += ' <b>missing</b>'
+                        dependency_lines.append(dependency_line)
+                    description += '\n'.join(sorted(dependency_lines))
+            except KeyError:
+                pass
+            try:
                 parent_row_reference = row_references[dir_name]
                 parent_row_path = parent_row_reference.get_path()
                 parent_row_iter = treestore.get_iter(parent_row_path)
             except KeyError:
                 parent_row_iter = None
             if not item_path in row_references:
-                row_iter = treestore.append(parent_row_iter, [base_name, False, True, item_path, False])
+                row_iter = treestore.append(parent_row_iter, [base_name, False, True, item_path, False, description])
                 row_path = treestore.get_path(row_iter)
                 row_references[item_path] = gtk.TreeRowReference(treestore, row_path)
             else:
                 row_path = row_references[item_path].get_path()
             if item['isdir']:
-                treestore[row_path] = (base_name, False, True, item_path, False)
+                treestore[row_path] = (base_name, False, True, item_path, False, description)
             else:
-                treestore[row_path] = (base_name, item['Installed'], False, item_path, item['Dependent'])
+                treestore[row_path] = (base_name, item['Installed'], False, item_path, item['Dependent'], description)
+        # self.gui_hide_empty_folders(treestore)
     def gui_update_configs(self):
         treestore = self.configs_treestore # Name, show in Mistika, is folder
         row_references = self.row_references_configs
         items = self.files['Configs']
+        item_paths = []
         for item_path in sorted(items):
+            if os.path.basename(item_path) == 'Hyperspeed':
+                item_paths.insert(0, item_path)
+            else:
+                item_paths.append(item_path)
+        for item_path in item_paths:
             item = items[item_path]
             dir_name = os.path.dirname(item_path)
-            if 'alias' in items[item_path]:
+            try:
                 alias = items[item_path]['alias']
-            else:
+            except KeyError:
                 alias = os.path.basename(item_path)
+            try:
+                description = items[item_path]['description']
+            except KeyError:
+                description = ''
             try:
                 parent_row_reference = row_references[dir_name]
                 parent_row_path = parent_row_reference.get_path()
@@ -883,6 +890,7 @@ class PyApp(gtk.Window):
                 row_references[item_path] = gtk.TreeRowReference(treestore, row_path)
             else:
                 row_path = row_references[item_path].get_path()
+                row_iter = treestore.get_iter(row_path)
                 treestore[row_path] = (alias, url)
             if 'children' in item:
                 parent_row_iter = row_iter
@@ -960,11 +968,14 @@ class PyApp(gtk.Window):
             stored_config = {}
         if write:
             if stored_config != self.config:
+                print 'Writing config'
                 if not os.path.isdir(CONFIG_FOLDER):
                     os.makedirs(CONFIG_FOLDER)
+                    print 'Created config folder: ', CONFIG_FOLDER
                 try:
                     open(config_path, 'w').write(json.dumps(self.config, sort_keys=True, indent=4, separators=(',', ': ')))
                     stored_config = self.config
+                    print 'Wrote config file: ', CONFIG_FILE
                 except IOError as e:
                     error('Could not write config file')
         else:
@@ -972,17 +983,23 @@ class PyApp(gtk.Window):
                 self.config = stored_config
         for config_item in config_defaults:
             if not config_item in self.config.keys():
+                print 'New default config item: ', config_item
                 self.config[config_item] = config_defaults[config_item]
                 self.config_rw(write=True)
     def on_quit(self, widget):
-        print 'Closed by: ' + repr(widget)
+        if type(widget) is gtk.Button:
+            widget_name = widget.get_label() + ' button'
+        else:
+            widget_name = str(widget)
+        print 'Closed by: ' + widget_name
         gtk.main_quit()
     def on_filter(self, widget, event):
         #print widget.get_text()
-        self.toolsFilter.refilter();
-        self.afterscriptsFilter.refilter();
-        self.sharedFilter.refilter();
-        self.linksFilter.refilter();
+        self.tools_filter.refilter();
+        self.afterscripts_filter.refilter();
+        self.stacks_filter.refilter();
+        self.configs_filter.refilter();
+        self.links_filter.refilter();
         #self.toolsTreestore.foreach(self.row_match, widget.get_text())
     def row_match(self, model, path, iter, data):
         name = self.toolsTreestore[path][0]
@@ -995,6 +1012,19 @@ class PyApp(gtk.Window):
         # if self.myView.row_expanded(path):
         #    self.expandedLines.append(path)
         #visible_func(model, iter, user_data):
+    def folder_is_empty(self, model, iter):
+        is_empty = True
+        for n in range(model.iter_n_children(iter)):
+            child_iter = model.iter_nth_child(iter, n)
+            child_has_child = model.iter_has_child(child_iter)
+            child_is_folder = model.get_value(child_iter, 2)
+            if not child_is_folder:
+                is_empty = False
+                break
+            elif child_has_child:
+                if not self.folder_is_empty(model, child_iter):
+                    is_empty = False
+        return is_empty
     def filter_tree(self, model, iter, user_data, seek_up=True, seek_down=True, filter=False):
         widget, tree = user_data
         tree.expand_all()
@@ -1006,6 +1036,11 @@ class PyApp(gtk.Window):
         name = model.get_value(iter, 0).lower()
         parent = model.iter_parent(iter)
         has_child = model.iter_has_child(iter)
+        if model.get_n_columns() > 2:
+            is_folder = model.get_value(iter, 2)
+            if seek_down and is_folder:
+                if self.folder_is_empty(model, iter):
+                    return False
             # print name + ' has child'
             # return True
         #print 'Seeking ' + name
@@ -1162,8 +1197,13 @@ class PyApp(gtk.Window):
         print new_config
         open(mistika.afterscripts_path, 'w').write(new_config)
         self.launch_thread(self.io_populate_afterscripts)
-    def on_stacks_toggle(self, cellrenderertoggle, path, *ignore):
-        print 'Not yet implemented'
+    def on_stacks_toggle(self, cellrenderertoggle, treepath, *ignore):
+        tree = self.stacks_treestore
+        name = tree[treepath][0]
+        state = not tree[treepath][1]
+        path = tree[treepath][3]
+        if state:
+            stack.Stack(path).relink_dependencies()
         self.launch_thread(self.io_populate_stacks)
     def on_configs_toggle(self, cellrenderertoggle, treepath, *ignore):
         tree = self.configs_treestore
@@ -1171,32 +1211,43 @@ class PyApp(gtk.Window):
         state = not tree[treepath][1]
         path = tree[treepath][3]
         f_item = self.files['Configs'][path]
-        links = f_item['links']
-        if state: # Install
-            for link_target, link, link_copy in links:
-                state = state and hyperspeed.manage.install(link_target, link, link_copy)
-        else: # remove
-            for link_target, link, link_copy in links:
-                hyperspeed.manage.remove(link_target, link, link_copy)
+        if f_item['manage']:
+            self.gui_error_dialog('Custom managed configs not yet implemented')
+        else:
+            links = f_item['links']
+            if state: # Install
+                for link_target, link, link_copy in links:
+                    state = state and hyperspeed.manage.install(link_target, link, link_copy)
+            else: # remove
+                for link_target, link, link_copy in links:
+                    hyperspeed.manage.remove(link_target, link, link_copy)
         self.launch_thread(self.io_populate_configs)
-    def on_tools_run(self, treeview, path, view_column, *ignore):
-
-        file_path = self.tools_treestore[path][4]
-        print file_path
-        try:
-            subprocess.Popen(['konsole', '-e', os.path.join(self.config['app_folder'], 'res/scripts/bash_wrapper.sh'), file_path])
-            return
-        except OSError as e:
+    def launch_in_terminal(self, exec_args):
+        print repr(exec_args)
+        if platform.system() == 'Linux':
             try:
-                subprocess.Popen(['xterm', '-e', os.path.join(self.config['app_folder'], 'res/scripts/bash_wrapper.sh'), file_path])
+                subprocess.Popen(['konsole', '-e', os.path.join(self.config['app_folder'], 'res/scripts/bash_wrapper.sh')] + exec_args)
                 return
             except OSError as e:
                 try:
-                    subprocess.Popen([file_path])
+                    subprocess.Popen(['xterm', '-e', os.path.join(self.config['app_folder'], 'res/scripts/bash_wrapper.sh')] + exec_args)
                     return
-                except:
-                    pass
-        print 'Failed to execute %s' % file_path
+                except OSError as e:
+                    try:
+                        subprocess.Popen([exec_args])
+                        return
+                    except:
+                        pass
+        elif platform.system() == 'Darwin':
+            subprocess.Popen(['open', '-a', 'Terminal.app'] + exec_args)
+            return
+        else:
+            subprocess.Popen(exec_args)
+            return
+        print 'Failed to execute %s' % repr(exec_args)
+    def on_tools_run(self, treeview, path, view_column, *ignore):
+        file_path = self.tools_treestore[path][4]
+        self.launch_in_terminal([file_path])
     def on_afterscripts_run(self, treeview, path, view_column, *ignore):
         print 'Not yet implemented'
     def on_links_run(self, treeview, path, view_column, *ignore):
@@ -1236,7 +1287,129 @@ class PyApp(gtk.Window):
                 self.popup.popup( None, None, None, event.button, time)
                 self.render_queue_selected_path = path
             return True
+    def on_key_press_event(self,widget,event):
+        keyval = event.keyval
+        keyval_name = gtk.gdk.keyval_name(keyval)
+        state = event.state
+        ctrl = (state & gtk.gdk.CONTROL_MASK)
+        command = (state & gtk.gdk.MOD1_MASK)
+        if ctrl or command and keyval_name == 'q':
+            self.on_quit('Keyboard shortcut')
+        else:
+            return False
+        return True
+    def gui_error_dialog(self, message):
+        dialog = gtk.MessageDialog(self, gtk.DIALOG_DESTROY_WITH_PARENT, type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_CLOSE, message_format=message)
+        dialog.set_position(gtk.WIN_POS_CENTER)
+        response = dialog.run()
+        dialog.grab_focus()
+        dialog.destroy()
+        if response == -8:
+            return True
+        else:
+            return False
+    def io_get_release_status(self):
+        user = 'bovesan'
+        repo = 'mistika-hyperspeed'
+        branch = 'master'
+        update_available = False
+        git = os.path.isdir('.git')
+        if git:
+            cmd = ['git', 'config', '--get', 'remote.origin.url']
+            for line in subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0].splitlines():
+                user, repo = line.split('/')[-2:]
+                # print 'User:', user
+                # print 'Repo:', repo
+            cmd = ['git', 'branch']
+            for line in subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0].splitlines():
+                if line.startswith('*'):
+                    branch = line.strip('*').strip()
+                    # print 'Branch:', branch
+            cmd = ['git', 'ls-remote', 'origin', '-h', 'refs/heads/'+branch]
+            for line in subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0].splitlines():
+                head = line.split()[0]
+            cmd = ['git', 'rev-list', 'HEAD...'+head, '--count']
+            response = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate()
+            if response[0].startswith('0'):
+                version_string = '<span color="#00aa00" weight="bold">Branch: %s (up to date)</span>' % branch
+            else:
+                version_string = '<span color="#ff9900" weight="bold">Branch: %s (update available)</span>' % branch
+                update_available = True
+        else:
+            try:
+                remote_release = urllib2.urlopen('https://raw.githubusercontent.com/%s/%s/%s/RELEASE' % (user, repo, branch)).read()
+            except urllib2.HTTPError as e:
+                print e.reason
+                remote_release = False
+            local_release = open('RELEASE').read()
+            local_release_date = human.time(float(local_release.strip()))
+            if not remote_release:
+                version_string = '<span color="#000000">Last updated: %s</span>' % local_release_date
+            elif local_release == remote_release:
+                version_string = '<span color="#00aa00" weight="bold">Last updated: %s (up to date)</span>' % local_release_date
+            else:
+                version_string = '<span color="#ff9900" weight="bold">Last updated: %s (update available)</span>' % local_release_date
+                update_available = True
+            # archive = 'https://github.com/bovesan/mistika-hyperspeed/archive/master.zip'
+            # server = 'https://api.github.com'
+            # headers = {
+            #     'Accept': 'application/vnd.github.v3+json'
+            # }
+            # values = {
+            #     'sha' : branch
+            # }
+            # path = '/repos/%s/%s/commits' % (user, repo)
+            # data = urllib.urlencode(values)
+            # print repr(data)
+            # req = urllib2.Request(server+path+'?'+data, headers=headers)
+            # try:
+            #     response = urllib2.urlopen(req)
+            #     print response.read()
+            # except urllib2.URLError as e:
+            #     print e.reason
+        if update_available:
+            gobject.idle_add(self.updateButton.show)
+            if git:
+                gobject.idle_add(self.updateButton.set_label, 'Update (git pull)')
+        gobject.idle_add(self.versionLabel.set_markup, version_string)
+        time.sleep(60)
+        if not self.updated:
+            self.launch_thread(self.io_get_release_status)
+    def on_update(self, widget=False):
+        self.launch_thread(self.io_update)
+    def io_update(self):
+        gobject.idle_add(self.updateButton.hide)
+        gobject.idle_add(self.spinner_update.show)
+        pre_update_checksum = md5(sys.argv[0])
+        git = os.path.isdir('.git')
+        if git:
+            print 'git pull'
+            self.launch_in_terminal([os.path.join(self.config['app_folder'], 'res/scripts/gitpull.sh')])
+        else:
+            print 'Downloading latest version ...'
+            archive = 'https://github.com/bovesan/mistika-hyperspeed/archive/master.zip'
+            download_file(archive, os.path.join(CONFIG_FOLDER, 'hyperspeed.zip'))
+            # run update script
+        post_update_checksum = md5(sys.argv[0])
+        if True or pre_update_checksum != post_update_checksum:
+            version_string = '<span color="#ff9900" weight="bold">Restart to complete update</span>'
+            gobject.idle_add(self.versionLabel.set_markup, version_string)
+            self.updated = True
+        # else:
+        #     version_string = '<span color="#00aa00" weight="bold">Updated</span>'
+        #     gobject.idle_add(self.versionLabel.set_markup, version_string)
+        self.on_refresh()
+        gobject.idle_add(self.updateButton.hide)
+        gobject.idle_add(self.spinner_update.hide)
+    def on_refresh(self, widget=False):
+        self.launch_thread(self.io_populate_tools)
+        self.launch_thread(self.io_populate_afterscripts)
+        self.launch_thread(self.io_populate_stacks)
+        self.launch_thread(self.io_populate_configs)
+        self.launch_thread(self.io_populate_links)
 
+
+warnings.filterwarnings("ignore")
 os.environ['LC_CTYPE'] = 'en_US.utf8'
 os.environ['LC_ALL'] = 'en_US.utf8'
 gobject.threads_init()

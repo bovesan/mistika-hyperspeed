@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<config>
+    <alias>Hyperspeed stacks in Global presets</alias>
+    <description>Place a link to the Hyperspeed stacks folder in Global presets</description>
+    <links>
+    	<link>
+    		<target>../../Stacks</target>
+    		<location>$MISTIKA-ENV$/global_presets/Hyperspeed</location>
+    	</link>
+    </links>
+    <manage>false</manage>
+</config>

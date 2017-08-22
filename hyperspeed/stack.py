@@ -5,7 +5,10 @@ import time
 import mistika
 import text
 import threading
+import tempfile
 
+def escape_par(string):
+    return string.replace('(', '\(').replace(')', '\)')
 class DependencyType(object):
     def __init__(self, id, description):
         self.id = id
@@ -69,7 +72,7 @@ class Dependency(object):
             # self.raw_frame_ranges = [(start, end, parent)]
             self.frame_ranges = [DependencyFrameRange(self.path, start, end, parent)]
             self._parsed_frame_ranges = None
-            self.complete = True
+            self._complete = None
             if f_type == 'dat':
                 for font in text.Title(self.path).fonts:
                     self.dependencies.append(Dependency(font, 'font', parent=parent))
@@ -125,8 +128,14 @@ class Dependency(object):
                 self._parsed_frame_ranges = self.frame_ranges
             return self.frame_ranges
     @property
+    def complete(self):
+        if self._complete == None:
+            self.size
+        return self._complete
+    @property
     def size(self):
         with self.lock:
+            self._complete = True
             if not self._size:
                 if '%' in self.path:
                     self._size = 0
@@ -134,15 +143,14 @@ class Dependency(object):
                         if frame_range.size > 0:
                             self._size += frame_range.size
                         else:
-                            self.complete = False
+                            self._complete = False
                 else:
                     try:
                         self._size = os.path.getsize(self.path)
                     except OSError:
                         self._size = None
+                        self._complete = False
             return self._size
-    def check(self):
-        return os.path.exists(self.path)
 
 class Stack(object):
     def __init__(self, path):
@@ -150,6 +158,11 @@ class Stack(object):
         self.size = os.path.getsize(self.path)
         self.dependencies_size = None
         self.ctime = os.path.getctime(self.path)
+        self.project = None
+        self.resX = None
+        self.resY = None
+        self.fps = None
+        self.frames = None
         self.read_header()
     def read_header(self):
         try:
@@ -169,13 +182,13 @@ class Stack(object):
                         if object_path.endswith('D/RenderProject'):
                             self.project = char_buffer
                         elif object_path.endswith('D/X'):
-                            self.resX = char_buffer
+                            self.resX = int(char_buffer)
                         elif object_path.endswith('D/Y'):
-                            self.resY = char_buffer
+                            self.resY = int(char_buffer)
                         elif object_path.endswith('D/JobFrameRate'):
                             self.fps = char_buffer
                         elif object_path.endswith('p/W'):
-                            self.frames = char_buffer
+                            self.frames = int(char_buffer)
                         elif object_path.endswith('Group/p'): # End of header
                             return
                         char_buffer = ''
@@ -187,8 +200,6 @@ class Stack(object):
         except IOError as e:
             print 'Could not open ' + self.path
             raise e
-
-
     @property
     def groupname(self):
         try:
@@ -196,12 +207,27 @@ class Stack(object):
         except AttributeError:
             self.set_groupname()
         return self._groupname
+    @property
+    def title(self):
+        try:
+            self._title
+        except AttributeError:
+            self.set_groupname()
+        return self._title
+    @property
+    def tags(self):
+        try:
+            self._tags
+        except AttributeError:
+            self.set_groupname()
+        return self._tags
     def set_groupname(self):
         try:
             level_names = []
             fx_type = None
             char_buffer = ''
             char_buffer_store = ''
+            ungroup = False
             for line in open(self.path):
                 for char in line:
                     if char == '(':
@@ -211,9 +237,23 @@ class Stack(object):
                     elif char == ')':
                         f_path = False
                         object_path = '/'.join(level_names)
-                        if object_path.endswith('Group/Group/p/n'):
-                            self._groupname = char_buffer
-                            return
+                        if object_path.endswith('/ungroup') and char_buffer == '1':
+                            ungroup = True
+                        elif object_path.endswith('Group/D'): # This is a render
+                            ungroup = True
+                        elif object_path.endswith('Group/p') and ungroup:
+                            ungroup = False
+                        elif object_path.endswith('Group/p/n'):
+                            if not ungroup:
+                                self._groupname = char_buffer
+                                self._title = self._groupname.split('#', 1)[0]
+                                try:
+                                    self._tags = self._groupname.split('#')[1:]
+                                except IndexError:
+                                    self._tags = []
+                                return
+                            else:
+                                ungroup = False
                         char_buffer = ''
                         del level_names[-1]
                     elif len(level_names) > 0 and level_names[-1] == 'Shape':
@@ -221,6 +261,51 @@ class Stack(object):
                     elif char:
                         char_buffer += char
             self._groupname = False
+            self._title = os.path.splitext(os.path.basename(self.path))[0]
+            self._tags = []
+        except IOError as e:
+            print 'Could not open ' + self.path
+            raise e
+    @property
+    def comment(self):
+        try:
+            self._comment
+        except AttributeError:
+            self.set_comment()
+        return self._comment
+    def set_comment(self):
+        try:
+            level_names = []
+            fx_type = None
+            char_buffer = ''
+            char_buffer_store = ''
+            ungroup = False
+            for line in open(self.path):
+                for char in line:
+                    if char == '(':
+                        char_buffer = char_buffer.replace('\n', '').strip()
+                        level_names.append(char_buffer)
+                        char_buffer = ''
+                    elif char == ')':
+                        f_path = False
+                        object_path = '/'.join(level_names)
+                        if object_path.endswith('/ungroup') and char_buffer == '1':
+                            ungroup = True
+                        elif object_path.endswith('/p') and ungroup:
+                            ungroup = False
+                        elif object_path.endswith('/c'):
+                            if not ungroup:
+                                self._comment = char_buffer
+                                return
+                            else:
+                                ungroup = False
+                        char_buffer = ''
+                        del level_names[-1]
+                    elif len(level_names) > 0 and level_names[-1] == 'Shape':
+                        continue
+                    elif char:
+                        char_buffer += char
+            self._comment = False
         except IOError as e:
             print 'Could not open ' + self.path
             raise e
@@ -231,7 +316,7 @@ class Stack(object):
         except AttributeError:
             list(self.iter_dependencies())
         return self._dependencies
-    def iter_dependencies(self, progress_callback=False):
+    def iter_dependencies(self, progress_callback=False, relink=False):
         self._dependencies = []
         self._dependency_paths = []
         try:
@@ -243,6 +328,8 @@ class Stack(object):
             last_progress_update_time = 0
             level = 0
             hidden_level = False
+            if relink:
+                temp_handle = tempfile.NamedTemporaryFile(delete=False)
             for line in open(self.path):
                 for char in line:
                     env_bytes_read += 1
@@ -302,19 +389,29 @@ class Stack(object):
                             f_type = 'glsl'
                             if object_path.endswith('F/p/s/c/c'):
                                 f_folder = char_buffer
-                            elif object_path.endswith('F/p/s/c/E/s'):
-                                f_path = f_folder + '/' + char_buffer
+                            elif object_path.endswith('F/p/s/c/E/s') or object_path.endswith('F/p/s/c/p/s'):
+                                if char_buffer.startswith('/'):
+                                    f_path = char_buffer
+                                else:
+                                    f_path = f_folder + '/' + char_buffer
                         elif fx_type == '143':
                             f_type = 'lut'
                             if object_path.endswith('F/p/s/c/c'):
                                 f_folder = char_buffer
                             elif object_path.endswith('F/p/s/c/F/s'):
-                                f_path = f_folder + '/' + char_buffer
+                                if char_buffer.startswith('/'):
+                                    f_path = char_buffer
+                                else:
+                                    f_path = f_folder + '/' + char_buffer
                         if f_path:
                             if '%' in f_path:
                                 dependency = Dependency(f_path, f_type, CdIs, CdIe, parent=self)
                             else:
                                 dependency = Dependency(f_path, f_type, parent=self)
+                            if relink and not dependency.complete:
+                                print 'Missing dependency: ', dependency.name
+                                line = self.relink_line(line, dependency)
+                                # dependency needs to be updated at this point
                             if not dependency.path in self._dependency_paths:
                                 self._dependencies.append(dependency)
                                 self._dependency_paths.append(dependency.path)
@@ -331,8 +428,45 @@ class Stack(object):
                     elif char:
                         char_buffer += char
                     escape = False
+                if relink:
+                    temp_handle.write(line)
+            if relink:        
+                temp_handle.flush()
+                temp_handle.close()
+                backup_path = os.path.join(os.path.dirname(self.path), '.'+os.path.basename(self.path))
+                os.rename(self.path, backup_path)
+                os.rename(temp_handle.name, self.path)
             if progress_callback:
                 progress_callback(self, 1.0)
         except IOError as e:
             print 'Could not open ' + self.path
             raise e
+    def relink_dependencies(self, progress_callback=False):
+        for dependency in self.iter_dependencies(progress_callback=progress_callback, relink=True):
+            if dependency.type == 'font':
+                try:
+                    destination = os.path.join(mistika.fonts_folder, os.path.basename(dependency_path))
+                    shutils.copy2(dependency.path, destination)
+                except IOError:
+                    print 'Could not copy %s to %s' % (dependency.path, destination)
+                # copy to /usr/share/fonts/mistika/
+            else:
+                pass # relinking is handled in iter_dependencies(relink=True)
+    def relink_line(self, line, dependency):
+        dependency_basename = os.path.basename(dependency.path)
+        dependency_foldername = os.path.dirname(dependency.path)
+        print dependency.type, dependency_foldername, dependency_basename
+        for root, dirs, files in os.walk(os.path.dirname(self.path)):
+            for basename in files:
+                if basename == dependency_basename:
+                    abspath = os.path.join(root, basename)
+                    if dependency.type in ['dat']:
+                        return line.replace('('+escape_par(dependency.name)+')', '('+escape_par(abspath)+')')
+                    elif dependency.type in ['lnk']:
+                        return line.replace('('+escape_par(dependency.path)+')', '('+escape_par(abspath)+')')
+                    elif dependency.type in ['glsl', 'lut']:
+                        return line.replace('('+dependency_basename+')', '('+escape_par(abspath)+')')
+                    elif dependency.type in ['highres', 'lowres', 'audio']:
+                        return line.replace('('+escape_par(dependency_foldername)+'/)', '('+escape_par(root)+'/)')
+        return line
+
