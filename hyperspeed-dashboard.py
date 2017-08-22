@@ -956,13 +956,15 @@ class PyApp(gtk.Window):
     def error(self, msg):
         print msg
     def config_rw(self, write=False):
-        config_defaults = {
+        config_force = {
             'app_folder' : os.path.dirname(os.path.realpath(sys.argv[0]))
+        }
+        config_defaults = {
         }
         try:
             self.config
         except AttributeError:
-            self.config = {}
+            self.config = config_force
         config_path = os.path.join(CONFIG_FOLDER, CONFIG_FILE) 
         try:
             stored_config = json.loads(open(config_path).read())
@@ -987,6 +989,11 @@ class PyApp(gtk.Window):
             if not config_item in self.config.keys():
                 print 'New default config item: ', config_item
                 self.config[config_item] = config_defaults[config_item]
+                self.config_rw(write=True)
+        for config_item in config_force:
+            if self.config[config_item] != config_force[config_item]:
+                print 'Reset config item: ', config_item
+                self.config[config_item] = config_force[config_item]
                 self.config_rw(write=True)
     def on_quit(self, widget):
         if type(widget) is gtk.Button:
@@ -1395,7 +1402,12 @@ class PyApp(gtk.Window):
                 extract_to = self.config['app_folder']
                 print 'Extract to:', extract_to
                 with zipfile.ZipFile(download_path) as zf:
+                    members = zf.namelist()
+                    prefix = os.path.commonprefix(members)
+                    # if not prefix.endswith('/'):
+                    #     prefix = prefix.rsplit('/', 1)[0]
                     zf.extractall(extract_to)
+                    os.rename(os.path.join(extract_to, prefix), extract_to)
             else:
                 print 'Update failed'
                 gobject.idle_add(self.gui_error_dialog, 'Update failed')
