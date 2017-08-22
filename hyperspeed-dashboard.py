@@ -1404,8 +1404,6 @@ class PyApp(gtk.Window):
                 with zipfile.ZipFile(download_path) as zf:
                     members = zf.namelist()
                     prefix = os.path.commonprefix(members)
-                    # if not prefix.endswith('/'):
-                    #     prefix = prefix.rsplit('/', 1)[0]
                     zf.extractall(extract_to)
                     os.rename(os.path.join(extract_to, prefix), extract_to)
             else:
