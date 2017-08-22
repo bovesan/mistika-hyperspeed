@@ -1443,3 +1443,4 @@ os.environ['LC_ALL'] = 'en_US.utf8'
 gobject.threads_init()
 PyApp()
 gtk.main()
+
