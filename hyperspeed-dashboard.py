@@ -95,6 +95,7 @@ def download_file(url, destination):
             if not chunk:
                 break
             f.write(chunk)
+        return True
 
 class RenderItem(hyperspeed.stack.Stack):
     def __init__(self, path):
@@ -1397,6 +1398,9 @@ class PyApp(gtk.Window):
             else:
                 print 'Update failed'
                 gobject.idle_add(self.gui_error_dialog, 'Update failed')
+                gobject.idle_add(self.spinner_update.hide)
+                gobject.idle_add(self.updateButton.show)
+                return
             # run update script
         post_update_checksum = md5(sys.argv[0])
         if True or pre_update_checksum != post_update_checksum:
@@ -1407,7 +1411,6 @@ class PyApp(gtk.Window):
         #     version_string = '<span color="#00aa00" weight="bold">Updated</span>'
         #     gobject.idle_add(self.versionLabel.set_markup, version_string)
         self.on_refresh()
-        gobject.idle_add(self.updateButton.hide)
         gobject.idle_add(self.spinner_update.hide)
     def on_refresh(self, widget=False):
         self.launch_thread(self.io_populate_tools)
