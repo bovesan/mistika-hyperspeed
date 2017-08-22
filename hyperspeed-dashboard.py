@@ -1404,8 +1404,15 @@ class PyApp(gtk.Window):
                 with zipfile.ZipFile(download_path) as zf:
                     members = zf.namelist()
                     prefix = os.path.commonprefix(members)
+                    print 'Prefix:', prefix
                     zf.extractall(extract_to)
-                    os.rename(os.path.join(extract_to, prefix), extract_to)
+                    extracted_to = os.path.join(extract_to, prefix)
+                    for basename in os.listdir(extracted_to):
+                        os.rename(os.path.join(extracted_to, basename), os.path.join(extract_to, basename))
+                    try:
+                        os.rmdir(extracted_to)
+                    except OSError:
+                        print 'Could not remove directory:', extracted_to
             else:
                 print 'Update failed'
                 gobject.idle_add(self.gui_error_dialog, 'Update failed')
