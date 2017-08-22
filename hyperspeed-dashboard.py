@@ -1383,7 +1383,6 @@ class PyApp(gtk.Window):
             else:
                 version_string = '<span color="#ff9900" weight="bold">Last updated: %s (update available)</span>' % local_release_date
                 update_available = True
-            # archive = 'https://github.com/bovesan/mistika-hyperspeed/archive/master.zip'
             # server = 'https://api.github.com'
             # headers = {
             #     'Accept': 'application/vnd.github.v3+json'
