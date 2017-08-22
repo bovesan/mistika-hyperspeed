@@ -1388,7 +1388,15 @@ class PyApp(gtk.Window):
         else:
             print 'Downloading latest version ...'
             archive = 'https://github.com/bovesan/mistika-hyperspeed/archive/master.zip'
-            download_file(archive, os.path.join(CONFIG_FOLDER, 'hyperspeed.zip'))
+            download_path = os.path.join(CONFIG_FOLDER, 'mistika-hyperspeed-master.zip')
+            if download_file(archive, download_path):
+                extract_to = self.config['app_folder']
+                print 'Extract to:', extract_to
+                with zipfile.ZipFile(download_path) as zf:
+                    zf.extractall(extract_to)
+            else:
+                print 'Update failed'
+                gobject.idle_add(self.gui_error_dialog, 'Update failed')
             # run update script
         post_update_checksum = md5(sys.argv[0])
         if True or pre_update_checksum != post_update_checksum:
