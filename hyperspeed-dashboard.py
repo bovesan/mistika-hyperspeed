@@ -1416,7 +1416,6 @@ class PyApp(gtk.Window):
         self.launch_thread(self.io_populate_configs)
         self.launch_thread(self.io_populate_links)
 
-
 warnings.filterwarnings("ignore")
 os.environ['LC_CTYPE'] = 'en_US.utf8'
 os.environ['LC_ALL'] = 'en_US.utf8'
