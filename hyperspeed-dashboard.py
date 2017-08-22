@@ -98,6 +98,30 @@ def download_file(url, destination):
             f.write(chunk)
         return True
 
+def get_zip_members(zip):
+    parts = []
+    # get all the path prefixes
+    for name in zip.namelist():
+        # only check files (not directories)
+        if not name.endswith('/'):
+            # keep list of path elements (minus filename)
+            parts.append(name.split('/')[:-1])
+    # now find the common path prefix (if any)
+    prefix = os.path.commonprefix(parts)
+    if prefix:
+        # re-join the path elements
+        prefix = '/'.join(prefix) + '/'
+    # get the length of the common prefix
+    offset = len(prefix)
+    # now re-set the filenames
+    for zipinfo in zip.infolist():
+        name = zipinfo.filename
+        # only check files (not directories)
+        if len(name) > offset:
+            # remove the common prefix
+            zipinfo.filename = name[offset:]
+            yield zipinfo
+
 class RenderItem(hyperspeed.stack.Stack):
     def __init__(self, path):
         super(RenderItem, self).__init__(path)
@@ -1405,14 +1429,7 @@ class PyApp(gtk.Window):
                     members = zf.namelist()
                     prefix = os.path.commonprefix(members)
                     print 'Prefix:', prefix
-                    zf.extractall(extract_to)
-                    extracted_to = os.path.join(extract_to, prefix)
-                    for basename in os.listdir(extracted_to):
-                        os.rename(os.path.join(extracted_to, basename), os.path.join(extract_to, basename))
-                    try:
-                        os.rmdir(extracted_to)
-                    except OSError:
-                        print 'Could not remove directory:', extracted_to
+                    zf.extractall(extract_to, get_zip_members(zf))
             else:
                 print 'Update failed'
                 gobject.idle_add(self.gui_error_dialog, 'Update failed')
