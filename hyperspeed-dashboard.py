@@ -570,11 +570,11 @@ class PyApp(gtk.Window):
             self.files[file_type] = {}
         files = self.files[file_type]
         # Installed afterscripts
-        afterscripts_installed = []
+        self.afterscripts_installed = []
         for line in open(mistika.afterscripts_path):
             alias = line.strip()
             link_path = os.path.join(mistika.scripts_folder, alias)
-            afterscripts_installed.append(os.path.realpath(link_path))
+            self.afterscripts_installed.append(alias)
         for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
             for name in dirs:
                 if name.startswith('.'):
@@ -600,7 +600,7 @@ class PyApp(gtk.Window):
                 continue
             if files[path]['isdir']:
                 continue
-            if path in afterscripts_installed:
+            if files[path]['alias'] in self.afterscripts_installed:
                 files[path]['Show in Mistika'] = True
         gobject.idle_add(self.gui_update_afterscripts)
     def io_populate_stacks(self):
@@ -819,6 +819,18 @@ class PyApp(gtk.Window):
                 treestore[row_path] = (alias, False, True, item_path, description)
             else:
                 treestore[row_path] = (alias, item['Show in Mistika'], False, item_path, description)
+        for alias in self.afterscripts_installed:
+            if alias == 'None2':
+                continue
+            double_break = False
+            for item_path in sorted(items):
+                if items[item_path]['alias'] == alias:
+                    double_break = True
+                    break
+            if double_break:
+                break
+            row_iter = treestore.append(None, [alias, True, True, '', ''])
+
     def gui_update_stacks(self):
         treestore = self.stacks_treestore # Name, installed, is folder, file path, requires installation (has dependencies)
         row_references = self.row_references_stacks
@@ -1204,11 +1216,15 @@ class PyApp(gtk.Window):
         alias = treestore[path][0]
         activated = not treestore[path][1]
         file_path = treestore[path][3]
+        basename = os.path.basename(file_path)
         linked = False
+        duplicates = []
         for link in os.listdir(mistika.scripts_folder):
             link_path = os.path.join(mistika.scripts_folder, link)
-            if os.path.realpath(link_path) == os.path.realpath(file_path):
-                if activated:
+            if os.path.realpath(link_path) == os.path.realpath(file_path) and alias == link:
+                if not link == alias:
+                    duplicates.append(alias)
+                elif activated:
                     linked = True
         if activated and not linked:
             link_path = os.path.join(mistika.scripts_folder, alias)
@@ -1217,9 +1233,13 @@ class PyApp(gtk.Window):
             os.symlink(file_path, link_path)
         stored = False
         new_config = 'None\n'
+        print mistika.afterscripts_path
         for line in open(mistika.afterscripts_path):
             line_alias = line.strip()
             line_path = os.path.join(mistika.scripts_folder, line_alias)
+            # print 'alias:', alias, 'line_alias:', line_alias
+            if line_alias in duplicates:
+                continue
             if alias == line_alias:
                 if activated:
                     stored = True
