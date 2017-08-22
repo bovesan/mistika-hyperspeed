@@ -476,8 +476,7 @@ class Stack(object):
                     elif dependency.type in ['lnk']:
                         return (line.replace('('+escape_par(dependency.path)+')', '('+escape_par(abspath)+')'), dependency_new)
                     elif dependency.type in ['glsl', 'lut']:
-                        print 'Replace:', '('+dependency.name+')', '('+escape_par(abspath)+')'
-                        return (line.replace('('+dependency.name+')', '('+escape_par(abspath)+')'), dependency_new)
+                        return (line.replace('('+escape_par(dependency.name)+')', '('+escape_par(abspath)+')'), dependency_new)
                     elif dependency.type in ['highres', 'lowres', 'audio']:
                         return (line.replace('('+escape_par(dependency_foldername)+'/)', '('+escape_par(root)+'/)'), dependency_new)
         return (line, dependency)
