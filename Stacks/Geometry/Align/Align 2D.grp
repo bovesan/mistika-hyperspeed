@@ -9,9 +9,10 @@ p(
 Group(
 groupType(3)
 p(
-	n(Align)
+	n(Align 2D)
 	X(1000) Y(0) W(100) F(0)
 	L(-2)
+	c(Aligns the image horizontally and/or vertically, based on the alpha channel.)
 	Graph(X(-464) Y(90) x(-464) y(121.5))
 )
 F(
