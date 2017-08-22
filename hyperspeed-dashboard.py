@@ -19,6 +19,7 @@ import urllib2
 import warnings
 import webbrowser
 import xml.etree.ElementTree as ET
+import zipfile
 from distutils.spawn import find_executable
 
 VERSION_STRING = ''
