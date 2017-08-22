@@ -1425,9 +1425,6 @@ class PyApp(gtk.Window):
                 extract_to = self.config['app_folder']
                 print 'Extract to:', extract_to
                 with zipfile.ZipFile(download_path) as zf:
-                    members = zf.namelist()
-                    prefix = os.path.commonprefix(members)
-                    print 'Prefix:', prefix
                     zf.extractall(extract_to, get_zip_members(zf))
             else:
                 print 'Update failed'
