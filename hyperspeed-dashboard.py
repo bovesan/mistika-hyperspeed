@@ -624,6 +624,7 @@ class PyApp(gtk.Window):
                 path = os.path.join(root, name)
                 if os.path.splitext(name)[1].lower() in STACK_EXTENSIONS:
                     files[path] = {'isdir' : False}
+        # stack.Stack(path).relink_dependencies()
         for path in files:
             if not os.path.exists(path):
                 del files[path]
@@ -631,10 +632,13 @@ class PyApp(gtk.Window):
             if files[path]['isdir']:
                 continue
             stack = hyperspeed.Stack(path)
+            for dependency in stack.dependencies:
+                if not dependency.complete:
+                    stack.relink_dependencies()
+                    break
             if stack.comment:
                 files[path]['comment'] = stack.comment
-            if not 'dependencies' in files[path]:
-                files[path]['dependencies'] = stack.dependencies
+            files[path]['dependencies'] = stack.dependencies
             if len(files[path]['dependencies']) > 0:
                 files[path]['Dependent'] = True
             for dependency in files[path]['dependencies']:

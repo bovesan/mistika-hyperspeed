@@ -6,6 +6,7 @@ import mistika
 import text
 import threading
 import tempfile
+import copy
 
 def escape_par(string):
     return string.replace('(', '\(').replace(')', '\)')
@@ -330,6 +331,7 @@ class Stack(object):
             hidden_level = False
             if relink:
                 temp_handle = tempfile.NamedTemporaryFile(delete=False)
+                changes = False
             for line in open(self.path):
                 for char in line:
                     env_bytes_read += 1
@@ -410,7 +412,10 @@ class Stack(object):
                                 dependency = Dependency(f_path, f_type, parent=self)
                             if relink and not dependency.complete:
                                 print 'Missing dependency: ', dependency.name
-                                line = self.relink_line(line, dependency)
+                                new_line, dependency = self.relink_line(line, dependency)
+                                if line != new_line:
+                                    changes = True
+                                    line = new_line
                                 # dependency needs to be updated at this point
                             if not dependency.path in self._dependency_paths:
                                 self._dependencies.append(dependency)
@@ -430,12 +435,17 @@ class Stack(object):
                     escape = False
                 if relink:
                     temp_handle.write(line)
-            if relink:        
-                temp_handle.flush()
-                temp_handle.close()
-                backup_path = os.path.join(os.path.dirname(self.path), '.'+os.path.basename(self.path))
-                os.rename(self.path, backup_path)
-                os.rename(temp_handle.name, self.path)
+            if relink:
+                if changes:
+                    temp_handle.flush()
+                    temp_handle.close()
+                    backup_path = os.path.join(os.path.dirname(self.path), '.'+os.path.basename(self.path))
+                    os.rename(self.path, backup_path)
+                    os.rename(temp_handle.name, self.path)
+                    print 'Wrote changes to file:', self.path
+                else:
+                    temp_handle.close()
+                    os.remove(temp_handle.name)
             if progress_callback:
                 progress_callback(self, 1.0)
         except IOError as e:
@@ -460,13 +470,15 @@ class Stack(object):
             for basename in files:
                 if basename == dependency_basename:
                     abspath = os.path.join(root, basename)
+                    dependency_new = Dependency(abspath, dependency.type, dependency.start, dependency.end, dependency.parents[0])
                     if dependency.type in ['dat']:
-                        return line.replace('('+escape_par(dependency.name)+')', '('+escape_par(abspath)+')')
+                        return (line.replace('('+escape_par(dependency.name)+')', '('+escape_par(dependency_new.name)+')'), dependency_new)
                     elif dependency.type in ['lnk']:
-                        return line.replace('('+escape_par(dependency.path)+')', '('+escape_par(abspath)+')')
+                        return (line.replace('('+escape_par(dependency.path)+')', '('+escape_par(abspath)+')'), dependency_new)
                     elif dependency.type in ['glsl', 'lut']:
-                        return line.replace('('+dependency_basename+')', '('+escape_par(abspath)+')')
+                        print 'Replace:', '('+dependency.name+')', '('+escape_par(abspath)+')'
+                        return (line.replace('('+dependency.name+')', '('+escape_par(abspath)+')'), dependency_new)
                     elif dependency.type in ['highres', 'lowres', 'audio']:
-                        return line.replace('('+escape_par(dependency_foldername)+'/)', '('+escape_par(root)+'/)')
-        return line
+                        return (line.replace('('+escape_par(dependency_foldername)+'/)', '('+escape_par(root)+'/)'), dependency_new)
+        return (line, dependency)
 

@@ -25,7 +25,7 @@ p(
 s(
 	T(n(Pass 1) C(16) t(1))
 	NamingRules(2)
-	c(R(0)	n($SECRET$/$SECRET$)	m(0)	M(19)	d(0)		c(etc/GLSL)E(s(/home/mistika/mistika-hyperspeed/Stacks/Geometry/Align/GLSL/Align.01.c))	)
+	c(R(0)	n($SECRET$/$SECRET$)	m(0)	M(19)	d(0)		c(etc/GLSL)E(s(/Users/bove/Dropbox \(Creativity In Action\)/Mistika/mistika-hyperspeed/Stacks/Geometry/Align/GLSL/Align.01.glsl))	)
 	c(R(1)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
 	c(R(2)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
 	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
@@ -55,7 +55,7 @@ p(
 s(
 	T(n(Render pass) C(16) t(1))
 	NamingRules(2)
-	c(R(0)	n($SECRET$/$SECRET$)	m(0)	M(19)	d(0)		c(etc/GLSL)E(s(/home/mistika/mistika-hyperspeed/Stacks/Geometry/Align/GLSL/Align.01.c))	)
+	c(R(0)	n($SECRET$/$SECRET$)	m(0)	M(19)	d(0)		c(etc/GLSL)E(s(/Users/bove/Dropbox \(Creativity In Action\)/Mistika/mistika-hyperspeed/Stacks/Geometry/Align/GLSL/Align.01.glsl))	)
 	c(R(1)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(2))
 	c(R(2)	n(Align/Horizontal)	m(0)	M(3)	d(0) s(None) s(Left) s(Center) s(Right) )
 	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
@@ -85,7 +85,7 @@ p(
 s(
 	T(n(Pass 2) C(16) t(1))
 	NamingRules(2)
-	c(R(0)	n($SECRET$/$SECRET$)	m(0)	M(19)	d(0)		c(etc/GLSL)E(s(/home/mistika/mistika-hyperspeed/Stacks/Geometry/Align/GLSL/Align.01.c))	)
+	c(R(0)	n($SECRET$/$SECRET$)	m(0)	M(19)	d(0)		c(etc/GLSL)E(s(/Users/bove/Dropbox \(Creativity In Action\)/Mistika/mistika-hyperspeed/Stacks/Geometry/Align/GLSL/Align.01.glsl))	)
 	c(R(1)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(1))
 	c(R(2)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
 	c(R(3)	n($SECRET$/$SECRET$)	m(-100000)	M(100000)	d(0))
