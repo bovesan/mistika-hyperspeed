@@ -481,3 +481,19 @@ class Stack(object):
                         return (line.replace('('+escape_par(dependency_foldername)+'/)', '('+escape_par(root)+'/)'), dependency_new)
         return (line, dependency)
 
+class Render(Stack):
+    def __init__(self, path):
+        super(Render, self).__init__(path)
+        self.clp_path = 'clp'.join(self.path.rsplit('rnd', 1))
+        self.output_stack = Stack(self.clp_path)
+        self.output_video = None
+        self.output_proxy = None
+        self.output_audio = None
+        for dependency in self.output_stack.dependencies:
+            if dependency.type == 'highres':
+                self.output_video = dependency
+            elif dependency.type == 'lowres':
+                self.output_proxy = dependency
+            elif dependency.type == 'audio':
+                self.output_audio = dependency
+        

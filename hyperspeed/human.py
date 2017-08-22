@@ -36,6 +36,9 @@ def reltime(d):
 def time(d):
     return '%s, %s' % (datetime.fromtimestamp(d).strftime("%H:%M"), reltime(d))
 
+def time_of_day(d):
+    return datetime.fromtimestamp(d).strftime("%H:%M:%S")
+
 def duration(s):
     parts = []
     units = [
