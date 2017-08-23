@@ -1269,7 +1269,12 @@ class PyApp(gtk.Window):
         path = tree[treepath][3]
         f_item = self.files['Configs'][path]
         if f_item['manage']:
-            self.gui_error_dialog('Custom managed configs not yet implemented')
+            if state:
+                if subprocess.call([os.path.join(path, 'manage'), 'install']) > 1:
+                    self.gui_error_dialog('Install failed')
+            else:
+                if subprocess.call([os.path.join(path, 'manage'), 'remove']) > 1:
+                    self.gui_error_dialog('Removal failed')
         else:
             links = f_item['links']
             if state: # Install
