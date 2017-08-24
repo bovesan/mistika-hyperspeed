@@ -7,6 +7,7 @@ import text
 import threading
 import tempfile
 import copy
+import shutil
 
 def escape_par(string):
     return string.replace('(', '\(').replace(')', '\)')
@@ -455,8 +456,8 @@ class Stack(object):
         for dependency in self.iter_dependencies(progress_callback=progress_callback, relink=True):
             if dependency.type == 'font':
                 try:
-                    destination = os.path.join(mistika.fonts_folder, os.path.basename(dependency_path))
-                    shutils.copy2(dependency.path, destination)
+                    destination = os.path.join(mistika.fonts_folder, os.path.basename(dependency.path))
+                    shutil.copy2(dependency.path, destination)
                 except IOError:
                     print 'Could not copy %s to %s' % (dependency.path, destination)
                 # copy to /usr/share/fonts/mistika/
