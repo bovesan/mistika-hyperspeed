@@ -458,7 +458,7 @@ class Stack(object):
                 try:
                     destination = os.path.join(mistika.fonts_folder, os.path.basename(dependency.path))
                     shutil.copy2(dependency.path, destination)
-                except IOError:
+                except (IOError, shutil.Error):
                     print 'Could not copy %s to %s' % (dependency.path, destination)
                 # copy to /usr/share/fonts/mistika/
             else:
