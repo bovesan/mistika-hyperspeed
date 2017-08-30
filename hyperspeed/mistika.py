@@ -8,6 +8,12 @@ import platform as platform_module
 from xml.etree import ElementTree
 from distutils.version import LooseVersion
 
+def get_rnd_path(rnd_name):
+    for root, dirs, files in os.walk(os.path.join(projects_folder, project, 'DATA/RENDER')):
+        for basename in files:
+            if basename.startswith(rnd_name) and basename.endswith('.rnd'):
+                return os.path.join(root, basename)
+            
 def get_mistikarc_path(env_folder):
     mistikarc_paths = [
     env_folder + '/.mistikarc',
@@ -112,6 +118,7 @@ def reload():
             font_path, font_name = line.strip().strip('"').split('"   "')
             fonts[font_name] = font_path
     except IOError:
-        print 'Could not read fonts config: %s' % fonts_config_path
+        pass
+        #print 'Could not read fonts config: %s' % fonts_config_path
 
 reload()

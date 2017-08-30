@@ -7,6 +7,7 @@ import text
 import threading
 import tempfile
 import copy
+import shutil
 
 def escape_par(string):
     return string.replace('(', '\(').replace(')', '\)')
@@ -458,9 +459,9 @@ class Stack(object):
         for dependency in self.iter_dependencies(progress_callback=progress_callback, relink=True):
             if dependency.type == 'font':
                 try:
-                    destination = os.path.join(mistika.fonts_folder, os.path.basename(dependency_path))
-                    shutils.copy2(dependency.path, destination)
-                except IOError:
+                    destination = os.path.join(mistika.fonts_folder, os.path.basename(dependency.path))
+                    shutil.copy2(dependency.path, destination)
+                except (IOError, shutil.Error):
                     print 'Could not copy %s to %s' % (dependency.path, destination)
                 # copy to /usr/share/fonts/mistika/
             else:
@@ -484,3 +485,19 @@ class Stack(object):
                         return (line.replace('('+escape_par(dependency_foldername)+'/)', '('+escape_par(root)+'/)'), dependency_new)
         return (line, dependency)
 
+class Render(Stack):
+    def __init__(self, path):
+        super(Render, self).__init__(path)
+        self.clp_path = 'clp'.join(self.path.rsplit('rnd', 1))
+        self.output_stack = Stack(self.clp_path)
+        self.output_video = None
+        self.output_proxy = None
+        self.output_audio = None
+        for dependency in self.output_stack.dependencies:
+            if dependency.type == 'highres':
+                self.output_video = dependency
+            elif dependency.type == 'lowres':
+                self.output_proxy = dependency
+            elif dependency.type == 'audio':
+                self.output_audio = dependency
+        
