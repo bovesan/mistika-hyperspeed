@@ -332,7 +332,9 @@ class Stack(object):
             if relink:
                 temp_handle = tempfile.NamedTemporaryFile(delete=False)
                 changes = False
+            line_i = 0
             for line in open(self.path):
+                line_i += 1
                 for char in line:
                     env_bytes_read += 1
                     time_now = time.time()
@@ -358,14 +360,15 @@ class Stack(object):
                                 continue
                             else:
                                 hidden_level = False
+                                # print 'Hidden ends, line', str(line_i)
                         f_path = False
                         object_path = '/'.join(level_names)
                         if object_path.endswith('F/T'):
                             fx_type = char_buffer
                         elif object_path.endswith('p/h'):
                             if bool(char_buffer):
-                                hidden_level = level-2
-                                # hidden_level = False # Because it is not working
+                                hidden_level = level-1
+                                # print 'Hidden starts:', object_path, ',line', str(line_i)
                         elif object_path.endswith('C/F'): # Clip source link
                             f_path = char_buffer
                             f_type = 'lnk'
