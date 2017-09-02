@@ -1004,7 +1004,7 @@ class PyApp(gtk.Window):
         print msg
     def config_rw(self, write=False):
         config_force = {
-            'app_folder' : os.path.dirname(os.path.realpath(sys.argv[0]))
+            'app_folder' : os.path.realpath(os.path.dirname('.'))
         }
         config_defaults = {
         }
@@ -1482,7 +1482,7 @@ class PyApp(gtk.Window):
                 gobject.idle_add(self.updateButton.show)
                 return
             # run update script
-        post_update_checksum = md5(sys.argv[0])
+        post_update_checksum = md5(os.path.basename(sys.argv[0]))
         if True or pre_update_checksum != post_update_checksum:
             version_string = '<span color="#ff9900" weight="bold">Restart to complete update</span>'
             gobject.idle_add(self.versionLabel.set_markup, version_string)
