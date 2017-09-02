@@ -1461,7 +1461,7 @@ class PyApp(gtk.Window):
     def io_update(self):
         gobject.idle_add(self.updateButton.hide)
         gobject.idle_add(self.spinner_update.show)
-        pre_update_checksum = md5(sys.argv[0])
+        pre_update_checksum = md5(os.path.basename(sys.argv[0]))
         git = os.path.isdir('.git')
         if git:
             print 'git pull'
