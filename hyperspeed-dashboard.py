@@ -1,6 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+import datetime
 import gobject
 import gtk
 import hashlib
@@ -146,6 +147,8 @@ class PyApp(gtk.Window):
         self.queue_io = Queue.Queue()
         self.files = {}
         self.updated = False
+        self.version = None
+        self.change_log = []
         screen = self.get_screen()
         self.set_title("Hyperspeed")
         self.set_size_request(screen.get_width()/2, screen.get_height()/2)
@@ -218,13 +221,18 @@ class PyApp(gtk.Window):
         toolbarBox.pack_start(filterBox, False, False)
         versionBox = gtk.HBox(False, 2)
         versionStr = VERSION_STRING
-        self.versionLabel = gtk.Label(versionStr)
-        self.versionLabel.set_use_markup(True)
-        versionBox.pack_start(self.versionLabel, False, False, 5)
-        self.updateButton = gtk.Button('Update')
-        self.updateButton.set_no_show_all(True)
-        self.updateButton.connect("clicked", self.on_update)
-        versionBox.pack_start(self.updateButton, False, False, 5)
+        label = self.versionLabel = gtk.Label(versionStr)
+        label.set_use_markup(True)
+        # label.connect("clicked", self.gui_about_dialog)
+        versionBox.pack_start(label, False, False, 5)
+        button = self.updateButton = gtk.Button('Update')
+        button.set_no_show_all(True)
+        button.connect("clicked", self.on_update)
+        versionBox.pack_start(button, False, False, 5)
+        button = self.infoButton = gtk.Button('i')
+        button.set_no_show_all(True)
+        button.connect("clicked", self.gui_about_dialog)
+        versionBox.pack_start(button, False, False, 5)
         spinner = self.spinner_update = gtk.Image()
         spinner.set_no_show_all(True)
         try:
@@ -830,7 +838,6 @@ class PyApp(gtk.Window):
             if double_break:
                 break
             row_iter = treestore.append(None, [alias, True, True, '', ''])
-
     def gui_update_stacks(self):
         treestore = self.stacks_treestore # Name, installed, is folder, file path, requires installation (has dependencies)
         row_references = self.row_references_stacks
@@ -1375,11 +1382,14 @@ class PyApp(gtk.Window):
         repo = 'mistika-hyperspeed'
         branch = 'master'
         update_available = False
+        self.version = datetime.datetime.utcfromtimestamp(float(open('RELEASE').read().strip()))
         git = os.path.isdir('.git')
         if git:
             cmd = ['git', 'config', '--get', 'remote.origin.url']
             for line in subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0].splitlines():
                 user, repo = line.split('/')[-2:]
+                if repo.endswith('.git'):
+                    repo = repo[:-4]
                 # print 'User:', user
                 # print 'Repo:', repo
             cmd = ['git', 'branch']
@@ -1399,35 +1409,45 @@ class PyApp(gtk.Window):
                 update_available = True
         else:
             try:
-                remote_release = urllib2.urlopen('https://raw.githubusercontent.com/%s/%s/%s/RELEASE' % (user, repo, branch)).read()
+                remote_release = float(urllib2.urlopen('https://raw.githubusercontent.com/%s/%s/%s/RELEASE' % (user, repo, branch)).read())
             except urllib2.HTTPError as e:
                 print e.reason
                 remote_release = False
-            local_release = open('RELEASE').read()
-            local_release_date = human.time(float(local_release.strip()))
+            local_release_date = human.time(self.version)
             if not remote_release:
                 version_string = '<span color="#000000">Last updated: %s</span>' % local_release_date
-            elif local_release == remote_release:
+            elif self.version == remote_release:
                 version_string = '<span color="#00aa00" weight="bold">Last updated: %s (up to date)</span>' % local_release_date
             else:
                 version_string = '<span color="#ff9900" weight="bold">Last updated: %s (update available)</span>' % local_release_date
                 update_available = True
-            # server = 'https://api.github.com'
-            # headers = {
-            #     'Accept': 'application/vnd.github.v3+json'
-            # }
-            # values = {
-            #     'sha' : branch
-            # }
-            # path = '/repos/%s/%s/commits' % (user, repo)
-            # data = urllib.urlencode(values)
-            # print repr(data)
-            # req = urllib2.Request(server+path+'?'+data, headers=headers)
-            # try:
-            #     response = urllib2.urlopen(req)
-            #     print response.read()
-            # except urllib2.URLError as e:
-            #     print e.reason
+        server = 'https://api.github.com'
+        headers = {
+            'Accept': 'application/vnd.github.v3+json'
+        }
+        values = {
+            'sha' : branch
+        }
+        path = '/repos/%s/%s/commits' % (user, repo)
+        data = urllib.urlencode(values)
+        # print repr(data)
+        req = urllib2.Request(server+path+'?'+data, headers=headers)
+        # print req.get_full_url()
+        # print req.header_items()
+        try:
+            response = urllib2.urlopen(req)
+            commits = json.loads(response.read())
+            commits.sort(key=lambda commit: commit['commit']["committer"]['date'], reverse=True)
+            self.change_log = []
+            for commit in commits:
+                if len(self.change_log) > 20:
+                    break
+                lines = commit['commit']['message'].splitlines()
+                if not lines[0].startswith('Merge branch'):
+                    self.change_log.append(commit)
+            gobject.idle_add(self.infoButton.show)
+        except urllib2.URLError as e:
+            print e.reason
         if update_available:
             gobject.idle_add(self.updateButton.show)
             if git:
@@ -1478,6 +1498,26 @@ class PyApp(gtk.Window):
         self.launch_thread(self.io_populate_stacks)
         self.launch_thread(self.io_populate_configs)
         self.launch_thread(self.io_populate_links)
+    def gui_about_dialog(self, widget):
+        dialog = gtk.MessageDialog(self, gtk.DIALOG_DESTROY_WITH_PARENT, type=gtk.MESSAGE_INFO, buttons=gtk.BUTTONS_OK)
+        dialog.set_position(gtk.WIN_POS_CENTER)
+        width, height = self.get_size()
+        # print repr(width), repr(height)
+        dialog.set_default_size(width, -1)
+        date_line = False
+        message = 'Change log:\n\n'
+        for commit in self.change_log:
+            # "2011-04-14T16:00:49Z"
+            date = datetime.datetime.strptime(commit['commit']["committer"]['date'].replace('Z', 'UTC'), "%Y-%m-%dT%H:%M:%S%Z")
+            if not date_line and date <= self.version:
+                message = '<b>Current version: %s</b>\n\n' % self.version
+                date_line = True
+            message += '<span color="#555">%s</span> %s <i>%s</i>\n' % (date, commit['commit']['message'].splitlines()[0], commit['commit']["committer"]['name'])
+        dialog.set_markup(message)
+        dialog.run()
+        dialog.resize(width, -1)
+        dialog.grab_focus()
+        dialog.destroy()
 
 warnings.filterwarnings("ignore")
 os.environ['LC_CTYPE'] = 'en_US.utf8'
