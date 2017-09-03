@@ -600,6 +600,7 @@ class PyApp(gtk.Window):
                         files[path].setdefault(key, value)
                     for child in xml_root:
                         files[path][child.tag] = child.text
+                    files[path]['alias_safe'] = files[path]['alias'].replace(' ', '_')
                 else:
                     files[path] = {'isdir' : True}
         for path in files:
@@ -608,7 +609,7 @@ class PyApp(gtk.Window):
                 continue
             if files[path]['isdir']:
                 continue
-            if files[path]['alias'] in self.afterscripts_installed:
+            if files[path]['alias_safe'] in self.afterscripts_installed:
                 files[path]['Show in Mistika'] = True
         gobject.idle_add(self.gui_update_afterscripts)
     def io_populate_stacks(self):
@@ -1221,6 +1222,7 @@ class PyApp(gtk.Window):
         except AttributeError:
             pass
         alias = treestore[path][0]
+        alias_safe = alias.replace(' ', '_')
         activated = not treestore[path][1]
         file_path = treestore[path][3]
         basename = os.path.basename(file_path)
@@ -1228,13 +1230,13 @@ class PyApp(gtk.Window):
         duplicates = []
         for link in os.listdir(mistika.scripts_folder):
             link_path = os.path.join(mistika.scripts_folder, link)
-            if os.path.realpath(link_path) == os.path.realpath(file_path) and alias == link:
-                if not link == alias:
-                    duplicates.append(alias)
+            if os.path.realpath(link_path) == os.path.realpath(file_path) and alias_safe == link:
+                if not link == alias_safe:
+                    duplicates.append(alias_safe)
                 elif activated:
                     linked = True
         if activated and not linked:
-            link_path = os.path.join(mistika.scripts_folder, alias)
+            link_path = os.path.join(mistika.scripts_folder, alias_safe)
             if os.path.islink(link_path):
                 os.remove(link_path)
             os.symlink(file_path, link_path)
@@ -1247,7 +1249,7 @@ class PyApp(gtk.Window):
             # print 'alias:', alias, 'line_alias:', line_alias
             if line_alias in duplicates:
                 continue
-            if alias == line_alias:
+            if alias_safe == line_alias:
                 if activated:
                     stored = True
                 else:
@@ -1256,7 +1258,7 @@ class PyApp(gtk.Window):
                 continue
             new_config += line
         if activated and not stored:
-            new_config += '%s\n' % alias
+            new_config += '%s\n' % alias_safe
         print '\nNew config:'
         print new_config
         open(mistika.afterscripts_path, 'w').write(new_config)
