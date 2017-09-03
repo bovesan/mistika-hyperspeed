@@ -590,15 +590,15 @@ class PyApp(gtk.Window):
                 path = os.path.join(root, name)
                 if 'config.xml' in os.listdir(path):
                     tree = ET.parse(os.path.join(path, 'config.xml'))
-                    root = tree.getroot()
-                    path = os.path.join(path, root.find('executable').text)
+                    xml_root = tree.getroot()
+                    path = os.path.join(path, xml_root.find('executable').text)
                     files[path] = {
                         'isdir' : False,
                         'alias' : name
                     }
                     for key, value in file_type_defaults.iteritems():
                         files[path].setdefault(key, value)
-                    for child in root:
+                    for child in xml_root:
                         files[path][child.tag] = child.text
                 else:
                     files[path] = {'isdir' : True}
