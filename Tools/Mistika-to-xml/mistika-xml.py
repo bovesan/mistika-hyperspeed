@@ -11,7 +11,7 @@ from xml.sax.saxutils import escape
 
 try:
     cwd = os.getcwd()
-    os.chdir(os.path.dirname(sys.argv[0]))
+    os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])))
     sys.path.append("../..")
     from hyperspeed import mistika
     import hyperspeed.utils
