@@ -244,7 +244,7 @@ class PyApp(gtk.Window):
         return toolbarBox
     def init_tools_window(self):
         tree        = self.tools_tree      = gtk.TreeView()
-        treestore   = self.tools_treestore = gtk.TreeStore(str, bool, bool, str, str, str) # Name, show in Mistika, is folder, autorun, file_path, description
+        treestore   = self.tools_treestore = gtk.TreeStore(str, bool, bool, str, str, str, bool) # Name, show in Mistika, is folder, autorun, file_path, description, Show on desktop
         tree.set_tooltip_column(5)
         tree_filter = self.tools_filter    = treestore.filter_new();
         cell = gtk.CellRendererText()
@@ -268,6 +268,15 @@ class PyApp(gtk.Window):
         toolsTreeAutorunColumn.set_expand(False)
         toolsTreeAutorunColumn.set_cell_data_func(cell, self.hide_if_parent)
         tree.append_column(toolsTreeAutorunColumn)
+        # Show on desktop
+        cell = gtk.CellRendererToggle()
+        cell.connect("toggled", self.on_tools_desktop_toggle, tree)
+        column = gtk.TreeViewColumn("Show on desktop", cell, active=6)
+        column.set_cell_data_func(cell, self.hide_if_parent)
+        column.set_expand(False)
+        column.set_resizable(True)
+        tree.append_column(column)
+        # Show in Mistika
         if hyperspeed.mistika.product == 'Mistika':
             cell = gtk.CellRendererToggle()
             cell.connect("toggled", self.on_tools_toggle, tree)
@@ -522,6 +531,7 @@ class PyApp(gtk.Window):
         file_type_defaults = {
             'Autorun' : 'Never',
             'Show in Mistika' : False,
+            'Show on desktop' : False,
             'description' : 'No description available'
         }
         if not file_type in self.files:
@@ -533,6 +543,11 @@ class PyApp(gtk.Window):
             for line in open(mistika.tools_path):
                 line_alias, line_path = line.strip().split(' ', 1)
                 tools_installed.append(line_path)
+        # Tools on desktop        
+        tools_on_desktop = []
+        desktop_folder_path = os.path.expanduser('~/Desktop/')
+        for basename in os.listdir(desktop_folder_path):
+            tools_on_desktop.append(os.path.realpath(os.path.join(desktop_folder_path, basename)))
         # Crontab
         crontab = get_crontab_lines()
         for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
@@ -560,6 +575,8 @@ class PyApp(gtk.Window):
                 files[path].setdefault(key, value)
             if path in tools_installed:
                 files[path]['Show in Mistika'] = True
+            if path in tools_on_desktop:
+                files[path]['Show on desktop'] = True
             for line in crontab:
                 line = line.strip()
                 if line.endswith(path):
@@ -760,7 +777,7 @@ class PyApp(gtk.Window):
                 pass
         gobject.idle_add(self.gui_update_render_queue)
     def gui_update_tools(self):
-        treestore = self.tools_treestore # Name, show in Mistika, is folder, autorun, file path, description
+        treestore = self.tools_treestore # Name, show in Mistika, is folder, autorun, file path, description, show on desktop
         row_references = self.row_references_tools
         items = self.files['Tools']
         for item_path in sorted(items):
@@ -781,15 +798,15 @@ class PyApp(gtk.Window):
             except KeyError:
                 parent_row_iter = None
             if not item_path in row_references:
-                row_iter = treestore.append(parent_row_iter, [alias, False, True, '', item_path, description])
+                row_iter = treestore.append(parent_row_iter, [alias, False, True, '', item_path, description, False])
                 row_path = treestore.get_path(row_iter)
                 row_references[item_path] = gtk.TreeRowReference(treestore, row_path)
             else:
                 row_path = row_references[item_path].get_path()
             if item['isdir']:
-                treestore[row_path] = (alias, False, True, '', item_path, description)
+                treestore[row_path] = (alias, False, True, '', item_path, description, False)
             else:
-                treestore[row_path] = (alias, item['Show in Mistika'], False, item['Autorun'], item_path, description)
+                treestore[row_path] = (alias, item['Show in Mistika'], False, item['Autorun'], item_path, description, item['Show on desktop'])
     def gui_update_afterscripts(self):
         treestore = self.afterscripts_treestore # Name, show in Mistika, is folder
         row_references = self.row_references_afterscripts
@@ -1162,6 +1179,36 @@ class PyApp(gtk.Window):
         print '\nNew config:'
         print new_config
         open(mistika.tools_path, 'w').write(new_config)
+        self.launch_thread(self.io_populate_tools)
+    def on_tools_desktop_toggle(self, cellrenderertoggle, path, treeview, *ignore):
+        treestore = treeview.get_model()
+        try: # If there is a filter in the middle
+            treestore = treestore.get_model()
+        except AttributeError:
+            pass
+        new_config = ''
+        alias = treestore[path][0]
+        activated = not treestore[path][6]
+        file_path = treestore[path][4]
+        stored = False
+        desktop_folder_path = os.path.expanduser('~/Desktop/')
+        for basename in os.listdir(desktop_folder_path):
+            abs_path = os.path.join(desktop_folder_path, basename)
+            real_path = os.path.realpath(abs_path)
+            if os.path.islink(abs_path) and real_path == file_path:
+                if activated:
+                    stored = True
+                    break
+                else:
+                    print 'Removing link:', abs_path
+                    os.remove(abs_path)
+        if activated and not stored:
+            abs_path = os.path.join(desktop_folder_path, alias)
+            print 'Creating link:', abs_path
+            try:
+                os.symlink(file_path, abs_path)
+            except OSError as e:
+                print e
         self.launch_thread(self.io_populate_tools)
     def on_autorun_set(self, widget, path, text):
         temp_config_path = '/tmp/mistika-hyperspeed-crontab'

@@ -25,9 +25,15 @@ def reveal_file(path):
             except OSError:
                 pass
             dolphinEnv = os.environ.copy()
-            del dolphinEnv["LD_LIBRARY_PATH"]
             try:
-                subprocess.Popen(["dolphin", '--select', path], env=dolphinEnv)
+                del dolphinEnv["LD_LIBRARY_PATH"]
+            except KeyError:
+                pass
+            try:
+                if os.path.isdir(path):
+                    subprocess.Popen(["dolphin", path], env=dolphinEnv)
+                else:
+                    subprocess.Popen(["dolphin", '--select', path], env=dolphinEnv)
             except OSError:
                 subprocess.Popen(["xdg-open", folder])
                 
