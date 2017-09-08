@@ -273,7 +273,7 @@ class MainThread(threading.Thread):
             self.window.set_resizable(False) # Because resizing crashes the app on Mac
             self.window.maximize()
 
-        tooltips = gtk.Tooltips()
+        tooltips = self.tooltips = gtk.Tooltips()
 
         self.icon_connect = gtk.image_new_from_stock(gtk.STOCK_CONNECT,  gtk.ICON_SIZE_BUTTON)
         self.icon_disconnect = gtk.image_new_from_stock(gtk.STOCK_DISCONNECT,  gtk.ICON_SIZE_BUTTON)
@@ -300,160 +300,16 @@ class MainThread(threading.Thread):
 
         vpane = gtk.VPaned()
         vpane.add1(self.init_connection_panel())
-        vbox = gtk.VBox(False, 10)
-
-        self.projectsTreeStore = gtk.TreeStore(str, str, str, gtk.gdk.Pixbuf, str, int, str, bool, str, bool, gtk.gdk.Pixbuf, str, str, str, int, int) # Basename, Tree Path, Local time, Direction, Remote time, Progress int, Progress text, Progress visibility, remote_address, no_reload, icon, Local size, Remote size, Color(str), int(bytes_done), int(bytes_total)
-        self.projectsTree = gtk.TreeView()
-        self.projectsTree.set_rules_hint(True)
-
-        column = gtk.TreeViewColumn()
-        column.set_title('')
-        self.projectsTree.append_column(column)
-
-        renderer = gtk.CellRendererPixbuf()
-        #renderer.set_property('stock-size', 0)
-        column.pack_start(renderer, expand=False)
-        column.add_attribute(renderer, 'pixbuf', 10)
-
-        renderer = gtk.CellRendererText()
-        column.pack_start(renderer, expand=True)
-        column.add_attribute(renderer, 'markup', 0)
-        column.add_attribute(renderer, 'foreground', 13)
-
-        self.projectsTree.append_column(column)
-
-        column = gtk.TreeViewColumn('Tree path', gtk.CellRendererText(), text=1, foreground=13)
-        column.set_resizable(True)
-        column.set_expand(True)
-        #column.set_property('visible', False)
-        self.projectsTree.append_column(column)
-
-        column = gtk.TreeViewColumn('Local size', gtk.CellRendererText(), text=11, foreground=13)
-        column.set_resizable(True)
-        column.set_expand(True)
-        #column.set_property('visible', False)
-        self.projectsTree.append_column(column)
-
-        column = gtk.TreeViewColumn('Action', gtk.CellRendererPixbuf(), pixbuf=3)
-        column.set_resizable(True)
-        column.set_expand(False)
-        self.projectsTree.append_column(column)
-
-        column = gtk.TreeViewColumn('Remote size', gtk.CellRendererText(), text=12, foreground=13)
-        column.set_resizable(True)
-        column.set_expand(False)
-        self.projectsTree.append_column(column)
-
-        column = gtk.TreeViewColumn('Remote time', gtk.CellRendererText(), text=4, foreground=13)
-        column.set_resizable(True)
-        column.set_expand(False)
-        self.projectsTree.append_column(column)
-
-        column = gtk.TreeViewColumn('Bytes done', gtk.CellRendererText(), text=14, foreground=13)
-        column.set_resizable(True)
-        column.set_expand(False)
-        #self.projectsTree.append_column(column)
-
-        column = gtk.TreeViewColumn('Bytes total', gtk.CellRendererText(), text=15, foreground=13)
-        column.set_resizable(True)
-        column.set_expand(False)
-        #self.projectsTree.append_column(column)
-
-        column = gtk.TreeViewColumn('Status', gtk.CellRendererProgress(), value=5, text=6, visible=7)
-        column.set_resizable(True)
-        column.set_expand(True)
-        self.projectsTree.append_column(column)
-
-        projectsTreeStore = self.projectsTreeStore
-        #hostsTreeStore.append(None, ["Horten", 'horten.hocusfocus.no', 'mistika', 22, '/Volumes/SLOW_HF/PROJECTS/'])
-        #hostsTreeStore.append(None, ["Oslo", 's.hocusfocus.no', 'mistika', 22, '/Volumes/SLOW_HF/PROJECTS/'])
-        #self.io_hosts_populate(projectsTreeStore)
-        #projectsTreeStore.append(None, ['Loading projects ...'])
-        self.projectsTree.set_model(projectsTreeStore)
-        self.projectsTree.set_search_column(0)
-        self.projectsTree.connect("row-expanded", self.on_expand)
-
-        self.projectsTreeStore.set_sort_column_id(0, gtk.SORT_ASCENDING)
-        #self.projectsTree.expand_all()
-
-        scrolled_window = gtk.ScrolledWindow()
-        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
-        scrolled_window.add(self.projectsTree)
-        vbox.pack_start(scrolled_window)
-
-        hbox = gtk.HBox(False, 0)
-        
-        button = gtk.Button()
-        button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_plus))
-        button.connect("clicked", self.on_sync_selected)
-        tooltips.set_tip(button, 'Sync selected file(s)')
-        hbox.pack_start(button, False, False, 0)
-        
-        button = gtk.Button()
-        button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_minus))
-        button.connect("clicked", self.on_sync_selected_abort)
-        tooltips.set_tip(button, 'Remove selected file(s) from sync queue')
-        hbox.pack_start(button, False, False, 0)
-
-        button = gtk.Button()
-        #self.button_sync_files.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
-        button.connect("clicked", self.on_file_info)
-        button.set_image(gtk.image_new_from_pixbuf(self.icon_info))
-        tooltips.set_tip(button, 'Show more information on selected file(s)')
-        hbox.pack_start(button, False, False, 0)
-
-        hbox.pack_start(gtk.Label('Override action:'), False, False, 5)
-
-        button = gtk.Button()
-        button.connect("clicked", self.on_force_action, 'pull')
-        button.set_image(gtk.image_new_from_pixbuf(self.icon_left))
-        tooltips.set_tip(button, 'Remote to local (pull)')
-        hbox.pack_start(button, False, False, 0)
-
-        button = gtk.Button()
-        button.connect("clicked", self.on_force_action, 'nothing')
-        button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_cancel))
-        tooltips.set_tip(button, 'Do not sync selected file(s)')
-        hbox.pack_start(button, False, False, 0)
-
-
-        button = gtk.Button()
-        button.connect("clicked", self.on_force_action, 'push')
-        button.set_image(gtk.image_new_from_pixbuf(self.icon_right))
-        tooltips.set_tip(button, 'Local to remote (push)')
-        hbox.pack_start(button, False, False, 0)
-
-        button = gtk.Button()
-        button.connect("clicked", self.on_force_action, 'reset')
-        button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_reset))
-        tooltips.set_tip(button, 'Reset selected file(s) to default action')
-        hbox.pack_start(button, False, False, 0)
-        vbox.pack_start(hbox, False, False, 0)
-
-
-        #menu = ['Sync project', 'Sync media']
-        footer = gtk.HBox(False, 10)
-        quitButton = gtk.Button('Quit')
-        quitButton.set_size_request(70, 30)
-        quitButton.connect("clicked", self.on_quit)
-        footer.pack_end(quitButton, False, False)
-
-        vbox.pack_end(footer, False, False, 10)
-        vpane.add2(vbox)
-
+        vpane.add2(self.init_files_panel())
         window.add(vpane)
         window.show_all()
         window.connect("destroy", self.on_quit)
         self.window.connect("key-press-event",self.on_key_press_event)
         self.quit = False
-        self.button_disconnect.set_property('visible', False)
-        self.spinner_remote.set_property('visible', False)
-        self.spinner_local.set_property('visible', False)
     def init_connection_panel(self):
+        tooltips = self.tooltips
         vbox = gtk.VBox(False, 10)
-
         tree_store = self.hostsTreeStore = gtk.TreeStore(str, str, str, int, str) # Name, url, color, underline
-
         hbox = gtk.HBox(False, 10)
         label_markup = '<span foreground="#888888">%s</span>'
 
@@ -530,8 +386,8 @@ class MainThread(threading.Thread):
         hbox.pack_start(button, False, False)
 
         button = self.button_disconnect = gtk.Button(stock=gtk.STOCK_DISCONNECT)
-        #button.set_image(self.icon_disconnect)
         button.connect("clicked", self.on_host_disconnect)
+        button.set_no_show_all(True)
         hbox.pack_start(button, False, False)
 
         # Remote status
@@ -540,6 +396,7 @@ class MainThread(threading.Thread):
         #self.spinner_remote = gtk.Spinner()
         #self.spinner_remote.start()
         #self.spinner_remote.set_size_request(20, 20)
+        spinner.set_no_show_all(True)
         hbox.pack_start(spinner, False, False)
         label = self.remote_status_label = gtk.Label()
         hbox.pack_start(label, False, False)
@@ -550,6 +407,7 @@ class MainThread(threading.Thread):
         #self.spinner_local = gtk.Spinner()
         #self.spinner_local.start()
         #self.spinner_local.set_size_request(20, 20)
+        spinner.set_no_show_all(True)
         hbox.pack_start(spinner, False, False)
         label = self.local_status_label = gtk.Label()
         hbox.pack_start(label, False, False)
@@ -557,6 +415,141 @@ class MainThread(threading.Thread):
         #button.set_image(spinner)
         vbox.pack_start(hbox, False, False, 0)
 
+        return vbox
+    def init_files_panel(self):
+        tooltips = self.tooltips
+        vbox = gtk.VBox(False, 10)
+        tree_store = self.projectsTreeStore = gtk.TreeStore(str, str, str, gtk.gdk.Pixbuf, str, int, str, bool, str, bool, gtk.gdk.Pixbuf, str, str, str, int, int) # Basename, Tree Path, Local time, Direction, Remote time, Progress int, Progress text, Progress visibility, remote_address, no_reload, icon, Local size, Remote size, Color(str), int(bytes_done), int(bytes_total)
+        tree_view = self.projectsTree = gtk.TreeView()
+        tree_view.set_rules_hint(True)
+
+        column = gtk.TreeViewColumn()
+        column.set_title('')
+        tree_view.append_column(column)
+
+        renderer = gtk.CellRendererPixbuf()
+        #renderer.set_property('stock-size', 0)
+        column.pack_start(renderer, expand=False)
+        column.add_attribute(renderer, 'pixbuf', 10)
+
+        renderer = gtk.CellRendererText()
+        column.pack_start(renderer, expand=True)
+        column.add_attribute(renderer, 'markup', 0)
+        column.add_attribute(renderer, 'foreground', 13)
+
+        tree_view.append_column(column)
+
+        column = gtk.TreeViewColumn('Tree path', gtk.CellRendererText(), text=1, foreground=13)
+        column.set_resizable(True)
+        column.set_expand(True)
+        #column.set_property('visible', False)
+        tree_view.append_column(column)
+
+        column = gtk.TreeViewColumn('Local size', gtk.CellRendererText(), text=11, foreground=13)
+        column.set_resizable(True)
+        column.set_expand(True)
+        #column.set_property('visible', False)
+        tree_view.append_column(column)
+
+        column = gtk.TreeViewColumn('Action', gtk.CellRendererPixbuf(), pixbuf=3)
+        column.set_resizable(True)
+        column.set_expand(False)
+        tree_view.append_column(column)
+
+        column = gtk.TreeViewColumn('Remote size', gtk.CellRendererText(), text=12, foreground=13)
+        column.set_resizable(True)
+        column.set_expand(False)
+        tree_view.append_column(column)
+
+        column = gtk.TreeViewColumn('Remote time', gtk.CellRendererText(), text=4, foreground=13)
+        column.set_resizable(True)
+        column.set_expand(False)
+        tree_view.append_column(column)
+
+        column = gtk.TreeViewColumn('Bytes done', gtk.CellRendererText(), text=14, foreground=13)
+        column.set_resizable(True)
+        column.set_expand(False)
+        #self.projectsTree.append_column(column)
+
+        column = gtk.TreeViewColumn('Bytes total', gtk.CellRendererText(), text=15, foreground=13)
+        column.set_resizable(True)
+        column.set_expand(False)
+        #self.projectsTree.append_column(column)
+
+        column = gtk.TreeViewColumn('Status', gtk.CellRendererProgress(), value=5, text=6, visible=7)
+        column.set_resizable(True)
+        column.set_expand(True)
+        tree_view.append_column(column)
+
+        tree_view.set_model(tree_store)
+        tree_view.set_search_column(0)
+        tree_view.connect("row-expanded", self.on_expand)
+
+        tree_store.set_sort_column_id(0, gtk.SORT_ASCENDING)
+        #self.projectsTree.expand_all()
+
+        scrolled_window = gtk.ScrolledWindow()
+        scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+        scrolled_window.add(tree_view)
+        vbox.pack_start(scrolled_window)
+
+        hbox = gtk.HBox(False, 0)
+        
+        button = gtk.Button()
+        button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_plus))
+        button.connect("clicked", self.on_sync_selected)
+        tooltips.set_tip(button, 'Sync selected file(s)')
+        hbox.pack_start(button, False, False, 0)
+        
+        button = gtk.Button()
+        button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_minus))
+        button.connect("clicked", self.on_sync_selected_abort)
+        tooltips.set_tip(button, 'Remove selected file(s) from sync queue')
+        hbox.pack_start(button, False, False, 0)
+
+        button = gtk.Button()
+        #self.button_sync_files.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
+        button.connect("clicked", self.on_file_info)
+        button.set_image(gtk.image_new_from_pixbuf(self.icon_info))
+        tooltips.set_tip(button, 'Show more information on selected file(s)')
+        hbox.pack_start(button, False, False, 0)
+
+        hbox.pack_start(gtk.Label('Override action:'), False, False, 5)
+
+        button = gtk.Button()
+        button.connect("clicked", self.on_force_action, 'pull')
+        button.set_image(gtk.image_new_from_pixbuf(self.icon_left))
+        tooltips.set_tip(button, 'Remote to local (pull)')
+        hbox.pack_start(button, False, False, 0)
+
+        button = gtk.Button()
+        button.connect("clicked", self.on_force_action, 'nothing')
+        button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_cancel))
+        tooltips.set_tip(button, 'Do not sync selected file(s)')
+        hbox.pack_start(button, False, False, 0)
+
+
+        button = gtk.Button()
+        button.connect("clicked", self.on_force_action, 'push')
+        button.set_image(gtk.image_new_from_pixbuf(self.icon_right))
+        tooltips.set_tip(button, 'Local to remote (push)')
+        hbox.pack_start(button, False, False, 0)
+
+        button = gtk.Button()
+        button.connect("clicked", self.on_force_action, 'reset')
+        button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_reset))
+        tooltips.set_tip(button, 'Reset selected file(s) to default action')
+        hbox.pack_start(button, False, False, 0)
+        vbox.pack_start(hbox, False, False, 0)
+
+        #menu = ['Sync project', 'Sync media']
+        footer = gtk.HBox(False, 10)
+        quitButton = gtk.Button('Quit')
+        quitButton.set_size_request(70, 30)
+        quitButton.connect("clicked", self.on_quit)
+        footer.pack_end(quitButton, False, False)
+
+        vbox.pack_end(footer, False, False, 10)
         return vbox
     def run(self):
         self.io_hosts_populate(self.hostsTreeStore)
@@ -615,7 +608,6 @@ class MainThread(threading.Thread):
         # self.threads.append(t)
         # t.setDaemon(True)
         # t.start()
-
     def on_host_edit(self, cell, path, new_text, user_data):
         tree, column = user_data
         print tree[path][column],
@@ -627,7 +619,6 @@ class MainThread(threading.Thread):
         self.threads.append(t)
         t.setDaemon(True)
         t.start()
-
     def on_host_update(self, widget, *user_data):
         #print model[iter][0]
         model = self.hostsTreeStore
@@ -677,7 +668,6 @@ class MainThread(threading.Thread):
         self.threads.append(t)
         t.setDaemon(True)
         t.start()
-
     def on_host_connect(self, widget):
         self.daemon_remote_active = True
         t = threading.Thread(target=self.daemon_remote)
