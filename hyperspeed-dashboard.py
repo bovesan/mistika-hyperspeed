@@ -41,7 +41,7 @@ AUTORUN_TIMES = {
 }
 
 CONFIG_FOLDER = os.path.expanduser(CONFIG_FOLDER)
-os.chdir(os.path.dirname(sys.argv[0]))
+os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])))
 
 import hyperspeed.manage
 import hyperspeed.utils
@@ -574,6 +574,7 @@ class PyApp(gtk.Window):
                     files[path] = {'isdir' : True}
                     files[path]['description'] = "Folder"
         for path in files:
+            real_path = os.path.realpath(path)
             if not os.path.exists(path):
                 del files[path]
                 continue
@@ -583,7 +584,7 @@ class PyApp(gtk.Window):
                 files[path].setdefault(key, value)
             if path in tools_installed:
                 files[path]['Show in Mistika'] = True
-            if path in tools_on_desktop:
+            if real_path in tools_on_desktop:
                 files[path]['Show on desktop'] = True
             for line in crontab:
                 line = line.strip()
@@ -1216,7 +1217,7 @@ class PyApp(gtk.Window):
                         except shutil.Error as e:
                             print 'Could not remove app:', e
             else:
-                if os.path.islink(abs_path) and real_path == file_path:
+                if os.path.islink(abs_path) and real_path == os.path.realpath(file_path):
                     if activated:
                         stored = True
                         break
