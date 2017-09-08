@@ -10,6 +10,7 @@ import json
 import os
 import platform
 import Queue
+import shutil
 import socket
 import subprocess
 import sys
@@ -43,6 +44,7 @@ CONFIG_FOLDER = os.path.expanduser(CONFIG_FOLDER)
 os.chdir(os.path.dirname(sys.argv[0]))
 
 import hyperspeed.manage
+import hyperspeed.utils
 from hyperspeed import stack
 from hyperspeed import mistika
 from hyperspeed import video
@@ -547,7 +549,13 @@ class PyApp(gtk.Window):
         tools_on_desktop = []
         desktop_folder_path = os.path.expanduser('~/Desktop/')
         for basename in os.listdir(desktop_folder_path):
-            tools_on_desktop.append(os.path.realpath(os.path.join(desktop_folder_path, basename)))
+            if platform.system() == 'Darwin':
+                try:
+                    tools_on_desktop.append(os.path.realpath(os.path.join(desktop_folder_path, basename, 'Contents/MacOS', os.path.splitext(basename)[0])))
+                except OSError:
+                    pass
+            else:
+                tools_on_desktop.append(os.path.realpath(os.path.join(desktop_folder_path, basename)))
         # Crontab
         crontab = get_crontab_lines()
         for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
@@ -1195,20 +1203,43 @@ class PyApp(gtk.Window):
         for basename in os.listdir(desktop_folder_path):
             abs_path = os.path.join(desktop_folder_path, basename)
             real_path = os.path.realpath(abs_path)
-            if os.path.islink(abs_path) and real_path == file_path:
-                if activated:
-                    stored = True
-                    break
-                else:
-                    print 'Removing link:', abs_path
-                    os.remove(abs_path)
+            if platform.system() == 'Darwin':
+                darwin_executable_path = os.path.join(abs_path, 'Contents/MacOS', os.path.splitext(basename)[0])
+                if os.path.isfile(darwin_executable_path) and os.path.realpath(darwin_executable_path) == file_path:
+                    if activated:
+                        stored = True
+                        break
+                    else:
+                        print 'Removing app:', abs_path
+                        try:
+                            shutil.rmtree(abs_path)
+                        except shutil.Error as e:
+                            print 'Could not remove app:', e
+            else:
+                if os.path.islink(abs_path) and real_path == file_path:
+                    if activated:
+                        stored = True
+                        break
+                    else:
+                        print 'Removing link:', abs_path
+                        os.remove(abs_path)
         if activated and not stored:
-            abs_path = os.path.join(desktop_folder_path, alias)
             print 'Creating link:', abs_path
-            try:
-                os.symlink(file_path, abs_path)
-            except OSError as e:
-                print e
+            abs_path = os.path.join(desktop_folder_path, alias)
+            if platform.system() == 'Darwin':
+                hyperspeed.utils.mac_app_link(file_path, abs_path, icon_path=os.path.abspath("res/img/hyperspeed_1024px.png"))
+                # abs_path += '.app'
+                # darwin_executable_path = os.path.join(abs_path, 'Contents/MacOS', alias)
+                # try:
+                #     os.makedirs(os.path.join(abs_path, 'Contents/MacOS'))
+                #     os.symlink(file_path, darwin_executable_path)
+                # except OSError as e:
+                #     print 'Could not create shortcut:', e
+            else:
+                try:
+                    os.symlink(file_path, abs_path)
+                except OSError as e:
+                    print e
         self.launch_thread(self.io_populate_tools)
     def on_autorun_set(self, widget, path, text):
         temp_config_path = '/tmp/mistika-hyperspeed-crontab'
