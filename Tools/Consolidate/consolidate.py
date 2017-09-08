@@ -196,7 +196,10 @@ class PyApp(gtk.Window):
         scrolled_window.add(treeview)
         return scrolled_window
     def parse_command_line_arguments(self):
-        os.chdir(cwd)
+        try:
+            os.chdir(cwd)
+        except OSError as e:
+            pass
         if len(sys.argv) > 1:
             i = 0
             while i < len(sys.argv) - 1:
@@ -206,7 +209,8 @@ class PyApp(gtk.Window):
                     i += 1
                     self.destination_folder_entry.set_text(sys.argv[i])
                 else:
-                    self.gui_stack_add(arg)              
+                    if os.path.exists(arg):
+                        self.gui_stack_add(arg)    
     def on_quit(self, widget):
         print 'Closed by: ' + repr(widget)
         gtk.main_quit()
