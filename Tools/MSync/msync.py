@@ -126,7 +126,9 @@ class File(object):
             self.bytes_total, # 16
         ]
     def direction_update(self):
-        if self.mtime_local > self.mtime_remote:
+        if self.type_local == self.type_remote == 'd':
+            self.direction = 'unknown'
+        elif self.mtime_local > self.mtime_remote:
             self.direction = 'push'
         elif self.mtime_local < self.mtime_remote:
             self.direction = 'pull'
@@ -1427,7 +1429,7 @@ class MainThread(threading.Thread):
         parent_path = os.path.dirname(item.path)
         remote_parent_path = os.path.join(self.remote['projects_path'], parent_path)
         if not parent_path in self.buffer or self.buffer[parent_path].size_remote < 0:
-            cmd = ['ssh', self.remote['address'], 'mkdir', '-p', remote_parent_path]
+            cmd = ['ssh', '-p', str(self.remote['port']), self.remote['address'], 'mkdir', '-p', remote_parent_path]
             print repr(cmd)
             subprocess.call(cmd)
         is_sequence = '%%' in item.path
@@ -1443,10 +1445,10 @@ class MainThread(threading.Thread):
             temp_handle.write('\n'.join(sequence_files) + '\n')
             temp_handle.flush()
             uri_remote = "%s@%s:%s/" % (self.remote['user'], self.remote['address'], remote_parent_path)
-            cmd = ['rsync'] + extra_args + ['-uavv', '--out-format="%n was copied"', '--files-from=%s' % temp_handle.name, os.path.dirname(item.path)+'/', uri_remote]
+            cmd = ['rsync', '-e', 'ssh -p %i' % self.remote['port'], '-uavv', '--out-format="%n was copied"', '--files-from=%s' % temp_handle.name, os.path.dirname(item.path)+'/', uri_remote]
         else:
             uri_remote = "%s@%s:%s" % (self.remote['user'], self.remote['address'], path_remote)
-            cmd = ['rsync', '-e', 'ssh', '--progress', '-ua', path_local, uri_remote]
+            cmd = ['rsync', '-e', 'ssh -p %i' % self.remote['port'], '--progress', '-ua', path_local, uri_remote]
         print repr(cmd)
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         while proc.returncode == None:
