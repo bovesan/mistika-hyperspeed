@@ -3,6 +3,8 @@
 from datetime import datetime
 
 def size(num, suffix='B'):
+    if num < 0:
+        return ''
     for unit in ['','K','M','G','T','P','E','Z']:
         if abs(num) < 1024.0:
             return "%3.1f%s%s" % (num, unit, suffix)
@@ -12,6 +14,8 @@ def size(num, suffix='B'):
 def reltime(d):
     if type(d) != datetime:
         d = datetime.fromtimestamp(d)
+    if d <= datetime.fromtimestamp(0):
+        return 'N/A'
     diff = datetime.now() - d
     s = diff.seconds
     if diff.days > 7 or diff.days < 0:
@@ -34,7 +38,10 @@ def reltime(d):
         return '{} hours ago'.format(s/3600)
         
 def time(d):
-    return '%s, %s' % (datetime.fromtimestamp(d).strftime("%H:%M"), reltime(d))
+    if d <= 0:
+        return ''
+    else:
+        return '%s, %s' % (datetime.fromtimestamp(d).strftime("%H:%M"), reltime(d))
 
 def time_of_day(d):
     return datetime.fromtimestamp(d).strftime("%H:%M:%S")
