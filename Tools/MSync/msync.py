@@ -585,7 +585,7 @@ class MainThread(threading.Thread):
         t.setDaemon(True)
         t.start()
     def aux_fix_mac_printf(self, str):
-        return str.replace('-printf',  '-print0 | xargs -0 stat -f').replace('%T@', '%c').replace('%s', '%z').replace('%y', '%T').replace('%p', '%N').replace('\\\\n', '')
+        return str.replace('-printf',  '-print0 | xargs -0 stat -f').replace('%T@', '%m').replace('%s', '%z').replace('%y', '%T').replace('%p', '%N').replace('\\\\n', '')
     def aux_mistika_object_path(self, level_names):
         #print repr(level_names)
         return '/'.join(level_names)
