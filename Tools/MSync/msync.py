@@ -63,6 +63,8 @@ class File(object):
         self.path = path
         self.absolute = path.startswith('/')
         self.alias = os.path.basename(self.path)
+        if self.alias == '':
+            self.alias = '/'
         self.is_stack = self.path.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS
         self.treestore = treestore
         self._children = []
@@ -84,6 +86,7 @@ class File(object):
         self.bytes_done = 0
         self.bytes_total = 0
         self.transfer = False
+        self.stack = False
         if attributes:
             for key, value in attributes.iteritems():
                 key_private = '_'+key
@@ -105,6 +108,11 @@ class File(object):
         self.progress_string = '%5.2f%%' % self.progress_percent
         self.progress_visibility = True
         gobject.idle_add(self.gui_update)
+    def set_parse_progress(self, stack=False, progress=0.0):
+        if progress < 100.0:
+            self.placeholder_child.set_progress(progress)
+        else:
+            gobject.idle_add(self.placeholder_child.remove)
     @property
     def treestore_values(self):
         #self.projectsTreeStore = gtk.TreeStore(str, str, str, gtk.gdk.Pixbuf, str, int, str, bool, str, bool, gtk.gdk.Pixbuf, str, str, str, int, int) # Basename, Tree Path, Local time, Direction, Remote time, Progress int, Progress text, Progress visibility, remote_address, no_reload, icon, Local size, Remote size, Color(str), int(bytes_done), int(bytes_total)
@@ -210,7 +218,7 @@ class File(object):
             row_reference = gtk.TreeRowReference(self.treestore, row_path)
             self.row_references.append(row_reference)
         if self.is_stack:
-            dependency_fetcher_path = '%s_dependency_fetcher' % self.path
+            dependency_fetcher_path = '%s dependency fetcher' % self.path
             attributes = {'alias': '<i>Getting dependencies ...</i>', 'icon' : PIXBUF_SEARCH, 'progress_visibility' : True}
             self.placeholder_child = File(dependency_fetcher_path, self, self.treestore, attributes)
     def gui_update(self):
@@ -235,7 +243,10 @@ class File(object):
             self.progress_visibility = False
         self.transfer = True
         gobject.idle_add(self.gui_update)
-
+    def remove(self):
+        for row_reference in self.row_references:
+            row_path = row_reference.get_path()
+            del self.treestore[row_path]
 gobject.threads_init()
 def print_str(self, str):
     print str
@@ -255,7 +266,8 @@ def string_format_to_wildcard(raw_str, wrapping=''):
             output += char
 
     return output
-
+def responseToDialog(entry, dialog, response):
+    dialog.response(response)
 class MainThread(threading.Thread):
     def __init__(self):
         super(MainThread, self).__init__()
@@ -719,9 +731,9 @@ class MainThread(threading.Thread):
         selection = self.projectsTree.get_selection()
         (model, pathlist) = selection.get_selected_rows()
         for path in pathlist:
-            path_str = model[path][1]
-            if path_str.lower().rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS:
-                t = threading.Thread(target=self.io_get_associated, args=[os.path.join(mistika.projects_folder, path_str)])
+            path_id = model[path][1]
+            if path_id.lower().rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS:
+                t = threading.Thread(target=self.io_get_associated, args=[path_id])
                 self.threads.append(t)
                 t.setDaemon(True)
                 t.start()
@@ -739,7 +751,36 @@ class MainThread(threading.Thread):
         model = self.projectsTreeStore
         row_path = row_reference.get_path()
         del model[row_path]
-    def io_get_associated(self, path_str):
+    def io_get_associated(self, path_id):
+        file_object = self.buffer[path_id]
+        file_object.set_parse_progress(progress=0.0)
+        abs_path = os.path.join(mistika.projects_folder, path_id)
+        stack = file_object.stack = Stack(abs_path)
+        files_chunk_max_size = 10
+        files_chunk = []
+        parent_file_path = path_id
+        for dependency in stack.iter_dependencies(progress_callback=file_object.set_parse_progress):
+            if '%' in dependency.path:
+                f_tuple = ( dependency.path.replace(mistika.projects_folder+'/', ''), dependency.start, dependency.end)
+                files_chunk.append(dependency.path)
+            else:
+                files_chunk.append(dependency.path.replace(mistika.projects_folder+'/', ''))
+            if len(files_chunk) >= files_chunk_max_size:
+                self.queue_buffer.put_nowait([self.buffer_list_files, {
+                    'paths' : files_chunk,
+                    'parent_path' : parent_file_path,
+                    'sync' : False
+                    }])
+                files_chunk = []
+        if len(files_chunk) > 0:
+            self.queue_buffer.put_nowait([self.buffer_list_files, {
+                                'paths' : files_chunk,
+                                'parent_path' : parent_file_path,
+                                'sync' : False
+                                }])
+            files_chunk = []
+        self.queue_buffer.put_nowait([file_object.set_parse_progress, {'progress':100.0}])
+    def io_get_associated_old(self, path_str):
         files_chunk_max_size = 10
         files_chunk = []
         try:
@@ -1177,6 +1218,62 @@ class MainThread(threading.Thread):
                             message_format=None)
         dialog.set_markup(message)
         dialog.run()
+    def gui_copy_ssh_key(self, user, host, port):
+        message = 'Please enter the password for %s@%s' % (user, host)
+        dialog = gtk.MessageDialog(
+            parent=self.window,
+            flags=gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
+            type=gtk.MESSAGE_QUESTION,
+            buttons=gtk.BUTTONS_OK,
+            message_format=None
+        )
+        dialog.set_markup(message)
+        dialog.format_secondary_markup("This will copy your public ssh key to the server.")
+        entry = gtk.Entry()
+        entry.set_visibility(False)
+        entry.connect("activate", responseToDialog, dialog, gtk.RESPONSE_OK)
+        hbox = gtk.HBox()
+        hbox.pack_start(gtk.Label("Password:"), False, 5, 5)
+        hbox.pack_end(entry)
+        dialog.vbox.pack_end(hbox, True, True, 0)
+        dialog.show_all()
+        dialog.run()
+        password = entry.get_text()
+        dialog.destroy()
+        cmd = ['ssh-copy-id', '-n', 'localhost'] # Test existence of key
+        if 'No such file' in subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate()[0]:
+            cmd = ['ssh-keygen', '-q', '-N', '']
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.PIPE)
+            while proc.returncode == None:
+                proc.stdin.write('\n')
+                proc.stdin.flush()
+            if proc.returncode > 0:
+                gobject.idle_add(self.gui_show_error, 'Failed to create ssh key:\n\n'+proc.stdout.read())
+                return
+        cmd = ['ssh-copy-id', '-p', str(port), '%s@%s' % (user, host)]
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.PIPE)
+        output_full = ''
+        while proc.returncode == None:
+            output = ''
+            char = None
+            while not char in ['\r', '\n']:
+                proc.poll()
+                if proc.returncode != None:
+                    break
+                char = proc.stdout.read(1)
+                print char
+                output += char
+                if output.endswith('password:'):
+                    proc.stdin.write(password+'\n')
+                    proc.stdin.flush()
+            output_full += output
+        output_full += proc.stdout.read()
+        if proc.returncode > 0:
+            gobject.idle_add(self.gui_show_error, 'Could not copy ssh key:\n\n'+output_full)
+            return
+
+        self.queue_remote.put_nowait([self.remote_connect])
+            
     def on_force_action(self, widget, action, row_path=None):
         print 'Force action: ' + action
         file_infos = []
@@ -1653,9 +1750,14 @@ class MainThread(threading.Thread):
         if p1.returncode > 0:
             #gobject.idle_add(self.loader_remote.set_from_stock, gtk.STOCK_STOP, gtk.ICON_SIZE_BUTTON)
             gobject.idle_add(self.button_connect.set_image, self.icon_connect)
-            gobject.idle_add(self.gui_show_error, stderr)
-            self.remote_status_label.set_markup('Connection error.')
-            raise 'Connection error'
+            if 'Permission denied' in stderr:
+                gobject.idle_add(self.remote_status_label.set_markup, '')
+                gobject.idle_add(self.gui_copy_ssh_key, self.remote['user'], self.remote['address'], self.remote['port'])
+                return
+            else:
+                gobject.idle_add(self.gui_show_error, stderr)
+                gobject.idle_add(self.remote_status_label.set_markup, 'Connection error.')
+                raise 'Connection error'
         else:
             if 'Darwin' in output:
                 self.remote['is_mac'] = True
