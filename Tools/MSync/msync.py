@@ -88,6 +88,9 @@ class File(object):
         self.bytes_total = 0
         self.transfer = False
         self.stack = False
+        self.status = ''
+        self.status_visibility = True
+        self.placeholder = False
         if attributes:
             for key, value in attributes.iteritems():
                 key_private = '_'+key
@@ -104,14 +107,19 @@ class File(object):
             setattr(self, key, value)
         self.direction_update()
         gobject.idle_add(self.gui_update)
-    def set_progress(self, progress):
-        self.progress_percent = progress
+    def set_progress(self, progress_float):
+        self.progress_percent = progress_float*100.0
         self.progress_string = '%5.2f%%' % self.progress_percent
-        self.progress_visibility = True
+        if progress_float < 1.0:
+            self.status_visibility = False
+            self.progress_visibility = True
+        else:
+            self.progress_visibility = False
+            self.status_visibility = True
         gobject.idle_add(self.gui_update)
-    def set_parse_progress(self, stack=False, progress=0.0):
-        if progress < 100.0:
-            self.placeholder_child.set_progress(progress)
+    def set_parse_progress(self, stack=False, progress_float=0.0):
+        if progress_float < 1.0:
+            self.placeholder_child.set_progress(progress_float)
         else:
             gobject.idle_add(self.placeholder_child.remove)
     @property
@@ -120,25 +128,29 @@ class File(object):
         size_local_str = 'Folder' if self.type_local == 'd' else human.size(self.size_local)
         size_remote_str = 'Folder' if self.type_remote == 'd' else human.size(self.size_remote)
         return [
-            self.alias, # 1
-            self.path, # 2
-            human.time(self.mtime_local), # 3
-            self.direction_icon, # 4
-            human.time(self.mtime_remote), # 5
-            self.progress_percent, # 6
-            self.progress_string, # 7
-            self.progress_visibility, # 8
-            str(self.host), # 9
-            self.no_reload, # 10
-            self.icon, # 11
-            size_local_str, # 12
-            size_remote_str, # 13
-            self.color, # 14
-            self.bytes_done, # 15
-            self.bytes_total, # 16
+            self.alias, # 0
+            self.path, # 1
+            human.time(self.mtime_local), # 2
+            self.direction_icon, # 3
+            human.time(self.mtime_remote), # 4
+            int(self.progress_percent), # 5
+            self.progress_string, # 6
+            self.progress_visibility, # 7
+            str(self.host), # 8
+            self.no_reload, # 9
+            self.icon, # 10
+            size_local_str, # 11
+            size_remote_str, # 12
+            self.color, # 13
+            self.bytes_done, # 14
+            self.bytes_total, # 15
+            self.status, # 16
+            self.status_visibility, # 17
         ]
     def direction_update(self):
         if self.type_local == self.type_remote == 'd':
+            self.direction = 'unknown'
+        elif self.placeholder:
             self.direction = 'unknown'
         elif self.mtime_local > self.mtime_remote:
             self.direction = 'push'
@@ -148,6 +160,11 @@ class File(object):
             self.direction = 'equal'
         else:
             self.direction == 'unknown'
+    def set_status(self, status):
+        self.status = status
+        self.status_visibility = True
+        self.progress_visibility = False
+        gobject.idle_add(self.gui_update)
     @property
     def icon(self):
         if not self._icon:
@@ -220,7 +237,12 @@ class File(object):
             self.row_references.append(row_reference)
         if self.is_stack:
             dependency_fetcher_path = '%s dependency fetcher' % self.path
-            attributes = {'alias': '<i>Getting dependencies ...</i>', 'icon' : PIXBUF_SEARCH, 'progress_visibility' : True}
+            attributes = {
+            'alias': ' <i>Getting dependencies ...</i>',
+            'icon' : PIXBUF_SEARCH,
+            'placeholder' : True,
+            'progress_visibility' : True
+            }
             self.placeholder_child = File(dependency_fetcher_path, self, self.treestore, attributes)
     def gui_update(self):
         for row_reference in self.row_references:
@@ -232,14 +254,17 @@ class File(object):
                 child.enqueue(queue_push, queue_pull)
             self.progress_string = 'Queued'
             self.progress_visibility = True
+            self.status_visibility = False
         elif self.direction == 'push':
             queue_push.put(self)
             self.progress_string = 'Queued'
             self.progress_visibility = True
+            self.status_visibility = False
         elif self.direction == 'pull':
             queue_pull.put(self)
             self.progress_string = 'Queued'
             self.progress_visibility = True
+            self.status_visibility = False
         else:
             self.progress_visibility = False
         self.transfer = True
@@ -448,7 +473,26 @@ class MainThread(threading.Thread):
     def init_files_panel(self):
         tooltips = self.tooltips
         vbox = gtk.VBox(False, 10)
-        tree_store = self.projectsTreeStore = gtk.TreeStore(str, str, str, gtk.gdk.Pixbuf, str, int, str, bool, str, bool, gtk.gdk.Pixbuf, str, str, str, int, int) # Basename, Tree Path, Local time, Direction, Remote time, Progress int, Progress text, Progress visibility, remote_address, no_reload, icon, Local size, Remote size, Color(str), int(bytes_done), int(bytes_total)
+        tree_store = self.projectsTreeStore = gtk.TreeStore(
+            str,             #  0 Basename
+            str,             #  1 path_id
+            str,             #  2 Local time
+            gtk.gdk.Pixbuf,  #  3 Direction
+            str,             #  4 Remote time
+            int,             #  5 Progress int
+            str,             #  6 Progress text
+            bool,            #  7 Progress visibility
+            str,             #  8 remote_address
+            bool,            #  9 no_reload
+            gtk.gdk.Pixbuf,  # 10 icon
+            str,             # 11 Local size
+            str,             # 12 Remote size
+            str,             # 13 Color(str)
+            int,             # 14 bytes_done
+            int,             # 15 bytes_total
+            str,             # 16 status
+            bool,            # 17 status visibility
+        ) # Basename, Tree Path, Local time, Direction, Remote time, Progress int, Progress text, Progress visibility, remote_address, no_reload, icon, Local size, Remote size, Color(str), int(bytes_done), int(bytes_total)
         tree_view = self.projectsTree = gtk.TreeView()
         tree_view.set_rules_hint(True)
 
@@ -510,7 +554,14 @@ class MainThread(threading.Thread):
         column.set_expand(False)
         #self.projectsTree.append_column(column)
 
-        column = gtk.TreeViewColumn('Status', gtk.CellRendererProgress(), value=5, text=6, visible=7)
+        cell = gtk.CellRendererText()
+        column = gtk.TreeViewColumn('Status')
+        column.pack_start(cell, False)
+        column.set_attributes(cell, text=16, visible=17)
+        cell = gtk.CellRendererProgress()
+        column.pack_start(cell, True)
+        column.set_attributes(cell, value=5, text=6, visible=7)
+        # column = gtk.TreeViewColumn('Status', gtk.CellRendererProgress(), value=5, text=6, visible=7)
         column.set_resizable(True)
         column.set_expand(True)
         tree_view.append_column(column)
@@ -752,9 +803,9 @@ class MainThread(threading.Thread):
         model = self.projectsTreeStore
         row_path = row_reference.get_path()
         del model[row_path]
-    def io_get_associated(self, path_id):
+    def io_get_associated(self, path_id, sync=False):
         file_object = self.buffer[path_id]
-        file_object.set_parse_progress(progress=0.0)
+        file_object.set_parse_progress(progress_float=0.0)
         abs_path = os.path.join(mistika.projects_folder, path_id)
         stack = file_object.stack = Stack(abs_path)
         files_chunk_max_size = 10
@@ -780,109 +831,9 @@ class MainThread(threading.Thread):
                                 'sync' : False
                                 }])
             files_chunk = []
-        self.queue_buffer.put_nowait([file_object.set_parse_progress, {'progress':100.0}])
-    def io_get_associated_old(self, path_str):
-        files_chunk_max_size = 10
-        files_chunk = []
-        try:
-            #level = -1
-            level_names = []
-            #level_val = []
-            char_buffer = ''
-            char_buffer_store = ''
-            if path_str.startswith('/'):
-                parent_file_path = path_str
-                if parent_file_path.startswith(mistika.projects_folder):
-                    parent_file_path = parent_file_path.replace(mistika.projects_folder+'/', '', 1)
-            else:
-                parent_file_path = path_str
-                path_str = os.path.join(mistika.projects_folder, path_str)
-            #print 'io_get_associated: ' + parent_file_path
-            env_bytes_read = 0
-            last_progress_update_time = 0
-            env_size = os.path.getsize(path_str)
-            for line in open(path_str):
-                for char in line:
-                    env_bytes_read += 1
-                    time_now = time.time()
-                    if time_now - last_progress_update_time > 0.1:
-                        last_progress_update_time = time_now
-                        progress_float = float(env_bytes_read) / float(env_size)
-                        gobject.idle_add(self.gui_refresh_progress, self.buffer[parent_file_path]['placeholder_child_row_reference'], progress_float)
-                    if char == '(':
-                        #print ''
-                        #level += 1
-                        char_buffer = char_buffer.replace('\n', '').strip()
-                        level_names.append(char_buffer)
-                        #print ('-'*level ) + char_buffer + ':',
-                        char_buffer = ''
-                    elif char == ')':
-                        f_path = False
-                        #print self.aux_mistika_object_path(level_names)
-                        object_path = self.aux_mistika_object_path(level_names)
-                        if object_path.endswith('C/F'): # Clip source link
-                            print 'C/F: ' + char_buffer
-                            f_path = char_buffer
-                        elif object_path.endswith('C/d/I/H/p'): # Clip media folder
-                            CdIHp = char_buffer
-                        elif object_path.endswith('C/d/I/s'): # Clip start frame
-                            CdIs = int(char_buffer)
-                        elif object_path.endswith('C/d/I/e'): # Clip end frame
-                            CdIe = int(char_buffer)
-                        elif object_path.endswith('C/d/I/H/n'): # Clip media name
-                            f_path = CdIHp + char_buffer
-                            print 'C/d/I/H: ' + f_path
-                        elif object_path.endswith('F/D'): # .dat file relative path (from projects_path)
-                            print 'F/D: ' + char_buffer
-                            f_path = char_buffer
-                        if f_path:
-                            if '%' in f_path:
-                                f_tuple = ( f_path.replace(mistika.projects_folder+'/', ''), CdIs, CdIe)
-                                files_chunk.append(f_tuple)
-                                # find . -regex '.*hill_0004_000[0-9][0-9][0-1].tif'
-                                # for i in range(CdIs, CdIe+1):
-                                #     files_chunk.append(f_path.replace(self.projects_path_local+'/', '') % i)
-                            else:
-                                files_chunk.append(f_path.replace(mistika.projects_folder+'/', ''))
-                            if len(files_chunk) >= files_chunk_max_size:
-                                self.queue_buffer.put_nowait([self.buffer_list_files, {
-                                    'paths' : files_chunk,
-                                    'parent_path' : parent_file_path,
-                                    'sync' : False
-                                    }])
-                                #buffer_list_files(self, paths=[''], parent_path=False, sync=False, maxdepth = 2):
-                                #self.aux_list_files(file_path_list=files_chunk, parent_file_path=path_str, sync=True)
-                                files_chunk = []
-                                #self.io_list_files(files_chunk, path_str.replace(self.projects_path_local+'/', ''), sync=True)
-                                #self.do_sync_item(files_chunk, False, path_str.replace(self.projects_path_local+'/', ''))
-                        # if len(level_val) < level+1:
-                        #     level_val.append(char_buffer)
-                        # else:
-                        #     level_val[level] = char_buffer
-                        char_buffer = ''
-                        del level_names[-1]
-                        #level -= 1
-                    elif len(level_names) > 0 and level_names[-1] == 'Shape':
-                        continue
-                    elif char:
-                        char_buffer += char
-            if len(files_chunk) > 0:
-                self.queue_buffer.put_nowait([self.buffer_list_files, {
-                                    'paths' : files_chunk,
-                                    'parent_path' : parent_file_path,
-                                    'sync' : False
-                                    }])
-                #self.aux_list_files(file_path_list=files_chunk, parent_file_path=path_str, sync=True)
-                files_chunk = []
-            gobject.idle_add(self.gui_refresh_progress, self.buffer[parent_file_path]['placeholder_child_row_reference'], 1.0)
-            #time.sleep(1)
-            self.queue_buffer.put_nowait([self.buffer_remove_item, {
-                                'row_reference' : self.buffer[parent_file_path]['placeholder_child_row_reference']
-                                }])
-            #gobject.idle_add(self.gui_row_delete, self.buffer[parent_file_path]['placeholder_child_row_reference'])
-        except IOError as e:
-            print 'Could not open ' + path_str
-            raise e
+        self.queue_buffer.put_nowait([file_object.set_parse_progress, {'progress_float':1.0}])
+        if sync:
+            self.queue_buffer.put_nowait([self.buffer[path_id].enqueue, {'queue_push' : self.queue_push, 'queue_pull':self.queue_pull}])
     def buffer_remove_item(self, row_reference):
         gobject.idle_add(self.gui_row_delete, row_reference)
     def on_sync_selected(self, widget):
@@ -893,8 +844,11 @@ class MainThread(threading.Thread):
             path_id = model[row_path][1]
             print path_id
             if len(self.buffer[path_id].children) > 0 and not self.buffer[path_id].deep_searched:
-                self.buffer_list_files(paths=[path_id], maxdepth = False)
-            self.buffer[path_id].enqueue(queue_push=self.queue_push, queue_pull=self.queue_pull)
+                # self.buffer_list_files(paths=[path_id], maxdepth = False)
+                self.queue_buffer.put_nowait([self.io_get_associated, {'path_id':path_id, 'sync':True}])
+                # self.queue_buffer.put_nowait([self.buffer[path_id].fetch_dependencies])
+            else:
+                self.buffer[path_id].enqueue(queue_push=self.queue_push, queue_pull=self.queue_pull)
     def do_sync_item(self, row_reference, walk_parent=True):
         model = self.projectsTreeStore
         row_path = row_reference.get_path()
@@ -1546,7 +1500,7 @@ class MainThread(threading.Thread):
             except Queue.Empty:
                 do_now = True
             if queue_size_absolute > BATCH_SIZE or do_now:
-                self.push(items_absolute)
+                self.push(items_absolute, absolute=True)
                 items_absolute = []
                 queue_size_absolute = 0
             if queue_size_relative > BATCH_SIZE or do_now:
@@ -1624,6 +1578,14 @@ class MainThread(threading.Thread):
                     self.buffer[path_id].transfer = False
                 except KeyError:
                     pass
+            elif 'rsync: recv_generator: mkdir' in output and 'failed: Permission denied (13)' in output:
+                folder = output.split('"', 2)[1]
+                for rel_path in relative_paths:
+                    path_id = relative_paths[rel_path.rstrip('/')]
+                    if path_id.startswith(folder):
+                        self.buffer[path_id].set_progress(0.0)
+                        self.buffer[path_id].set_status('Permission denied')
+                        self.buffer[path_id].transfer = False
             proc.poll()
         if multiple_files:
             temp_handle.close()
