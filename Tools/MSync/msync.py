@@ -12,6 +12,7 @@ import pango
 import platform
 import pprint
 import subprocess
+import tempfile
 import threading
 import time
 import sys
@@ -60,6 +61,7 @@ class File(object):
         self._icon = False
         self.row_references = []
         self.path = path
+        self.absolute = path.startswith('/')
         self.alias = os.path.basename(self.path)
         self.is_stack = self.path.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS
         self.treestore = treestore
@@ -81,6 +83,7 @@ class File(object):
         self.color = COLOR_DEFAULT
         self.bytes_done = 0
         self.bytes_total = 0
+        self.transfer = False
         if attributes:
             for key, value in attributes.iteritems():
                 key_private = '_'+key
@@ -230,6 +233,7 @@ class File(object):
             self.progress_visibility = True
         else:
             self.progress_visibility = False
+        self.transfer = True
         gobject.idle_add(self.gui_update)
 
 gobject.threads_init()
@@ -942,9 +946,13 @@ class MainThread(threading.Thread):
     def on_sync_selected_abort(self, widget):
         selection = self.projectsTree.get_selection()
         (model, pathlist) = selection.get_selected_rows()
-        for path in pathlist:
-            path_str = model[path][1]
-            self.transfer_remove(path_str)
+        for row_path in pathlist:
+            row_reference = gtk.TreeRowReference(model, row_path)
+            path_id = model[row_path][1]
+            print path_id
+            if len(self.buffer[path_id].children) > 0 and not self.buffer[path_id].deep_searched:
+                self.buffer_list_files(paths=[path_id], maxdepth = False)
+            self.buffer[path_id].enqueue(queue_push=self.queue_push_remove, queue_pull=self.queue_pull_remove)
     def transfer_remove(self, path_str):
         model = self.projectsTreeStore
         for i, transfer_item in enumerate(self.transfer_queue): # Race?
@@ -979,7 +987,7 @@ class MainThread(threading.Thread):
         #self.entry_host.set_text(model[selected_row_iter][0])
         self.entry_address.set_text(model[selected_row_iter][1])
         self.entry_user.set_text(model[selected_row_iter][2])
-        self.entry_port.set_text(str(model[selected_row_iter][3]))
+        self.entry_port.set_value(model[selected_row_iter][3])
         self.entry_projects_path.set_text(model[selected_row_iter][4])
         # status = 'Loaded hosts.'
         # self.status_bar.push(self.context_id, status)
@@ -1412,49 +1420,75 @@ class MainThread(threading.Thread):
             except Queue.Empty:
                 pass
     def daemon_push(self):
+        BATCH_SIZE = 10 * 1000 * 1000
         self.daemon_push_active = True
         q = self.queue_push
+        items_absolute = []
+        items_relative = []
+        queue_size_absolute = 0
+        queue_size_relative = 0
         while self.daemon_push_active:
+            do_now = False
             try:
-                item = q.get(True, 10)
-                print 'Push:', repr(item.path)
-                self.push(item)
+                item = q.get(True, 1)
+                if item.transfer:
+                    if item.absolute:
+                        print 'Push absolute path:', repr(item.path)
+                        items_absolute.append(item)
+                        queue_size_absolute += item.size_local
+                    else:
+                        print 'Push relative path:', repr(item.path)
+                        items_relative.append(item)
+                        queue_size_relative += item.size_local
             except Queue.Empty:
-                pass
-    def push(self, item):
-        progress_percent = 0.0
-        item.set_progress(progress_percent)
-        path_local = os.path.join(mistika.projects_folder, item.path)
-        path_remote = os.path.join(self.remote['projects_path'], item.path)
-        parent_path = os.path.dirname(item.path)
-        remote_parent_path = os.path.join(self.remote['projects_path'], parent_path)
-        if not parent_path in self.buffer or self.buffer[parent_path].size_remote < 0:
-            cmd = ['ssh', '-p', str(self.remote['port']), self.remote['address'], 'mkdir', '-p', remote_parent_path]
-            print repr(cmd)
-            subprocess.call(cmd)
-        is_sequence = '%%' in item.path
-        if is_sequence:
-            sequence_files = []
-            basename = os.path.basename(item.path)
-            # for frame_range in dependency.frame_ranges:
-            #     for frame_n in range(frame_range.start, frame_range.end+1):
-            #         sequence_files.append(basename % frame_n)
-            sequence_length = len(sequence_files)
-            frames_done = 0
-            temp_handle = tempfile.NamedTemporaryFile()
-            temp_handle.write('\n'.join(sequence_files) + '\n')
-            temp_handle.flush()
-            uri_remote = "%s@%s:%s/" % (self.remote['user'], self.remote['address'], remote_parent_path)
-            cmd = ['rsync', '-e', 'ssh -p %i' % self.remote['port'], '-uavv', '--out-format="%n was copied"', '--files-from=%s' % temp_handle.name, os.path.dirname(item.path)+'/', uri_remote]
+                do_now = True
+            if queue_size_absolute > BATCH_SIZE or do_now:
+                self.push(items_absolute)
+                items_absolute = []
+                queue_size_absolute = 0
+            if queue_size_relative > BATCH_SIZE or do_now:
+                self.push(items_relative)
+                items_relative = []
+                queue_size_relative = 0
+    def push(self, items, absolute=False):
+        if len(items) == 0:
+            return
+        relative_paths = {}
+        for item in items:
+            progress_percent = 0.0
+            item.set_progress(progress_percent)
+            relative_paths[item.path.lstrip('/')] = item.path
+            # path_local = os.path.join(mistika.projects_folder, item.path)
+            # path_remote = os.path.join(self.remote['projects_path'], item.path)
+            # parent_path = os.path.dirname(item.path)
+            # remote_parent_path = os.path.join(self.remote['projects_path'], parent_path)
+            # if not parent_path in self.buffer or self.buffer[parent_path].size_remote < 0:
+            #     cmd = ['ssh', '-p', str(self.remote['port']), self.remote['address'], 'mkdir', '-p', remote_parent_path]
+            #     print repr(cmd)
+            #     subprocess.call(cmd)
+            #     try:
+            #         self.buffer[parent_path].size_remote = 0
+            #     except KeyError:
+            #         root = os.path.dirname(parent_path)+'/'
+            #         self.buffer_add(['0 d 0 0 %s' % parent_path], self.remove['alias'], root)
+        temp_handle = tempfile.NamedTemporaryFile()
+        temp_handle.write('\n'.join(relative_paths) + '\n')
+        temp_handle.flush()
+        if absolute:
+            base_path_local = base_path_remote = '/'
         else:
-            uri_remote = "%s@%s:%s" % (self.remote['user'], self.remote['address'], path_remote)
-            cmd = ['rsync', '-e', 'ssh -p %i' % self.remote['port'], '--progress', '-ua', path_local, uri_remote]
+            base_path_local = mistika.projects_folder+'/'
+            base_path_remote = self.remote['projects_path']+'/'
+        uri_remote = "%s@%s:%s/" % (self.remote['user'], self.remote['address'], base_path_remote)
+        cmd = ['rsync', '-e', 'ssh -p %i' % self.remote['port'], '-uavv', '--out-format=%n was copied', '--files-from=%s' % temp_handle.name, base_path_local, uri_remote]
+        print repr(relative_paths)
         print repr(cmd)
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        multiple_files = True
         while proc.returncode == None:
             if self.abort:
                 proc.kill()
-                if is_sequence:
+                if multiple_files:
                     temp_handle.close()
                 return
             output = ''
@@ -1466,20 +1500,29 @@ class MainThread(threading.Thread):
                 char = proc.stdout.read(1)
                 output += char
             fields = output.split()
+            print output,
+            # if "failed: No such file or directory" in output:
+            #     gobject.idle_add(self.gui_show_error, output)
             if len(fields) >= 4 and fields[1].endswith('%'):
                 progress_percent = float(fields[1].strip('%'))
                 # self.set_progress(extra_bytes=int(fields[0]))
                 # gobject.idle_add(self.gui_dependency_summary_update, dependency.type, int(fields[0]))
                 # self.status_set(fields[2])
                 # gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': progress_percent, '2': fields[1]})
-            elif is_sequence and output.strip().endswith('is uptodate') or output.strip().endswith('was copied'):
-                frames_done += 1
-                progress_percent = float(frames_done) / float(sequence_length)
+            elif multiple_files and output.strip().endswith('is uptodate') or output.strip().endswith('was copied'):
+                # frames_done += 1
+                # progress_percent = float(frames_done) / float(sequence_length)
                 # progress_string = '%5.2f%%' % progress_percent
                 # gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': progress_percent, '2': progress_string})
-            item.set_progress(progress_percent)
+                try:
+                    rel_path = output.replace('is uptodate', '').replace('was copied', '').strip()
+                    path_id = relative_paths[rel_path.rstrip('/')]
+                    self.buffer[path_id].set_progress(1.0)
+                    self.buffer[path_id].transfer = False
+                except KeyError:
+                    pass
             proc.poll()
-        if is_sequence:
+        if multiple_files:
             temp_handle.close()
         if proc.returncode == 0:
             print 'Success'
