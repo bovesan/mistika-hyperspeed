@@ -5,6 +5,19 @@ import gobject
 import sys
 import os
 import pango
+import platform
+import subprocess
+import hyperspeed
+import tempfile
+import time
+
+BASH_WRAPPER = '''#!/bin/bash
+%s
+if [ $? -ne 0 ];then                   # $? holds exit status, test if error occurred
+        read -p "Press any key to exit "
+fi
+exit 0
+'''
 
 class TerminalReplacement(gtk.Window):
     def __init__(self, method, inputs=False, default_folder=False):
@@ -87,3 +100,33 @@ class TerminalReplacement(gtk.Window):
         else:
             return False
         return True
+
+def terminal(exec_args):
+    if platform.system() == 'Linux':
+        try:
+            return subprocess.Popen(['konsole', '-e', os.path.join(hyperspeed.folder, 'res/scripts/bash_wrapper.sh')] + exec_args)
+            
+        except OSError as e:
+            try:
+                return subprocess.Popen(['xterm', '-e', os.path.join(hyperspeed.folder, 'res/scripts/bash_wrapper.sh')] + exec_args)
+            except OSError as e:
+                try:
+                    return subprocess.Popen([exec_args])
+                except:
+                    pass
+    elif platform.system() == 'Darwin':
+        # return subprocess.Popen(['open', '-a', 'Terminal.app', '--args', os.path.join(hyperspeed.folder, 'res/scripts/bash_wrapper.sh')] + exec_args)
+        temp_dir = tempfile.mkdtemp()
+        temp_file = os.path.join(temp_dir, 'exec.sh')
+        open(temp_file, 'w').write(BASH_WRAPPER % ' '.join(exec_args))
+        # print 'Temp file:', temp_file
+        # print open(temp_file).read()
+        os.chmod(temp_file, 0700)
+        proc = subprocess.Popen(['open', '-a', 'Terminal.app', temp_file])
+        # time.sleep(5)
+        # os.remove(temp_file)
+        # os.rmdir(temp_dir)
+        return proc
+    else:
+        return subprocess.Popen(exec_args)
+    print 'Failed to execute %s' % repr(exec_args)
