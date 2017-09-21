@@ -25,6 +25,7 @@ try:
     from hyperspeed.stack import Stack, DEPENDENCY_TYPES
     from hyperspeed import mistika
     from hyperspeed import human
+    import hyperspeed.ui
 except ImportError:
     mistika = False
 
@@ -1219,27 +1220,27 @@ class MainThread(threading.Thread):
         dialog.set_markup(message)
         dialog.run()
     def gui_copy_ssh_key(self, user, host, port):
-        message = 'Please enter the password for %s@%s' % (user, host)
-        dialog = gtk.MessageDialog(
-            parent=self.window,
-            flags=gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
-            type=gtk.MESSAGE_QUESTION,
-            buttons=gtk.BUTTONS_OK,
-            message_format=None
-        )
-        dialog.set_markup(message)
-        dialog.format_secondary_markup("This will copy your public ssh key to the server.")
-        entry = gtk.Entry()
-        entry.set_visibility(False)
-        entry.connect("activate", responseToDialog, dialog, gtk.RESPONSE_OK)
-        hbox = gtk.HBox()
-        hbox.pack_start(gtk.Label("Password:"), False, 5, 5)
-        hbox.pack_end(entry)
-        dialog.vbox.pack_end(hbox, True, True, 0)
-        dialog.show_all()
-        dialog.run()
-        password = entry.get_text()
-        dialog.destroy()
+        # message = 'Please enter the password for %s@%s' % (user, host)
+        # dialog = gtk.MessageDialog(
+        #     parent=self.window,
+        #     flags=gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
+        #     type=gtk.MESSAGE_QUESTION,
+        #     buttons=gtk.BUTTONS_OK,
+        #     message_format=None
+        # )
+        # dialog.set_markup(message)
+        # dialog.format_secondary_markup("This will copy your public ssh key to the server.")
+        # entry = gtk.Entry()
+        # entry.set_visibility(False)
+        # entry.connect("activate", responseToDialog, dialog, gtk.RESPONSE_OK)
+        # hbox = gtk.HBox()
+        # hbox.pack_start(gtk.Label("Password:"), False, 5, 5)
+        # hbox.pack_end(entry)
+        # dialog.vbox.pack_end(hbox, True, True, 0)
+        # dialog.show_all()
+        # dialog.run()
+        # password = entry.get_text()
+        # dialog.destroy()
         cmd = ['ssh-copy-id', '-n', 'localhost'] # Test existence of key
         if 'No such file' in subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate()[0]:
             cmd = ['ssh-keygen', '-q', '-N', '']
@@ -1251,28 +1252,33 @@ class MainThread(threading.Thread):
                 gobject.idle_add(self.gui_show_error, 'Failed to create ssh key:\n\n'+proc.stdout.read())
                 return
         cmd = ['ssh-copy-id', '-p', str(port), '%s@%s' % (user, host)]
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.PIPE)
-        output_full = ''
-        while proc.returncode == None:
-            output = ''
-            char = None
-            while not char in ['\r', '\n']:
-                proc.poll()
-                if proc.returncode != None:
-                    break
-                char = proc.stdout.read(1)
-                print char
-                output += char
-                if output.endswith('password:'):
-                    proc.stdin.write(password+'\n')
-                    proc.stdin.flush()
-            output_full += output
-        output_full += proc.stdout.read()
+        proc = hyperspeed.ui.terminal(cmd)
+        output_full = proc.communicate()[0]
         if proc.returncode > 0:
-            gobject.idle_add(self.gui_show_error, 'Could not copy ssh key:\n\n'+output_full)
+            gobject.idle_add(self.gui_show_error, 'Could not copy ssh key:')
             return
+        # proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.PIPE)
+        # output_full = ''
+        # while proc.returncode == None:
+        #     output = ''
+        #     char = None
+        #     while not char in ['\r', '\n']:
+        #         proc.poll()
+        #         if proc.returncode != None:
+        #             break
+        #         char = proc.stdout.read(1)
+        #         print char
+        #         output += char
+        #         if output.endswith('password:'):
+        #             proc.stdin.write(password+'\n')
+        #             proc.stdin.flush()
+        #     output_full += output
+        # output_full += proc.stdout.read()
+        # if proc.returncode > 0:
+        #     gobject.idle_add(self.gui_show_error, 'Could not copy ssh key:\n\n'+output_full)
+        #     return
 
-        self.queue_remote.put_nowait([self.remote_connect])
+        # self.queue_remote.put_nowait([self.remote_connect])
             
     def on_force_action(self, widget, action, row_path=None):
         print 'Force action: ' + action
