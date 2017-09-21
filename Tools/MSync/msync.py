@@ -98,7 +98,7 @@ class File(object):
                     setattr(self, key_private, value)
                 else:
                     setattr(self, key, value)
-        self.parents = parent # Adds to view
+        self.add_parent(parent) # Adds to view
         self.direction_update()
     def __getitem__(self, key):
         return getattr(self, key)
@@ -188,8 +188,7 @@ class File(object):
     @property
     def parents(self):
         return self._parents
-    @parents.setter
-    def parents(self, parent):
+    def add_parent(self, parent):
         if not parent in self._parents:
             self._parents.append(parent)
             if parent != None:
@@ -492,7 +491,7 @@ class MainThread(threading.Thread):
             int,             # 15 bytes_total
             str,             # 16 status
             bool,            # 17 status visibility
-        ) # Basename, Tree Path, Local time, Direction, Remote time, Progress int, Progress text, Progress visibility, remote_address, no_reload, icon, Local size, Remote size, Color(str), int(bytes_done), int(bytes_total)
+        ) 
         tree_view = self.projectsTree = gtk.TreeView()
         tree_view.set_rules_hint(True)
 
@@ -512,7 +511,7 @@ class MainThread(threading.Thread):
 
         tree_view.append_column(column)
 
-        column = gtk.TreeViewColumn('Tree path', gtk.CellRendererText(), text=1, foreground=13)
+        column = gtk.TreeViewColumn('File path', gtk.CellRendererText(), text=1, foreground=13)
         column.set_resizable(True)
         column.set_expand(True)
         #column.set_property('visible', False)
@@ -820,14 +819,14 @@ class MainThread(threading.Thread):
             if len(files_chunk) >= files_chunk_max_size:
                 self.queue_buffer.put_nowait([self.buffer_list_files, {
                     'paths' : files_chunk,
-                    'parent_path' : parent_file_path,
+                    'parent' : file_object,
                     'sync' : False
                     }])
                 files_chunk = []
         if len(files_chunk) > 0:
             self.queue_buffer.put_nowait([self.buffer_list_files, {
                                 'paths' : files_chunk,
-                                'parent_path' : parent_file_path,
+                                'parent' : file_object,
                                 'sync' : False
                                 }])
             files_chunk = []
@@ -1232,8 +1231,7 @@ class MainThread(threading.Thread):
         #     gobject.idle_add(self.gui_show_error, 'Could not copy ssh key:\n\n'+output_full)
         #     return
 
-        # self.queue_remote.put_nowait([self.remote_connect])
-            
+        # self.queue_remote.put_nowait([self.remote_connect])        
     def on_force_action(self, widget, action, row_path=None):
         print 'Force action: ' + action
         file_infos = []
@@ -1344,7 +1342,7 @@ class MainThread(threading.Thread):
         #self.project_cell.set_property('foreground', '#000000')
         #self.project_cell.set_property('style', 'normal')
         #gobject.idle_add(loader.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
-    def buffer_add(self, lines, host, root, parent_path=''):
+    def buffer_add(self, lines, host, root, parent=None):
         root = root.rstrip('/')
         if not root == '':
             root += '/'
@@ -1361,30 +1359,32 @@ class MainThread(threading.Thread):
             # parent_path_to_store = parent_path
             if full_path.startswith(root): # Relative path
                 path_id = full_path.replace(root, '', 1).strip('/')
-                if '/' in path_id.strip('/'):
-                    parent_dir, basename = path_id.rsplit('/', 1) # parent_dir will not have trailing slash
-                else:
-                    parent_dir = ''
-                    basename = path_id
+                # if '/' in path_id.strip('/'):
+                #     parent_dir, basename = path_id.rsplit('/', 1) # parent_dir will not have trailing slash
+                # else:
+                #     parent_dir = ''
+                #     basename = path_id
             else: # Absolute path
                 path_id = full_path
-                if '/' in path_id.strip('/'):
-                    parent_dir, basename = path_id.rsplit('/', 1) # parent_dir will not have trailing slash
+                # if '/' in path_id.strip('/'):
+                #     parent_dir, basename = path_id.rsplit('/', 1) # parent_dir will not have trailing slash
                     #parent_path += parent_dir
-            if parent_path != '':
-                parent_path_to_store = parent_path + '/' + parent_dir
-            elif path_id == '': # Skip root item
-                continue
+            parent_path = os.path.dirname(path_id)
+            if parent_path in self.buffer:
+                this_parent = self.buffer[parent_path]
             else:
-                parent_path_to_store = parent_dir
-            if parent_path_to_store != '' and not parent_path_to_store in self.buffer:
-                print 'Parent not in buffer:', parent_path_to_store
-                self.buffer_add(['0 d 0 0 %s' % parent_path_to_store], host, root)
-                tree_parent_path = parent_dir
-                tree_parent_path = tree_parent_path.rstrip('/')
-                if tree_parent_path != '' and not tree_parent_path in self.buffer:
-                    self.buffer_add(['0 d 0 0 %s' % tree_parent_path], host, root, parent_path )
-            attributes = {}
+                this_parent = parent
+            if path_id == '': # Skip root item
+                continue
+            # if parent_path_to_store != '' and not parent_path_to_store in self.buffer:
+            #     print 'Parent not in buffer:', parent_path_to_store
+            #     self.buffer_add(['0 d 0 0 %s' % parent_path_to_store], host, root)
+            #     tree_parent_path = parent_dir
+            #     tree_parent_path = tree_parent_path.rstrip('/')
+            #     if tree_parent_path != '' and not tree_parent_path in self.buffer:
+            #         self.buffer_add(['0 d 0 0 %s' % tree_parent_path], host, root, parent_path )
+            attributes = {
+            }
             if host == 'localhost':
                 attributes['type_local'] = f_type
                 attributes['size_local'] = f_size
@@ -1395,13 +1395,10 @@ class MainThread(threading.Thread):
                 attributes['mtime_remote'] = f_time
                 attributes['host'] = host
             if not path_id in self.buffer:
-                try:
-                    parent = self.buffer[parent_path_to_store]
-                except KeyError:
-                    parent = None
-                self.buffer[path_id] = File(path_id, parent, self.projectsTreeStore, attributes)
+                self.buffer[path_id] = File(path_id, this_parent, self.projectsTreeStore, attributes)
             else:
                 self.buffer[path_id].set_attributes(attributes)
+                self.buffer[path_id].add_parent(this_parent)
     def daemon_transfer(self):
         self.daemon_transfer_active = True
         while self.daemon_transfer_active:
@@ -1767,7 +1764,7 @@ class MainThread(threading.Thread):
         t.setDaemon(True)
         t.start()
         return t
-    def buffer_list_files(self, paths=[''], parent_path='', sync=False, maxdepth = 2):
+    def buffer_list_files(self, paths=[''], parent=None, sync=False, maxdepth = 2):
         type_filter = ''
         maxdepth_str = ''
         if paths == ['']:
@@ -1800,9 +1797,9 @@ class MainThread(threading.Thread):
         thread_local.join()
         thread_remote.join()
         #print 'Adding local files to buffer'
-        self.buffer_add(self.lines_local, 'localhost', mistika.projects_folder, parent_path)
+        self.buffer_add(self.lines_local, 'localhost', mistika.projects_folder, parent)
         #print 'Adding remote files to buffer'
-        self.buffer_add(self.lines_remote, self.remote['alias'], self.remote['projects_path'], parent_path)
+        self.buffer_add(self.lines_remote, self.remote['alias'], self.remote['projects_path'], parent)
         #print 'Adding files to GUI'
         for path in paths:
             if type(path) is tuple:
