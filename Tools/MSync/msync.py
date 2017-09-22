@@ -58,7 +58,7 @@ PIXBUF_RESET = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/reset.png', 1
 
 
 class File(object):
-    def __init__(self, path, parent, treestore, attributes=False):
+    def __init__(self, path, parent, treestore, treeview, attributes=False):
         self._parents = []
         self._icon = False
         self.row_references = []
@@ -69,6 +69,7 @@ class File(object):
             self.alias = '/'
         self.is_stack = self.path.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS
         self.treestore = treestore
+        self.treeview = treeview
         self._children = []
         self.mtime_remote = -1
         self.mtime_local = -1
@@ -93,6 +94,7 @@ class File(object):
         self.stack = False
         self.status = ''
         self.status_visibility = True
+        self.placeholder_child = False
         self.placeholder = False
         if attributes:
             for key, value in attributes.iteritems():
@@ -128,10 +130,10 @@ class File(object):
             progress_float = 0.0
         self.set_progress(progress_float)
     def set_parse_progress(self, stack=False, progress_float=0.0):
-        if progress_float < 1.0:
-            self.placeholder_child.set_progress(progress_float)
-        else:
-            gobject.idle_add(self.placeholder_child.remove)
+        self.placeholder_child.set_progress(progress_float)
+        # if progress_float >= 1.0:
+            # self.placeholder_child.alias = 'No dependencies found'
+            # gobject.idle_add(self.placeholder_child.gui_remove)
     @property
     def treestore_values(self):
         #self.projectsTreeStore = gtk.TreeStore(str, str, str, gtk.gdk.Pixbuf, str, int, str, bool, str, bool, gtk.gdk.Pixbuf, str, str, str, int, int) # Basename, Tree Path, Local time, Direction, Remote time, Progress int, Progress text, Progress visibility, remote_address, no_reload, icon, Local size, Remote size, Color(str), int(bytes_done), int(bytes_total)
@@ -205,6 +207,10 @@ class File(object):
             self._parents.append(parent)
             parent.children = self
             gobject.idle_add(self.gui_add_parent, parent)
+            if not parent.virtual:
+                gobject.idle_add(parent.gui_expand)
+                if parent.placeholder_child:
+                    gobject.idle_add(parent.placeholder_child.gui_remove)
         elif parent == None and not self.on_top_level:
             self.on_top_level = True
             gobject.idle_add(self.gui_add_parent, parent)
@@ -229,6 +235,10 @@ class File(object):
             return self.placeholder_child.row_references[0]
         except AttributeError:
             return
+    def gui_expand(self):
+        for row_reference in self.row_references:
+            row_path = row_reference.get_path()
+            self.treeview.expand_row(row_path)
     def gui_add_parent(self, parent):
         # print repr(self.treestore_values)
         # if self.buffer[path]['mtime_local'] >= self.buffer[path]['mtime_remote'] and basename.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS and not 'placeholder_child_row_reference' in self.buffer[path]:
@@ -256,11 +266,12 @@ class File(object):
             'placeholder' : True,
             'progress_visibility' : True
             }
-            self.placeholder_child = File(dependency_fetcher_path, self, self.treestore, attributes)
+            self.placeholder_child = File(dependency_fetcher_path, self, self.treestore, self.treeview, attributes)
     def gui_update(self):
         for row_reference in self.row_references:
             row_path = row_reference.get_path()
-            self.treestore[row_path] = self.treestore_values
+            if row_path != None:
+                self.treestore[row_path] = self.treestore_values
     def transfer_start(self):
         pass
     def transfer_end(self):
@@ -318,7 +329,7 @@ class File(object):
             gobject.idle_add(self.gui_update)
         else:
             print 'Already in transfer queue:', self.path
-    def remove(self):
+    def gui_remove(self):
         for row_reference in self.row_references:
             row_path = row_reference.get_path()
             del self.treestore[row_path]
@@ -870,14 +881,16 @@ class MainThread(threading.Thread):
                 self.queue_buffer.put_nowait([self.buffer_list_files, {
                     'paths' : files_chunk,
                     'parent' : file_object,
-                    'sync' : False
+                    'sync' : False,
+                    'pre_allocate' : True,
                     }])
                 files_chunk = []
         if len(files_chunk) > 0:
             self.queue_buffer.put_nowait([self.buffer_list_files, {
                                 'paths' : files_chunk,
                                 'parent' : file_object,
-                                'sync' : False
+                                'sync' : False,
+                                'pre_allocate' : True,
                                 }])
             files_chunk = []
         self.queue_buffer.put_nowait([file_object.set_parse_progress, {'progress_float':1.0}])
@@ -1343,7 +1356,7 @@ class MainThread(threading.Thread):
             cmd = find_cmd.replace('<root>', mistika.projects_folder)
             if self.is_mac:
                 cmd = self.aux_fix_mac_printf(cmd)
-            print repr(cmd)
+            # print repr(cmd)
             try:
                 p1 = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 output, stderr = p1.communicate()
@@ -1397,7 +1410,10 @@ class MainThread(threading.Thread):
         if not root == '':
             root += '/'
         for file_line in lines:
+            attributes = {
+            }
             f_inode, f_type, f_size, f_time, full_path = file_line.strip().split(' ', 4)
+            f_inode = int(f_inode)
             f_time = int(f_time.split('.')[0])
             if f_type == '/': # Host is Mac
                 f_type = 'd'
@@ -1420,21 +1436,33 @@ class MainThread(threading.Thread):
                 #     parent_dir, basename = path_id.rsplit('/', 1) # parent_dir will not have trailing slash
                     #parent_path += parent_dir
             parent_path = os.path.dirname(path_id)
-            if parent_path in self.buffer:
-                this_parent = self.buffer[parent_path]
-            else:
-                this_parent = parent
             if path_id == '': # Skip root item
                 continue
-            # if parent_path_to_store != '' and not parent_path_to_store in self.buffer:
-            #     print 'Parent not in buffer:', parent_path_to_store
-            #     self.buffer_add(['0 d 0 0 %s' % parent_path_to_store], host, root)
-            #     tree_parent_path = parent_dir
-            #     tree_parent_path = tree_parent_path.rstrip('/')
-            #     if tree_parent_path != '' and not tree_parent_path in self.buffer:
-            #         self.buffer_add(['0 d 0 0 %s' % tree_parent_path], host, root, parent_path )
-            attributes = {
-            }
+            elif path_id in self.buffer:
+                continue
+            if parent_path in self.buffer:
+                this_parent = self.buffer[parent_path]
+                if f_inode == -1: # This is a virtual folder
+                    attributes['alias'] = full_path.replace(parent_path+'/', '', 1) # Prepends the slash to first level, absolute path virtual folders
+            elif parent == None:
+                this_parent = parent
+            else:
+                this_parent = self.buffer_get_parent(parent.path+'/'+path_id)
+            # elif parent_path in self.buffer:
+            #     if f_inode == -1: # This is a virtual folder
+            #         attributes['alias'] = full_path.replace(parent_path+'/', '', 1)
+            #     this_parent = self.buffer[parent_path]
+            # elif parent != None and not full_path == '/':
+            #     if f_inode == -1: # This is a virtual folder
+            #         virtual_parent_path = parent_path
+            #     else:
+            #         virtual_parent_path = parent.path+'/'+parent_path
+            #     print 'virtual_parent_path:', virtual_parent_path
+            #     self.buffer_add(['-1 d 0 0 %s' % virtual_parent_path], host, root, parent)
+            #     this_parent = self.buffer[virtual_parent_path]
+            #     this_parent = self.buffer_get_parent(path_id)
+            # else:
+            #     this_parent = parent
             if host == 'localhost':
                 attributes['type_local'] = f_type
                 attributes['size_local'] = f_size
@@ -1445,10 +1473,25 @@ class MainThread(threading.Thread):
                 attributes['mtime_remote'] = f_time
                 attributes['host'] = host
             if not path_id in self.buffer:
-                self.buffer[path_id] = File(path_id, this_parent, self.projectsTreeStore, attributes)
+                self.buffer[path_id] = File(path_id, this_parent, self.projectsTreeStore, self.projectsTree, attributes)
             else:
                 self.buffer[path_id].set_attributes(attributes)
                 self.buffer[path_id].add_parent(this_parent)
+
+    def buffer_get_parent(self, child_path_id):
+        if child_path_id == '/':
+            return None
+        path_id = os.path.dirname(child_path_id)
+        if not path_id in self.buffer:
+            attributes = {
+                'virtual': True,
+                'type_local': 'd',
+                'type_remote': 'd',
+                'direction' : 'unknown',
+            }
+            parent = self.buffer_get_parent(path_id)
+            self.buffer[path_id] = File(path_id, parent, self.projectsTreeStore, self.projectsTree, attributes)
+        return self.buffer[path_id]
     def daemon_transfer(self):
         self.daemon_transfer_active = True
         while self.daemon_transfer_active:
@@ -1481,7 +1524,7 @@ class MainThread(threading.Thread):
                 for parent_dir in parent_dirs_remote:
                     mkdir += "'%s'" % parent_dir
                 cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), mkdir]
-                print repr(cmd)
+                # print repr(cmd)
                 p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 output, stderr = p1.communicate()
                 if p1.returncode > 0:
@@ -1492,13 +1535,13 @@ class MainThread(threading.Thread):
                     open(files_list_path, 'w').writelines(file_lines[file_lines_list])
                     if file_lines_list == 'local_to_remote_relative' > 0:
                         cmd = ['rsync',  '--progress', '-a', '-e', 'ssh', '--files-from=' + files_list_path, mistika.projects_folder, '%s@%s:%s' % (self.remote['user'], self.remote['address'], self.remote['projects_path'])]
-                        print repr(cmd)
+                        # print repr(cmd)
                         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                         self.transfer_monitor(process)
 
                     if file_lines_list == 'local_to_remote_absolute' > 0:
                         cmd = ['rsync',  '--progress', '-a', '-e', 'ssh', '--files-from=' + files_list_path, '/', '%s@%s:/' % (self.remote['user'], self.remote['address'])]
-                        print repr(cmd)
+                        # print repr(cmd)
                         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                         self.transfer_monitor(process)
 
@@ -1812,7 +1855,7 @@ class MainThread(threading.Thread):
         t.setDaemon(True)
         t.start()
         return t
-    def buffer_list_files(self, paths=[''], parent=None, sync=False, maxdepth = 2):
+    def buffer_list_files(self, paths=[''], parent=None, sync=False, maxdepth = 2, pre_allocate=False):
         type_filter = ''
         maxdepth_str = ''
         if paths == ['']:
@@ -1833,6 +1876,10 @@ class MainThread(threading.Thread):
                 search_paths += ' "%s%s"' % (root, string_format_to_wildcard(f_path, wrapping='"'))
             else:
                 search_paths += ' "%s%s"' % (root, f_path)
+        if pre_allocate and not f_path in self.buffer:
+            attributes = {'color':COLOR_WARNING, 'placeholder':True}
+            self.buffer[f_path] = File(f_path, self.buffer_get_parent(parent.path+'/'+f_path), self.projectsTreeStore, self.projectsTree, attributes)
+            # gobject.idle_add(self.gui_expand, parent)
         if search_paths == '':
             return
         if maxdepth:
