@@ -1641,9 +1641,9 @@ class MainThread(threading.Thread):
                     mkdir += "'%s'" % os.path.dirname(remote_path)
                     cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), mkdir]
                     mkdir_return = subprocess.call(cmd)
-                cmd = ['rsync', '-e', 'ssh -p %i' % self.remote['port'], '-uaK', '--progress', local_path, uri_remote]
+                cmd = ['rsync', '-e', 'ssh -p %i' % self.remote['port'], '-uaKO', '--progress', local_path, uri_remote]
                 proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                print repr(cmd)
+                # print repr(cmd)
                 while proc.returncode == None:
                     if self.abort or item.transfer == False:
                         item.transfer_fail('Aborted')
@@ -1682,8 +1682,9 @@ class MainThread(threading.Thread):
                 base_path_local = mistika.projects_folder+'/'
                 base_path_remote = self.remote['projects_path']+'/'
             uri_remote = "%s@%s:%s/" % (self.remote['user'], self.remote['address'], base_path_remote)
-            cmd = ['rsync', '-e', 'ssh -p %i' % self.remote['port'], '-uavvK', '--out-format=%n was copied', '--files-from=%s' % temp_handle.name, base_path_local, uri_remote]
-            print repr(cmd)
+            cmd = ['rsync', '-e', 'ssh -p %i' % self.remote['port'], '-uavvKkO', '--no-perms', '--out-format=%n was copied', '--files-from=%s' % temp_handle.name, base_path_local, uri_remote]
+            # print repr(cmd)
+            # print open(temp_handle.name).read()
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             while proc.returncode == None:
                 if self.abort:
