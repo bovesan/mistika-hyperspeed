@@ -253,7 +253,10 @@ class File(object):
     def gui_expand(self):
         for row_reference in self.row_references:
             row_path = row_reference.get_path()
-            self.treeview.expand_row(row_path)
+            try:
+                self.treeview.expand_row(row_path)
+            except TypeError:
+                pass
     def gui_add_parent(self, parent):
         # print repr(self.treestore_values)
         # if self.buffer[path]['mtime_local'] >= self.buffer[path]['mtime_remote'] and basename.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS and not 'placeholder_child_row_reference' in self.buffer[path]:
@@ -1405,7 +1408,7 @@ class MainThread(threading.Thread):
         if self.remote['is_mac']:
             cmd = self.aux_fix_mac_printf(cmd)
         ssh_cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), cmd]
-        # print ssh_cmd
+        print ssh_cmd
         try:
             p1 = subprocess.Popen(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, stderr = p1.communicate()
@@ -1458,8 +1461,6 @@ class MainThread(threading.Thread):
             parent_path = os.path.dirname(path_id)
             if path_id == '': # Skip root item
                 continue
-            elif path_id in self.buffer:
-                continue
             if parent_path in self.buffer:
                 this_parent = self.buffer[parent_path]
                 if f_inode == -1: # This is a virtual folder
@@ -1496,7 +1497,8 @@ class MainThread(threading.Thread):
                 self.buffer[path_id] = File(path_id, this_parent, self.projectsTreeStore, self.projectsTree, attributes)
             else:
                 self.buffer[path_id].set_attributes(attributes)
-                self.buffer[path_id].add_parent(this_parent)
+                if this_parent != None:
+                    self.buffer[path_id].add_parent(this_parent)
 
     def buffer_get_parent(self, child_path_id):
         if child_path_id == '/':
@@ -1919,7 +1921,7 @@ class MainThread(threading.Thread):
         thread_remote.join()
         #print 'Adding local files to buffer'
         self.buffer_add(self.lines_local, 'localhost', mistika.projects_folder, parent)
-        #print 'Adding remote files to buffer'
+        # print 'Adding remote files to buffer'
         self.buffer_add(self.lines_remote, self.remote['alias'], self.remote['projects_path'], parent)
         #print 'Adding files to GUI'
         for path in paths:
