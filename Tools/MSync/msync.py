@@ -49,6 +49,7 @@ PIXBUF_EQUAL = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/equal.png', 1
 ICON_FILE = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/file.png', 16, 16)
 ICON_LEFT = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/left.png', 16, 16)
 ICON_RIGHT = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/right.png', 16, 16)
+ICON_BIDIR = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/reset.png', 16, 16)
 ICON_INFO = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/info.png', 16, 16)
 PIXBUF_PLUS = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/plus.png', 16, 16)
 PIXBUF_MINUS = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/minus.png', 16, 16)
@@ -86,6 +87,8 @@ class File(object):
         self.color = COLOR_DEFAULT
         self.bytes_done = 0
         self.bytes_total = 0
+        self.bytes_done_inc_children = 0
+        self.bytes_total_inc_children = 0
         self.transfer = False
         self.stack = False
         self.status = ''
@@ -98,6 +101,7 @@ class File(object):
                     setattr(self, key_private, value)
                 else:
                     setattr(self, key, value)
+        self.on_top_level = False
         self.add_parent(parent) # Adds to view
         self.direction_update()
     def __getitem__(self, key):
@@ -117,6 +121,8 @@ class File(object):
             self.progress_visibility = False
             self.status_visibility = True
         gobject.idle_add(self.gui_update)
+    def progress_update(self):
+        self.set_progress(float(self.bytes_done_inc_children) / float(self.bytes_total_inc_children))
     def set_parse_progress(self, stack=False, progress_float=0.0):
         if progress_float < 1.0:
             self.placeholder_child.set_progress(progress_float)
@@ -183,16 +189,20 @@ class File(object):
             return ICON_LEFT
         elif self.direction == 'equal':
             return PIXBUF_EQUAL
+        elif self.direction == 'bidir':
+            return ICON_BIDIR
         else:
             return None
     @property
     def parents(self):
         return self._parents
     def add_parent(self, parent):
-        if not parent in self._parents:
+        if parent != None and not parent in self._parents:
             self._parents.append(parent)
-            if parent != None:
-                parent.children = self
+            parent.children = self
+            gobject.idle_add(self.gui_add_parent, parent)
+        elif parent == None and not self.on_top_level:
+            self.on_top_level = True
             gobject.idle_add(self.gui_add_parent, parent)
     @property
     def children(self):
@@ -247,27 +257,45 @@ class File(object):
         for row_reference in self.row_references:
             row_path = row_reference.get_path()
             self.treestore[row_path] = self.treestore_values
+    def queue_change(self, add_bytes_total=False, add_bytes_done=False, direction=False):
+        self.bytes_total_inc_children += add_bytes_total
+        if self.direction in ['unknown', 'equal']:
+            self.direction = direction
+        elif self.direction != direction:
+            self.direction = 'bidir'
+        self.progress_update()
+        for parent in self.parents:
+            parent.queue_change(add_bytes_total, add_bytes_done, self.direction)
     def enqueue(self, queue_push, queue_pull):
-        if len(self.children) > 0:
-            for child in self.children:
-                child.enqueue(queue_push, queue_pull)
-            self.progress_string = 'Queued'
-            self.progress_visibility = True
-            self.status_visibility = False
-        elif self.direction == 'push':
-            queue_push.put(self)
-            self.progress_string = 'Queued'
-            self.progress_visibility = True
-            self.status_visibility = False
-        elif self.direction == 'pull':
-            queue_pull.put(self)
-            self.progress_string = 'Queued'
-            self.progress_visibility = True
-            self.status_visibility = False
+        if not self.transfer:
+            print 'Enqueing:', self.path
+            bytes_total_before = self.bytes_total
+            if len(self.children) > 0:
+                for child in self.children:
+                    child.enqueue(queue_push, queue_pull)
+            if self.direction == 'push':
+                self.bytes_total = self.size_local
+                queue_push.put(self)
+                self.progress_string = 'Queued'
+                self.progress_visibility = True
+                self.status_visibility = False
+            elif self.direction == 'pull':
+                self.bytes_total = self.size_local
+                queue_pull.put(self)
+                self.progress_string = 'Queued'
+                self.progress_visibility = True
+                self.status_visibility = False
+            else:
+                self.bytes_total = 0
+                self.bytes_done = 0
+                self.progress_visibility = False
+            self.transfer = True
+            bytes_total_delta = self.bytes_total - bytes_total_before
+            for parent in self.parents:
+                parent.queue_change(add_bytes_total=bytes_total_delta, direction=self.direction)
+            gobject.idle_add(self.gui_update)
         else:
-            self.progress_visibility = False
-        self.transfer = True
-        gobject.idle_add(self.gui_update)
+            print 'Already in transfer queue:', self.path
     def remove(self):
         for row_reference in self.row_references:
             row_path = row_reference.get_path()
@@ -680,7 +708,7 @@ class MainThread(threading.Thread):
         # print repr(path)
         model = self.projectsTreeStore
         file_path = model[iter][1]
-        print 'Expanding ' + file_path
+        # print 'Expanding ' + file_path
         if file_path.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS: # Should already be loaded
             t = threading.Thread(target=self.io_get_associated, args=[file_path])
             self.threads.append(t)
@@ -842,7 +870,7 @@ class MainThread(threading.Thread):
             row_reference = gtk.TreeRowReference(model, row_path)
             path_id = model[row_path][1]
             print path_id
-            if len(self.buffer[path_id].children) > 0 and not self.buffer[path_id].deep_searched:
+            if self.buffer[path_id].is_stack and len(self.buffer[path_id].children) > 0 and not self.buffer[path_id].deep_searched:
                 # self.buffer_list_files(paths=[path_id], maxdepth = False)
                 self.queue_buffer.put_nowait([self.io_get_associated, {'path_id':path_id, 'sync':True}])
                 # self.queue_buffer.put_nowait([self.buffer[path_id].fetch_dependencies])
@@ -1535,8 +1563,6 @@ class MainThread(threading.Thread):
             base_path_remote = self.remote['projects_path']+'/'
         uri_remote = "%s@%s:%s/" % (self.remote['user'], self.remote['address'], base_path_remote)
         cmd = ['rsync', '-e', 'ssh -p %i' % self.remote['port'], '-uavv', '--out-format=%n was copied', '--files-from=%s' % temp_handle.name, base_path_local, uri_remote]
-        print repr(relative_paths)
-        print repr(cmd)
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         multiple_files = True
         while proc.returncode == None:
@@ -1554,7 +1580,7 @@ class MainThread(threading.Thread):
                 char = proc.stdout.read(1)
                 output += char
             fields = output.split()
-            print output,
+            # print output,
             # if "failed: No such file or directory" in output:
             #     gobject.idle_add(self.gui_show_error, output)
             if len(fields) >= 4 and fields[1].endswith('%'):
@@ -1586,13 +1612,7 @@ class MainThread(threading.Thread):
             proc.poll()
         if multiple_files:
             temp_handle.close()
-        if proc.returncode == 0:
-            print 'Success'
-            # dependency.ignore = True
-            # self.dependency_types[dependency.type].meta['copied'] += dependency.size
-            # gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': 100.0, '6' : 'Copied', '3': False, '8' : True})
-            # self.set_progress()
-        else:
+        if proc.returncode > 0:
             # gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'4': ' '.join(cmd) ,'6' : 'Error %i' % proc.returncode, '3': False, '7' : COLOR_ALERT, '8' : True})
             print 'Error: %i' % proc.returncode
         # gobject.idle_add(self.gui_dependency_summary_update, dependency.type)
