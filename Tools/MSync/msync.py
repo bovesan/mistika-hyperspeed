@@ -127,7 +127,7 @@ class File(object):
         try:
             progress_float = float(self.bytes_done_inc_children) / float(self.bytes_total_inc_children)
         except ZeroDivisionError:
-            progress_float = 0.0
+            progress_float = 1.0
         self.set_progress(progress_float)
     def set_parse_progress(self, stack=False, progress_float=0.0):
         self.placeholder_child.set_progress(progress_float)
@@ -172,11 +172,26 @@ class File(object):
             self.direction = 'equal'
         else:
             self.direction == 'unknown'
-    def set_status(self, status):
-        self.status = status
-        self.status_visibility = True
-        self.progress_visibility = False
+    def set_status(self, status=False):
+        if status:
+            self.status = status
+        elif len(self.children) > 0:
+            statuses = []
+            for child in self.children:
+                if not child.status in statuses:
+                    statuses.append(child.status)
+            if len(statuses) == 0:
+                self.status = ''
+            elif len(statuses) == 1:
+                self.status = statuses[0]
+            else:
+                self.status = 'Completed with errors'
+        if self.progress_percent >= 100.0:
+            self.status_visibility = True
+            self.progress_visibility = False
         gobject.idle_add(self.gui_update)
+        for parent in self.parents:
+            parent.set_status()
     @property
     def icon(self):
         if not self._icon:
@@ -273,23 +288,26 @@ class File(object):
             if row_path != None:
                 self.treestore[row_path] = self.treestore_values
     def transfer_start(self):
-        pass
+        self.status = 'Transferring'
     def transfer_end(self):
         bytes_done_delta = self.bytes_total - self.bytes_done
         self.bytes_done = self.bytes_total
         self.transfer = False
+        self.set_status('Completed')
         self.queue_change(add_bytes_done=bytes_done_delta)
     def transfer_fail(self, message=False):
         bytes_done_before = self.bytes_done
-        bytes_total_before = self.bytes_done
-        self.bytes_done = 0
+        bytes_total_before = self.bytes_total
         self.bytes_total = self.bytes_done
+        self.bytes_done = 0
         bytes_done_delta = self.bytes_done - bytes_done_before
         bytes_total_delta = self.bytes_total - bytes_total_before
         self.transfer = False
-        self.queue_change(add_bytes_done=bytes_done_delta, add_bytes_total=bytes_total_delta)
         if message:
             self.set_status(message)
+        self.queue_change(add_bytes_done=bytes_done_delta, add_bytes_total=bytes_total_delta)
+        # if message:
+        #     self.set_status(message)
     def queue_change(self, add_bytes_total=False, add_bytes_done=False, direction=False):
         self.bytes_total_inc_children += add_bytes_total
         self.bytes_done_inc_children += add_bytes_done
@@ -307,6 +325,8 @@ class File(object):
             if len(self.children) > 0:
                 for child in self.children:
                     child.enqueue(queue_push, queue_pull)
+            if self.virtual:
+                return
             if self.direction == 'push':
                 self.bytes_total = self.size_local
                 queue_push.put(self)
@@ -1385,7 +1405,7 @@ class MainThread(threading.Thread):
         if self.remote['is_mac']:
             cmd = self.aux_fix_mac_printf(cmd)
         ssh_cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), cmd]
-        print ssh_cmd
+        # print ssh_cmd
         try:
             p1 = subprocess.Popen(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, stderr = p1.communicate()
@@ -1644,7 +1664,7 @@ class MainThread(threading.Thread):
                 char = proc.stdout.read(1)
                 output += char
             fields = output.split()
-            # print output,
+            print output,
             # if "failed: No such file or directory" in output:
             #     gobject.idle_add(self.gui_show_error, output)
             if len(fields) >= 4 and fields[1].endswith('%'):
@@ -1667,6 +1687,12 @@ class MainThread(threading.Thread):
 
                 except KeyError:
                     pass
+            # elif 'rsync: link_stat' in output and 'failed: Not a directory (20)' in output:
+            #     folder = output.split('"', 2)[1]
+            #     for rel_path in relative_paths:
+            #         path_id = relative_paths[rel_path.rstrip('/')]
+            #         if path_id.startswith(folder):
+            #             self.buffer[path_id].transfer_fail('No such file')
             elif 'rsync: recv_generator: mkdir' in output and 'failed: Permission denied (13)' in output:
                 folder = output.split('"', 2)[1]
                 for rel_path in relative_paths:
@@ -1877,7 +1903,7 @@ class MainThread(threading.Thread):
             else:
                 search_paths += ' "%s%s"' % (root, f_path)
         if pre_allocate and not f_path in self.buffer:
-            attributes = {'color':COLOR_WARNING, 'placeholder':True}
+            attributes = {'color':COLOR_WARNING, 'placeholder':True, 'virtual':True}
             self.buffer[f_path] = File(f_path, self.buffer_get_parent(parent.path+'/'+f_path), self.projectsTreeStore, self.projectsTree, attributes)
             # gobject.idle_add(self.gui_expand, parent)
         if search_paths == '':
