@@ -181,13 +181,14 @@ class File(object):
         elif len(self.children) > 0:
             statuses = []
             for child in self.children:
-                if not child.status in statuses:
+                if child.status != '' and not child.status in statuses:
                     statuses.append(child.status)
             if len(statuses) == 0:
                 self.status = ''
             elif len(statuses) == 1:
                 self.status = statuses[0]
             else:
+                print repr(statuses)
                 self.status = 'Completed with errors'
         if self.progress_percent >= 100.0:
             self.status_visibility = True
@@ -782,9 +783,9 @@ class MainThread(threading.Thread):
             t.start()
             return
         if file_item.virtual:
-            print 'Virtual item'
+            # print 'Virtual item'
             if model.iter_n_children(iter) == 1:
-                print 'Expand'
+                # print 'Expand'
                 treeview.expand_row(path+(0,), False) # Expand single child items automatically
         elif not file_item.deep_searched:
             self.queue_buffer.put_nowait([self.buffer_list_files, {
@@ -1421,7 +1422,7 @@ class MainThread(threading.Thread):
         if self.remote['is_mac']:
             cmd = self.aux_fix_mac_printf(cmd)
         ssh_cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), cmd]
-        print ssh_cmd
+        # print ssh_cmd
         try:
             p1 = subprocess.Popen(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, stderr = p1.communicate()
