@@ -1633,7 +1633,7 @@ class MainThread(threading.Thread):
                 if absolute:
                     local_path = item.path
                     remote_path = item.path
-                    extra_args.append('-K')
+                    extra_args.append('-KO')
                 else:
                     local_path = os.path.join(mistika.projects_folder, item.path)
                     remote_path = os.path.join(self.remote['projects_path'], item.path)
@@ -1644,7 +1644,7 @@ class MainThread(threading.Thread):
                     mkdir += "'%s'" % os.path.dirname(remote_path)
                     cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), mkdir]
                     mkdir_return = subprocess.call(cmd)
-                cmd = ['rsync', '-e', 'ssh -p %i' % self.remote['port'], '-uaO'] + extra_args + ['--progress', local_path, uri_remote]
+                cmd = ['rsync', '-e', 'ssh -p %i' % self.remote['port'], '-ua'] + extra_args + ['--progress', local_path, uri_remote]
                 proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                 # print repr(cmd)
                 while proc.returncode == None:
@@ -1681,12 +1681,12 @@ class MainThread(threading.Thread):
             temp_handle.flush()
             if absolute:
                 base_path_local = base_path_remote = '/'
-                extra_args.append('-Kk')
+                extra_args.append('-KkO')
             else:
                 base_path_local = mistika.projects_folder+'/'
                 base_path_remote = self.remote['projects_path']+'/'
             uri_remote = "%s@%s:%s/" % (self.remote['user'], self.remote['address'], base_path_remote)
-            cmd = ['rsync', '-e', 'ssh -p %i' % self.remote['port'], '-uavvO'] + extra_args + ['--no-perms', '--out-format=%n was copied', '--files-from=%s' % temp_handle.name, base_path_local, uri_remote]
+            cmd = ['rsync', '-e', 'ssh -p %i' % self.remote['port'], '-uavv'] + extra_args + ['--no-perms', '--out-format=%n was copied', '--files-from=%s' % temp_handle.name, base_path_local, uri_remote]
             # print repr(cmd)
             # print open(temp_handle.name).read()
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
