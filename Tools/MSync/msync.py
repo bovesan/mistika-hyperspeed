@@ -122,7 +122,11 @@ class File(object):
             self.status_visibility = True
         gobject.idle_add(self.gui_update)
     def progress_update(self):
-        self.set_progress(float(self.bytes_done_inc_children) / float(self.bytes_total_inc_children))
+        try:
+            progress_float = float(self.bytes_done_inc_children) / float(self.bytes_total_inc_children)
+        except ZeroDivisionError:
+            progress_float = 0.0
+        self.set_progress(progress_float)
     def set_parse_progress(self, stack=False, progress_float=0.0):
         if progress_float < 1.0:
             self.placeholder_child.set_progress(progress_float)
@@ -131,8 +135,8 @@ class File(object):
     @property
     def treestore_values(self):
         #self.projectsTreeStore = gtk.TreeStore(str, str, str, gtk.gdk.Pixbuf, str, int, str, bool, str, bool, gtk.gdk.Pixbuf, str, str, str, int, int) # Basename, Tree Path, Local time, Direction, Remote time, Progress int, Progress text, Progress visibility, remote_address, no_reload, icon, Local size, Remote size, Color(str), int(bytes_done), int(bytes_total)
-        size_local_str = 'Folder' if self.type_local == 'd' else human.size(self.size_local)
-        size_remote_str = 'Folder' if self.type_remote == 'd' else human.size(self.size_remote)
+        size_local_str = '' if self.type_local == 'd' else human.size(self.size_local)
+        size_remote_str = '' if self.type_remote == 'd' else human.size(self.size_remote)
         return [
             self.alias, # 0
             self.path, # 1
@@ -257,11 +261,30 @@ class File(object):
         for row_reference in self.row_references:
             row_path = row_reference.get_path()
             self.treestore[row_path] = self.treestore_values
+    def transfer_start(self):
+        pass
+    def transfer_end(self):
+        bytes_done_delta = self.bytes_total - self.bytes_done
+        self.bytes_done = self.bytes_total
+        self.transfer = False
+        self.queue_change(add_bytes_done=bytes_done_delta)
+    def transfer_fail(self, message=False):
+        bytes_done_before = self.bytes_done
+        bytes_total_before = self.bytes_done
+        self.bytes_done = 0
+        self.bytes_total = self.bytes_done
+        bytes_done_delta = self.bytes_done - bytes_done_before
+        bytes_total_delta = self.bytes_total - bytes_total_before
+        self.transfer = False
+        self.queue_change(add_bytes_done=bytes_done_delta, add_bytes_total=bytes_total_delta)
+        if message:
+            self.set_status(message)
     def queue_change(self, add_bytes_total=False, add_bytes_done=False, direction=False):
         self.bytes_total_inc_children += add_bytes_total
+        self.bytes_done_inc_children += add_bytes_done
         if self.direction in ['unknown', 'equal']:
             self.direction = direction
-        elif self.direction != direction:
+        elif direction in ['push', 'pull', 'bidir'] and self.direction != direction:
             self.direction = 'bidir'
         self.progress_update()
         for parent in self.parents:
@@ -291,8 +314,7 @@ class File(object):
                 self.progress_visibility = False
             self.transfer = True
             bytes_total_delta = self.bytes_total - bytes_total_before
-            for parent in self.parents:
-                parent.queue_change(add_bytes_total=bytes_total_delta, direction=self.direction)
+            self.queue_change(add_bytes_total=bytes_total_delta, direction=self.direction)
             gobject.idle_add(self.gui_update)
         else:
             print 'Already in transfer queue:', self.path
@@ -1537,8 +1559,7 @@ class MainThread(threading.Thread):
             return
         relative_paths = {}
         for item in items:
-            progress_percent = 0.0
-            item.set_progress(progress_percent)
+            item.transfer_start()
             relative_paths[item.path.lstrip('/')] = item.path
             # path_local = os.path.join(mistika.projects_folder, item.path)
             # path_remote = os.path.join(self.remote['projects_path'], item.path)
@@ -1597,8 +1618,10 @@ class MainThread(threading.Thread):
                 try:
                     rel_path = output.replace('is uptodate', '').replace('was copied', '').strip()
                     path_id = relative_paths[rel_path.rstrip('/')]
-                    self.buffer[path_id].set_progress(1.0)
-                    self.buffer[path_id].transfer = False
+                    self.buffer[path_id].transfer_end()
+                    # self.buffer[path_id].set_progress(1.0)
+                    # self.buffer[path_id].transfer = False
+
                 except KeyError:
                     pass
             elif 'rsync: recv_generator: mkdir' in output and 'failed: Permission denied (13)' in output:
@@ -1606,12 +1629,17 @@ class MainThread(threading.Thread):
                 for rel_path in relative_paths:
                     path_id = relative_paths[rel_path.rstrip('/')]
                     if path_id.startswith(folder):
-                        self.buffer[path_id].set_progress(0.0)
-                        self.buffer[path_id].set_status('Permission denied')
-                        self.buffer[path_id].transfer = False
+                        self.buffer[path_id].transfer_fail('Permission denied')
+                        # self.buffer[path_id].set_progress(0.0)
+                        # self.buffer[path_id].set_status('Permission denied')
+                        # self.buffer[path_id].transfer = False
             proc.poll()
         if multiple_files:
             temp_handle.close()
+        self.queue_buffer.put_nowait([self.buffer_list_files, {
+                    'paths' : relative_paths.values(),
+                    'sync' : False
+                    }])
         if proc.returncode > 0:
             # gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'4': ' '.join(cmd) ,'6' : 'Error %i' % proc.returncode, '3': False, '7' : COLOR_ALERT, '8' : True})
             print 'Error: %i' % proc.returncode
