@@ -1362,7 +1362,7 @@ class MainThread(threading.Thread):
 
         # self.queue_remote.put_nowait([self.remote_connect])        
     def on_force_action(self, widget, action, row_path=None):
-        print 'Force action: ' + action
+        # print 'Force action: ' + action
         file_infos = []
         if row_path == None:
             selection = self.projectsTree.get_selection()
@@ -1372,24 +1372,21 @@ class MainThread(threading.Thread):
             pathlist = [row_path]
         for row_path in pathlist:
             row_iter = model.get_iter(row_path)
-            path = model[row_path][1]
-            print path
+            path_id = model[row_path][1]
             if action == 'pull':
-                self.directions[path]['direction'] = self.icon_left
+                self.buffer[path_id].direction = 'pull'
             elif action == 'push':
-                self.directions[path]['direction'] = self.icon_left
+                self.buffer[path_id].direction = 'push'
             elif action == 'nothing':
-                self.directions[path]['direction'] = None
-            if action == 'reset':
-                self.directions[path]['forced'] = False
-            else:
-                self.directions[path]['forced'] = True
-            self.gui_refresh_path(path)
+                self.buffer[path_id].direction = 'nothing'
+            elif action == 'reset':
+                self.buffer[path_id].direction_update()
+            gobject.idle_add(self.buffer[path_id].gui_update)
             child_iter = model.iter_children(row_iter)
             while child_iter != None:
                 row_path_child = model.get_path(child_iter)
                 path_str_child = model[row_path_child][1]
-                print 'Child: ' + path_str_child
+                # print 'Child: ' + path_str_child
                 if not path_str_child == '': self.on_force_action(None, action, row_path_child) # Avoid placeholders
                 child_iter = model.iter_next(child_iter)
     def on_file_info(self, widget):
