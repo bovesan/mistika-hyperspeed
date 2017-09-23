@@ -1416,10 +1416,10 @@ class MainThread(threading.Thread):
         gobject.idle_add(self.spinner_local.set_property, 'visible', True)
         gobject.idle_add(self.local_status_label.set_label, 'Listing local files')
         try:
-            cmd = find_cmd.replace('<root>', mistika.projects_folder)
+            cmd = find_cmd.replace('<projects>', mistika.projects_folder).replace('<absolute>/', '/')
             if self.is_mac:
                 cmd = self.aux_fix_mac_printf(cmd)
-            # print repr(cmd)
+            print repr(cmd)
             try:
                 p1 = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 output, stderr = p1.communicate()
@@ -1444,7 +1444,10 @@ class MainThread(threading.Thread):
         #gobject.idle_add(self.button_load_remote_projects.set_image, loader)
         gobject.idle_add(self.spinner_remote.set_property, 'visible', True)
         gobject.idle_add(self.remote_status_label.set_label, 'Listing remote files')
-        cmd = find_cmd.replace('<root>', self.remote['projects_path'])
+        if '<projects>' in find_cmd: # Relative
+            cmd = find_cmd.replace('<projects>', self.remote['projects_path'])
+        else: # Absolute
+            cmd = find_cmd.replace('<absolute>/', self.remote['root'])
         if self.remote['is_mac']:
             cmd = self.aux_fix_mac_printf(cmd)
         ssh_cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), cmd]
@@ -1473,6 +1476,7 @@ class MainThread(threading.Thread):
         if not root == '':
             root += '/'
         for file_line in lines:
+            # print file_line
             attributes = {
                 'virtual' : False,
                 'color' : COLOR_DEFAULT,
@@ -1497,7 +1501,11 @@ class MainThread(threading.Thread):
                 #     parent_dir = ''
                 #     basename = path_id
             else: # Absolute path
-                path_id = full_path
+                if host == 'localhost':
+                    path_id = full_path
+                else:
+                    path_id = full_path.replace(self.remote['root'], '/', 1)
+                    print path_id
                 # if '/' in path_id.strip('/'):
                 #     parent_dir, basename = path_id.rsplit('/', 1) # parent_dir will not have trailing slash
                     #parent_path += parent_dir
@@ -1663,11 +1671,11 @@ class MainThread(threading.Thread):
                 else:
                     local_path = os.path.join(mistika.projects_folder, item.path)
                     remote_path = os.path.join(self.remote['projects_path'], item.path)
-                uri_remote = "%s@%s:%s" % (self.remote['user'], self.remote['address'], remote_path)
+                uri_remote = "%s@%s:%s" % (self.remote['user'], self.remote['address'], self.remote['root']+remote_path)
                 parent_path = os.path.dirname(item.path)
                 if not parent_path in self.buffer or self.buffer[parent_path].size_remote < 0:
                     mkdir = 'mkdir -p '
-                    mkdir += "'%s'" % os.path.dirname(remote_path)
+                    mkdir += "'%s'" % self.remote['root']+os.path.dirname(remote_path)
                     cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), mkdir]
                     mkdir_return = subprocess.call(cmd)
                 cmd = ['rsync', '-e', 'ssh -p %i' % self.remote['port'], '-ua'] + extra_args + ['--progress', local_path, uri_remote]
@@ -1707,15 +1715,16 @@ class MainThread(threading.Thread):
             temp_handle.write('\n'.join(relative_paths) + '\n')
             temp_handle.flush()
             if absolute:
-                base_path_local = base_path_remote = '/'
+                base_path_local = '/'
+                base_path_remote = self.remote['root']
                 extra_args.append('-KkO')
             else:
                 base_path_local = mistika.projects_folder+'/'
                 base_path_remote = self.remote['projects_path']+'/'
             uri_remote = "%s@%s:%s/" % (self.remote['user'], self.remote['address'], base_path_remote)
             cmd = ['rsync', '-e', 'ssh -p %i' % self.remote['port'], '-uavv'] + extra_args + ['--no-perms', '--out-format=%n was copied', '--files-from=%s' % temp_handle.name, base_path_local, uri_remote]
-            # print repr(cmd)
-            # print open(temp_handle.name).read()
+            print repr(cmd)
+            print open(temp_handle.name).read()
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             while proc.returncode == None:
                 if self.abort:
@@ -1731,7 +1740,7 @@ class MainThread(threading.Thread):
                     char = proc.stdout.read(1)
                     output += char
                 fields = output.split()
-                # print output,
+                print output,
                 if output.strip().endswith('is uptodate') or output.strip().endswith('was copied'):
                     try:
                         rel_path = output.replace('is uptodate', '').replace('was copied', '').strip()
@@ -1836,6 +1845,7 @@ class MainThread(threading.Thread):
         cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), 'cat MISTIKA-ENV/MISTIKA_WORK MAMBA-ENV/MAMBA_WORK']
         p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         output, stderr = p1.communicate()
+        # print output
         if output != '':
             outline1 = output.splitlines()[0]
             outfields = outline1.split(None, 1)
@@ -1843,6 +1853,18 @@ class MainThread(threading.Thread):
                 return outfields[1]
         self.remote_status_label.set_markup('Could not get read MISTIKA-ENV/MISTIKA_WORK or MAMBA-ENV/MAMBA_WORK in home directory of user %s' % self.remote['user'])
         return None
+    def remote_get_root_path(self):
+        cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), 'cat msync-root.cfg']
+        p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        output, stderr = p1.communicate()
+        # print output
+        if output != '':
+            fake_root = output.splitlines()[0]
+            if not fake_root.endswith('/'):
+                fake_root += '/'
+            return fake_root
+        else:
+            return '/'
     def remote_disconnect(self):
         self.queue_buffer.put_nowait([self.buffer_clear])
         self.daemon_remote_active = False
@@ -1859,13 +1881,6 @@ class MainThread(threading.Thread):
         self.remote['user'] = self.entry_user.get_text()
         self.remote['port'] = self.entry_port.get_value_as_int()
         self.remote['projects_path'] = self.entry_projects_path.get_text()
-        if self.remote['projects_path'] == '':
-            remote_projects_path = self.remote_get_projects_path()
-            if remote_projects_path == None:
-                return
-            else:
-                self.remote['projects_path'] = remote_projects_path
-                self.entry_projects_path.set_text(remote_projects_path)
         #self.remote['projects_path'] = self.remote['projects_path'].rstrip('/')+'/'
         cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), 'uname']
         p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -1886,8 +1901,16 @@ class MainThread(threading.Thread):
                 self.remote['is_mac'] = True
             else:
                 self.remote['is_mac'] = False
+        if self.remote['projects_path'] == '':
+            remote_projects_path = self.remote_get_projects_path()
+            if remote_projects_path == None:
+                return
+            else:
+                self.remote['projects_path'] = remote_projects_path
+                self.entry_projects_path.set_text(remote_projects_path)
             #self.entry_address.set_property('editable', False)
-            gobject.idle_add(self.gui_connected)
+        self.remote['root'] = self.remote_get_root_path()
+        gobject.idle_add(self.gui_connected)
         self.queue_buffer.put_nowait([self.buffer_list_files])
     def buffer_clear(self):
         self.buffer = {}
@@ -1936,9 +1959,9 @@ class MainThread(threading.Thread):
             if f_path in self.buffer and self.buffer[f_path].virtual:
                 continue
             if f_path.startswith('/'):
-                root = ''
+                root = '<absolute>'
             else:
-                root = '<root>/'
+                root = '<projects>/'
             if '%' in f_path:
                 search_paths += ' "%s%s"' % (root, string_format_to_wildcard(f_path, wrapping='"'))
             else:
