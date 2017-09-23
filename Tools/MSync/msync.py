@@ -188,7 +188,6 @@ class File(object):
             elif len(statuses) == 1:
                 self.status = statuses[0]
             else:
-                print repr(statuses)
                 self.status = 'Completed with errors'
         if self.progress_percent >= 100.0:
             self.status_visibility = True
@@ -328,23 +327,25 @@ class File(object):
         self.progress_update()
         for parent in self.parents:
             parent.queue_change(add_bytes_done=bytes_done_delta)
-    def enqueue(self, queue_push, queue_pull):
+    def enqueue(self, queue_push, queue_pull, queue_push_size, queue_pull_size):
+        if len(self.children) > 0:
+            for child in self.children:
+                child.enqueue(queue_push, queue_pull, queue_push_size, queue_pull_size)
         if not self.transfer:
             # print 'Enqueing:', self.path
             bytes_total_before = self.bytes_total
-            if len(self.children) > 0:
-                for child in self.children:
-                    child.enqueue(queue_push, queue_pull)
             if self.virtual:
                 return
             if self.direction == 'push':
                 self.bytes_total = self.size_local
+                queue_push_size[0] += self.size_local
                 queue_push.put(self)
                 self.progress_string = 'Queued'
                 self.progress_visibility = True
                 self.status_visibility = False
             elif self.direction == 'pull':
                 self.bytes_total = self.size_local
+                queue_pull_size[0] += self.size_local
                 queue_pull.put(self)
                 self.progress_string = 'Queued'
                 self.progress_visibility = True
@@ -402,6 +403,8 @@ class MainThread(threading.Thread):
         self.queue_local = Queue.Queue()
         self.queue_push = Queue.Queue()
         self.queue_pull = Queue.Queue()
+        self.queue_push_size = [0]
+        self.queue_pull_size = [0]
         self.remote = {}
         self.is_mac = False
         self.is_mamba = False
@@ -453,6 +456,7 @@ class MainThread(threading.Thread):
         window.connect("destroy", self.on_quit)
         self.window.connect("key-press-event",self.on_key_press_event)
         self.quit = False
+        gobject.timeout_add(1000, self.gui_periodical_updates)
     def init_connection_panel(self):
         tooltips = self.tooltips
         vbox = gtk.VBox(False, 10)
@@ -718,6 +722,12 @@ class MainThread(threading.Thread):
         button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_reset))
         tooltips.set_tip(button, 'Reset selected file(s) to default action')
         hbox.pack_start(button, False, False, 0)
+
+        label = self.push_queue_size_label = gtk.Label('push size')
+        hbox.pack_start(label, False, False, 5)
+        label = self.pull_queue_size_label = gtk.Label('pull size')
+        hbox.pack_start(label, False, False, 5)
+
         vbox.pack_start(hbox, False, False, 0)
 
         #menu = ['Sync project', 'Sync media']
@@ -935,7 +945,12 @@ class MainThread(threading.Thread):
             files_chunk = []
         self.queue_buffer.put_nowait([file_object.set_parse_progress, {'progress_float':1.0}])
         if sync:
-            self.queue_buffer.put_nowait([self.buffer[path_id].enqueue, {'queue_push' : self.queue_push, 'queue_pull':self.queue_pull}])
+            self.queue_buffer.put_nowait([self.buffer[path_id].enqueue, {
+                'queue_push' : self.queue_push,
+                'queue_pull':self.queue_pull,
+                'queue_push_size' : self.queue_push_size,
+                'queue_pull_size' : self.queue_pull_size,
+                }])
     def buffer_remove_item(self, row_reference):
         gobject.idle_add(self.gui_row_delete, row_reference)
     def on_sync_selected(self, widget):
@@ -945,12 +960,26 @@ class MainThread(threading.Thread):
             row_reference = gtk.TreeRowReference(model, row_path)
             path_id = model[row_path][1]
             print path_id
-            if self.buffer[path_id].is_stack and len(self.buffer[path_id].children) > 0 and not self.buffer[path_id].deep_searched:
-                # self.buffer_list_files(paths=[path_id], maxdepth = False)
-                self.queue_buffer.put_nowait([self.io_get_associated, {'path_id':path_id, 'sync':True}])
+            if len(self.buffer[path_id].children) > 0 and not self.buffer[path_id].deep_searched and not self.buffer[path_id].virtual:
+                if self.buffer[path_id].is_stack:
+                    self.queue_buffer.put_nowait([self.io_get_associated, {
+                        'path_id': path_id,
+                        'sync': True
+                    }])
+                else:
+                    self.queue_buffer.put_nowait([self.buffer_list_files, {
+                        'paths': [path_id],
+                        'sync': True,
+                        'maxdepth': False
+                    }])
                 # self.queue_buffer.put_nowait([self.buffer[path_id].fetch_dependencies])
             else:
-                self.buffer[path_id].enqueue(queue_push=self.queue_push, queue_pull=self.queue_pull)
+                self.queue_buffer.put_nowait([self.buffer[path_id].enqueue, {
+                    'queue_push' : self.queue_push,
+                    'queue_pull':self.queue_pull,
+                    'queue_push_size' : self.queue_push_size,
+                    'queue_pull_size' : self.queue_pull_size,
+                    }])
     def do_sync_item(self, row_reference, walk_parent=True):
         model = self.projectsTreeStore
         row_path = row_reference.get_path()
@@ -1604,11 +1633,11 @@ class MainThread(threading.Thread):
                 item = q.get(True, 1)
                 if item.transfer:
                     if item.absolute:
-                        print 'Push absolute path:', repr(item.path)
+                        # print 'Push absolute path:', repr(item.path)
                         items_absolute.append(item)
                         queue_size_absolute += item.size_local
                     else:
-                        print 'Push relative path:', repr(item.path)
+                        # print 'Push relative path:', repr(item.path)
                         items_relative.append(item)
                         queue_size_relative += item.size_local
             except Queue.Empty:
@@ -1651,7 +1680,6 @@ class MainThread(threading.Thread):
                     if self.abort or item.transfer == False:
                         item.transfer_fail('Aborted')
                         proc.kill()
-                        temp_handle.close()
                         return
                     output = ''
                     char = None
@@ -1664,10 +1692,12 @@ class MainThread(threading.Thread):
                     fields = output.split()
                     if len(fields) >= 4 and fields[1].endswith('%'):
                         bytes_done = int(fields[0])
+                        bytes_done_delta = bytes_done - item.bytes_done
+                        self.queue_push_size[0] -= bytes_done_delta
                         # progress_percent = float(fields[1].strip('%'))
                         item.set_bytes_done(bytes_done)
                     proc.poll()
-                    print output
+                    # print output
                 if proc.returncode > 0:
                     item.transfer_fail('Error: %i' % proc.returncode)
                 else:
@@ -1704,23 +1734,13 @@ class MainThread(threading.Thread):
                     char = proc.stdout.read(1)
                     output += char
                 fields = output.split()
-                print output,
-                # if "failed: No such file or directory" in output:
-                #     gobject.idle_add(self.gui_show_error, output)
-                    # self.set_progress(extra_bytes=int(fields[0]))
-                    # gobject.idle_add(self.gui_dependency_summary_update, dependency.type, int(fields[0]))
-                    # self.status_set(fields[2])
-                    # gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': progress_percent, '2': fields[1]})
+                # print output,
                 if output.strip().endswith('is uptodate') or output.strip().endswith('was copied'):
-                    # frames_done += 1
-                    # progress_percent = float(frames_done) / float(sequence_length)
-                    # progress_string = '%5.2f%%' % progress_percent
-                    # gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': progress_percent, '2': progress_string})
                     try:
                         rel_path = output.replace('is uptodate', '').replace('was copied', '').strip()
                         path_id = relative_paths[rel_path.rstrip('/')]
                         self.buffer[path_id].transfer_end()
-
+                        self.queue_push_size[0] -= self.buffer[path_id].size_local
                     except KeyError:
                         pass
                 elif 'rsync: recv_generator: mkdir' in output and 'failed: Permission denied (13)' in output:
@@ -1729,9 +1749,6 @@ class MainThread(threading.Thread):
                         path_id = relative_paths[rel_path.rstrip('/')]
                         if path_id.startswith(folder):
                             self.buffer[path_id].transfer_fail('Permission denied')
-                            # self.buffer[path_id].set_progress(0.0)
-                            # self.buffer[path_id].set_status('Permission denied')
-                            # self.buffer[path_id].transfer = False
                 proc.poll()
             temp_handle.close()
             if proc.returncode > 0:
@@ -1934,6 +1951,7 @@ class MainThread(threading.Thread):
             self.buffer[f_path] = File(f_path, self.buffer_get_parent(parent.path+'/'+f_path), self.projectsTreeStore, self.projectsTree, attributes)
             # gobject.idle_add(self.gui_expand, parent)
         if search_paths == '':
+            print 'no search paths'
             return
         if maxdepth:
             maxdepth_str = ' -maxdepth %i' % maxdepth
@@ -1959,9 +1977,13 @@ class MainThread(threading.Thread):
                     if not maxdepth:
                         self.buffer[f_path].deep_searched = True
                     #gobject.idle_add(self.gui_refresh_path, f_path)
-        # if sync:
-        #     path, row_reference = sync
-        #     gobject.idle_add(self.do_sync_item, row_reference)
+            if sync:
+                self.buffer[path].enqueue(
+                    queue_push = self.queue_push,
+                    queue_pull = self.queue_pull,
+                    queue_push_size = self.queue_push_size,
+                    queue_pull_size = self.queue_pull_size
+                )
     def io_hosts_populate(self, tree):
         try:
             hosts = json.loads(open(CFG_HOSTS_PATH).read())
@@ -1986,6 +2008,29 @@ class MainThread(threading.Thread):
             gobject.idle_add(self.gui_show_error, 'Could not write to file:\n'+CFG_HOSTS_PATH)
         except:
             raise
+    def gui_periodical_updates(self):
+        try:
+            self.gui_periodical_updates_history
+        except AttributeError:
+            self.gui_periodical_updates_history = []
+        history = self.gui_periodical_updates_history
+        history.append([time.time(), self.queue_push_size[0], self.queue_pull_size[0]])
+        del history[:-10]
+        if len(history) > 1:
+            push_speed = ' rate: %sps' % human.size((history[0][1] - history[-1][1]) / (history[-1][0] - history[0][0]), print_null=True)
+            pull_speed = ' rate: %sps' % human.size((history[0][2] - history[-1][2]) / (history[-1][0] - history[0][0]), print_null=True)
+        else:
+            push_speed = pull_speed = ''
+        # print 'gui_periodical_updates()'
+        if self.queue_push_size[0] > 0:
+            self.push_queue_size_label.set_text('Push queue: %s%s' % (human.size(self.queue_push_size[0]), push_speed))
+        else:
+            self.push_queue_size_label.set_text('')
+        if self.queue_pull_size[0] > 0:
+            self.push_queue_size_label.set_text('Pull queue: %s%s' % (human.size(self.queue_pull_size[0]), pull_speed))
+        else:
+            self.pull_queue_size_label.set_text('')
+        return True
 
 
 
