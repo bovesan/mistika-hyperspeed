@@ -1540,12 +1540,20 @@ class MainThread(threading.Thread):
         if child_path_id == '/':
             return None
         path_id = os.path.dirname(child_path_id)
+        parent_path = os.path.dirname(path_id)
+        alias = os.path.basename(path_id)
+        if parent_path in self.buffer:
+            if '//' in path_id:
+                alias = '/'+alias
+            else:
+                alias = 'Project: '+alias
         if not path_id in self.buffer:
             attributes = {
-                'virtual': True,
-                'type_local': 'd',
+                'virtual'    : True,
+                'type_local' : 'd',
                 'type_remote': 'd',
-                'direction' : 'unknown',
+                'direction'  : 'unknown',
+                'alias'      : alias,
             }
             parent = self.buffer_get_parent(path_id)
             self.buffer[path_id] = File(path_id, parent, self.projectsTreeStore, self.projectsTree, attributes)
