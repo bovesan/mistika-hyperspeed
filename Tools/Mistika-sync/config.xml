@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<tool>
+<alias>Mistika sync</alias>
+<description>Syncs Mistika projects and associated media to or from a remote host.</description>
+<executable>msync.py</executable>
+</tool>
