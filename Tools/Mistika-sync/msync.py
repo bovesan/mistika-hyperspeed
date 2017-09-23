@@ -345,7 +345,7 @@ class File(object):
                 self.status_visibility = False
             elif self.direction == 'pull':
                 self.bytes_total = self.size_local
-                queue_pull_size[0] += self.size_local
+                queue_pull_size[0] += self.size_remote
                 queue_pull.put(self)
                 self.progress_string = 'Queued'
                 self.progress_visibility = True
@@ -747,6 +747,7 @@ class MainThread(threading.Thread):
         self.start_daemon(self.daemon_buffer)
         self.start_daemon(self.daemon_local)
         self.start_daemon(self.daemon_push)
+        self.start_daemon(self.daemon_pull)
         # self.start_daemon(self.daemon_pull)
         #start_daemon(self.daemon_remote)
         #self.start_daemon(self.daemon_transfer)
@@ -1419,7 +1420,7 @@ class MainThread(threading.Thread):
             cmd = find_cmd.replace('<projects>', mistika.projects_folder).replace('<absolute>/', '/')
             if self.is_mac:
                 cmd = self.aux_fix_mac_printf(cmd)
-            print repr(cmd)
+            # print repr(cmd)
             try:
                 p1 = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 output, stderr = p1.communicate()
@@ -1558,60 +1559,6 @@ class MainThread(threading.Thread):
             parent = self.buffer_get_parent(path_id)
             self.buffer[path_id] = File(path_id, parent, self.projectsTreeStore, self.projectsTree, attributes)
         return self.buffer[path_id]
-    def daemon_transfer(self):
-        self.daemon_transfer_active = True
-        while self.daemon_transfer_active:
-            file_lines = {}
-            file_lines['local_to_remote_absolute'] = []
-            file_lines['local_to_remote_relative'] = []
-            file_lines['remote_to_local_absolute'] = []
-            file_lines['remote_to_local_relative'] = []
-            parent_dirs_remote = []
-            parent_dirs_local = []
-            for path in self.transfer_queue.keys():
-                print 'In queue:' + path
-                direction = self.buffer[path]['direction']
-                if direction == None:
-                    del self.transfer_queue[path]
-                #print direction
-                line = path + '\n'
-                if direction == gtk.STOCK_GO_FORWARD:
-                    parent_dir = path.rstrip('/').rsplit('/', 1)[0]
-                    if parent_dir in self.buffer and self.buffer[parent_dir]['size_remote'] == 0:
-                        pass
-                    else:
-                        parent_dirs_remote.append(parent_dir)
-                    if path.startswith('/'):
-                        file_lines['local_to_remote_absolute'].append(line)
-                    else:
-                        file_lines['local_to_remote_relative'].append(line)
-            if len(parent_dirs_remote) > 0:
-                mkdir = 'mkdir -p '
-                for parent_dir in parent_dirs_remote:
-                    mkdir += "'%s'" % parent_dir
-                cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), mkdir]
-                # print repr(cmd)
-                p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                output, stderr = p1.communicate()
-                if p1.returncode > 0:
-                    gobject.idle_add(self.gui_show_error, stderr)
-            for file_lines_list in file_lines:
-                if len(file_lines[file_lines_list]) > 0:
-                    files_list_path = self.cfgdir + file_lines_list + '.lst'
-                    open(files_list_path, 'w').writelines(file_lines[file_lines_list])
-                    if file_lines_list == 'local_to_remote_relative' > 0:
-                        cmd = ['rsync',  '--progress', '-a', '-e', 'ssh', '--files-from=' + files_list_path, mistika.projects_folder, '%s@%s:%s' % (self.remote['user'], self.remote['address'], self.remote['projects_path'])]
-                        # print repr(cmd)
-                        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                        self.transfer_monitor(process)
-
-                    if file_lines_list == 'local_to_remote_absolute' > 0:
-                        cmd = ['rsync',  '--progress', '-a', '-e', 'ssh', '--files-from=' + files_list_path, '/', '%s@%s:/' % (self.remote['user'], self.remote['address'])]
-                        # print repr(cmd)
-                        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                        self.transfer_monitor(process)
-
-            time.sleep(10)
     def daemon_buffer(self):
         q = self.queue_buffer
         self.daemon_buffer_active = True
@@ -1663,6 +1610,37 @@ class MainThread(threading.Thread):
                 self.push(items_relative)
                 items_relative = []
                 queue_size_relative = 0
+    def daemon_pull(self):
+        BATCH_SIZE = 10 * 1000 * 1000
+        self.daemon_pull_active = True
+        q = self.queue_pull
+        items_absolute = []
+        items_relative = []
+        queue_size_absolute = 0
+        queue_size_relative = 0
+        while self.daemon_pull_active:
+            do_now = False
+            try:
+                item = q.get(True, 1)
+                if item.transfer:
+                    if item.absolute:
+                        # print 'pull absolute path:', repr(item.path)
+                        items_absolute.append(item)
+                        queue_size_absolute += item.size_local
+                    else:
+                        # print 'pull relative path:', repr(item.path)
+                        items_relative.append(item)
+                        queue_size_relative += item.size_local
+            except Queue.Empty:
+                do_now = True
+            if queue_size_absolute > BATCH_SIZE or do_now:
+                self.pull(items_absolute, absolute=True)
+                items_absolute = []
+                queue_size_absolute = 0
+            if queue_size_relative > BATCH_SIZE or do_now:
+                self.pull(items_relative)
+                items_relative = []
+                queue_size_relative = 0
     def push(self, items, absolute=False):
         if len(items) == 0:
             return
@@ -1683,7 +1661,10 @@ class MainThread(threading.Thread):
                 parent_path = os.path.dirname(item.path)
                 if not parent_path in self.buffer or self.buffer[parent_path].size_remote < 0:
                     mkdir = 'mkdir -p '
-                    mkdir += "'%s'" % self.remote['root']+os.path.dirname(remote_path)
+                    if absolute:
+                        mkdir += "'%s'" % self.remote['root']+os.path.dirname(remote_path)
+                    else:
+                        mkdir += "'%s'" % os.path.dirname(remote_path)
                     cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), mkdir]
                     mkdir_return = subprocess.call(cmd)
                 cmd = ['rsync', '-e', 'ssh -p %i' % self.remote['port'], '-ua'] + extra_args + ['--progress', local_path, uri_remote]
@@ -1731,8 +1712,8 @@ class MainThread(threading.Thread):
                 base_path_remote = self.remote['projects_path']+'/'
             uri_remote = "%s@%s:%s/" % (self.remote['user'], self.remote['address'], base_path_remote)
             cmd = ['rsync', '-e', 'ssh -p %i' % self.remote['port'], '-uavv'] + extra_args + ['--no-perms', '--out-format=%n was copied', '--files-from=%s' % temp_handle.name, base_path_local, uri_remote]
-            print repr(cmd)
-            print open(temp_handle.name).read()
+            # print repr(cmd)
+            # print open(temp_handle.name).read()
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             while proc.returncode == None:
                 if self.abort:
@@ -1748,13 +1729,119 @@ class MainThread(threading.Thread):
                     char = proc.stdout.read(1)
                     output += char
                 fields = output.split()
-                print output,
+                # print output,
                 if output.strip().endswith('is uptodate') or output.strip().endswith('was copied'):
                     try:
                         rel_path = output.replace('is uptodate', '').replace('was copied', '').strip()
                         path_id = relative_paths[rel_path.rstrip('/')]
                         self.buffer[path_id].transfer_end()
                         self.queue_push_size[0] -= self.buffer[path_id].size_local
+                    except KeyError:
+                        pass
+                elif 'rsync: recv_generator: mkdir' in output and 'failed: Permission denied (13)' in output:
+                    folder = output.split('"', 2)[1]
+                    for rel_path in relative_paths:
+                        path_id = relative_paths[rel_path.rstrip('/')]
+                        if path_id.startswith(folder):
+                            self.buffer[path_id].transfer_fail('Permission denied')
+                proc.poll()
+            temp_handle.close()
+            if proc.returncode > 0:
+                print 'Error: %i' % proc.returncode
+        self.queue_buffer.put_nowait([self.buffer_list_files, {
+                    'paths' : relative_paths.values(),
+                    'sync' : False
+                    }])
+    def pull(self, items, absolute=False):
+        if len(items) == 0:
+            return
+        relative_paths = {}
+        extra_args = []
+        if len(items) == 1:
+            for item in items:
+                item.transfer_start()
+                relative_paths[item.path.lstrip('/')] = item.path
+                if absolute:
+                    local_path = item.path
+                    remote_path = item.path
+                    extra_args.append('-KO')
+                else:
+                    local_path = os.path.join(mistika.projects_folder, item.path)
+                    remote_path = os.path.join(self.remote['projects_path'], item.path)
+                uri_remote = "%s@%s:%s" % (self.remote['user'], self.remote['address'], self.remote['root']+remote_path)
+                parent_path = os.path.dirname(item.path)
+                if not parent_path in self.buffer or self.buffer[parent_path].size_local < 0:
+                    cmd = ['mkdir', '-p', os.path.dirname(remote_path)]
+                    mkdir_return = subprocess.call(cmd)
+                cmd = ['rsync', '-e', 'ssh -p %i' % self.remote['port'], '-ua'] + extra_args + ['--progress', uri_remote, local_path]
+                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                # print repr(cmd)
+                while proc.returncode == None:
+                    if self.abort or item.transfer == False:
+                        item.transfer_fail('Aborted')
+                        proc.kill()
+                        return
+                    output = ''
+                    char = None
+                    while not char in ['\r', '\n']:
+                        proc.poll()
+                        if proc.returncode != None:
+                            break
+                        char = proc.stdout.read(1)
+                        output += char
+                    fields = output.split()
+                    if len(fields) >= 4 and fields[1].endswith('%'):
+                        bytes_done = int(fields[0])
+                        bytes_done_delta = bytes_done - item.bytes_done
+                        self.queue_pull_size[0] -= bytes_done_delta
+                        # progress_percent = float(fields[1].strip('%'))
+                        item.set_bytes_done(bytes_done)
+                    proc.poll()
+                    # print output
+                if proc.returncode > 0:
+                    item.transfer_fail('Error: %i' % proc.returncode)
+                else:
+                    item.transfer_end()
+        else:
+            for item in items:
+                item.transfer_start()
+                relative_paths[item.path.lstrip('/')] = item.path
+            temp_handle = tempfile.NamedTemporaryFile()
+            temp_handle.write('\n'.join(relative_paths) + '\n')
+            temp_handle.flush()
+            if absolute:
+                base_path_local = '/'
+                base_path_remote = self.remote['root']
+                extra_args.append('-KkO')
+            else:
+                base_path_local = mistika.projects_folder+'/'
+                base_path_remote = self.remote['projects_path']+'/'
+            uri_remote = "%s@%s:%s/" % (self.remote['user'], self.remote['address'], base_path_remote)
+            cmd = ['rsync', '-e', 'ssh -p %i' % self.remote['port'], '-uavv'] + extra_args + ['--no-perms', '--out-format=%n was copied', '--files-from=%s' % temp_handle.name, uri_remote, base_path_local]
+            # print repr(cmd)
+            # print open(temp_handle.name).read()
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            while proc.returncode == None:
+                if self.abort:
+                    proc.kill()
+                    temp_handle.close()
+                    return
+                output = ''
+                char = None
+                while not char in ['\r', '\n']:
+                    proc.poll()
+                    if proc.returncode != None:
+                        break
+                    char = proc.stdout.read(1)
+                    output += char
+                fields = output.split()
+                # print output,
+                if output.strip().endswith('is uptodate') or output.strip().endswith('was copied'):
+                    try:
+                        rel_path = output.replace('is uptodate', '').replace('was copied', '').strip()
+                        path_id = relative_paths[rel_path.rstrip('/')]
+                        self.buffer[path_id].transfer_end()
+                        self.queue_pull_size[0] -= self.buffer[path_id].size_remote
                     except KeyError:
                         pass
                 elif 'rsync: recv_generator: mkdir' in output and 'failed: Permission denied (13)' in output:
@@ -1818,37 +1905,6 @@ class MainThread(threading.Thread):
                     print repr(e)
             except Queue.Empty:
                 time.sleep(1)
-    def transfer_monitor(self, process):
-        print 'Waiting for process to finish'
-        process.poll()
-        out_buffer = ''
-        while process.returncode == None:
-            c = process.stdout.read(1)
-            out_buffer += c
-            sys.stdout.write(c)
-            sys.stdout.flush()
-            if c == '\n':
-                line = out_buffer
-                out_buffer == ''
-                for path in self.transfer_queue:
-                    if path.endswith(line.replace('is uptodate\n', '').strip().rstrip('/')):
-                        del self.transfer_queue[path]
-                        for row_reference in self.buffer[path]['row_references']:
-                            gobject.idle_add(self.gui_set_value, model, row_reference, 5, 100)
-                            gobject.idle_add(self.gui_set_value, model, row_reference, 6, '100%')
-                        print 'Transfer complete: ' + path
-            process.poll()
-        print 'Process has ended'
-        lines = process.communicate()[0].splitlines()
-        for line in lines:
-            print line
-            for path in self.transfer_queue:
-                if line.replace('is uptodate\n', '').strip().rstrip('/') == path:
-                    del self.transfer_queue[path]
-                    for row_reference in self.buffer[path]['row_references']:
-                        gobject.idle_add(self.gui_set_value, model, row_reference, 5, 100)
-                        gobject.idle_add(self.gui_set_value, model, row_reference, 6, '100%')
-                    print 'Transfer complete: ' + path
     def remote_get_projects_path(self):
         cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), 'cat MISTIKA-ENV/MISTIKA_WORK MAMBA-ENV/MAMBA_WORK']
         p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -2058,7 +2114,7 @@ class MainThread(threading.Thread):
         else:
             self.push_queue_size_label.set_text('')
         if self.queue_pull_size[0] > 0:
-            self.push_queue_size_label.set_text('Pull queue: %s%s' % (human.size(self.queue_pull_size[0]), pull_speed_string))
+            self.pull_queue_size_label.set_text('Pull queue: %s%s' % (human.size(self.queue_pull_size[0]), pull_speed_string))
         else:
             self.pull_queue_size_label.set_text('')
         return True
