@@ -610,6 +610,8 @@ class MainThread(threading.Thread):
         column.pack_start(renderer, expand=True)
         column.add_attribute(renderer, 'markup', 0)
         column.add_attribute(renderer, 'foreground', 13)
+        column.set_resizable(True)
+        column.set_expand(True)
 
         tree_view.append_column(column)
 
@@ -927,13 +929,13 @@ class MainThread(threading.Thread):
         files_chunk = []
         parent_file_path = path_id
         for dependency in stack.iter_dependencies(progress_callback=file_object.set_parse_progress):
-            if '%' in dependency.path:
-                f_tuple = ( dependency.path.replace(mistika.projects_folder+'/', ''), dependency.start, dependency.end)
-                files_chunk.append(dependency.path)
-            else:
-                files_chunk.append(dependency.path.replace(mistika.projects_folder+'/', ''))
-            if not dependency.type == 'dat':
-                print 'Dependency: ', dependency.path
+            search_path = dependency.path
+            if search_path.startswith(mistika.projects_folder):
+                search_path = search_path.replace(mistika.projects_folder+'/', '', 1)
+            elif search_path.startswith(self.remote['projects_path']):
+                search_path = search_path.replace(self.remote['projects_path']+'/', '', 1)
+            # print 'search_path:', search_path
+            files_chunk.append(search_path)
             if len(files_chunk) >= files_chunk_max_size:
                 self.queue_buffer.put_nowait([self.buffer_list_files, {
                     'paths' : files_chunk,
@@ -1451,10 +1453,7 @@ class MainThread(threading.Thread):
         #gobject.idle_add(self.button_load_remote_projects.set_image, loader)
         gobject.idle_add(self.spinner_remote.set_property, 'visible', True)
         gobject.idle_add(self.remote_status_label.set_label, 'Listing remote files')
-        if '<projects>' in find_cmd: # Relative
-            cmd = find_cmd.replace('<projects>', self.remote['projects_path'])
-        else: # Absolute
-            cmd = find_cmd.replace('<absolute>/', self.remote['root'])
+        cmd = find_cmd.replace('<projects>', self.remote['projects_path']).replace('<absolute>/', self.remote['root'])
         if self.remote['is_mac']:
             cmd = self.aux_fix_mac_printf(cmd)
         ssh_cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), cmd]
@@ -1549,7 +1548,7 @@ class MainThread(threading.Thread):
         path_id = os.path.dirname(child_path_id)
         parent_path = os.path.dirname(path_id)
         alias = os.path.basename(path_id)
-        if parent_path in self.buffer and not '//' in parent_path:
+        if parent_path in self.buffer and not self.buffer[parent_path].virtual:
             if '//' in path_id:
                 alias = '/'+alias
             else:
@@ -1950,7 +1949,7 @@ class MainThread(threading.Thread):
         self.remote['address'] = self.entry_address.get_text()
         self.remote['user'] = self.entry_user.get_text()
         self.remote['port'] = self.entry_port.get_value_as_int()
-        self.remote['projects_path'] = self.entry_projects_path.get_text()
+        self.remote['projects_path'] = self.entry_projects_path.get_text().rstrip('/')
         #self.remote['projects_path'] = self.remote['projects_path'].rstrip('/')+'/'
         cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), 'uname']
         p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -2030,17 +2029,19 @@ class MainThread(threading.Thread):
                 continue
             if f_path.startswith('/'):
                 root = '<absolute>'
+                pre_alloc_path = f_path
             else:
                 root = '<projects>/'
+                pre_alloc_path = f_path
             if '%' in f_path:
                 search_paths += ' "%s%s"' % (root, string_format_to_wildcard(f_path, wrapping='"'))
             else:
                 search_paths += ' "%s%s"' % (root, f_path)
             # print 'buffer_list_files()', f_path, 'in buffer:', f_path in self.buffer
-            if pre_allocate and not f_path in self.buffer:
-                print 'pre_allocate', f_path
+            if pre_allocate and not pre_alloc_path in self.buffer:
+                # print 'pre_allocate', f_path
                 attributes = {'color':COLOR_WARNING, 'placeholder':True, 'virtual':True}
-                self.buffer[f_path] = File(f_path, self.buffer_get_parent(parent.path+'/'+f_path), self.projectsTreeStore, self.projectsTree, attributes)
+                self.buffer[pre_alloc_path] = File(pre_alloc_path, self.buffer_get_parent(parent.path+'/'+pre_alloc_path), self.projectsTreeStore, self.projectsTree, attributes)
                 # gobject.idle_add(self.gui_expand, parent)
         if search_paths == '':
             print 'no search paths'
