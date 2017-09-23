@@ -2,8 +2,8 @@
 
 from datetime import datetime
 
-def size(num, suffix='B'):
-    if num < 0:
+def size(num, suffix='B', print_null=False):
+    if not print_null and num <= 0:
         return ''
     for unit in ['','K','M','G','T','P','E','Z']:
         if abs(num) < 1024.0:
