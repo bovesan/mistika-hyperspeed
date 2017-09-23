@@ -63,6 +63,7 @@ class File(object):
         self._icon = False
         self.row_references = []
         self.path = path
+        # print 'Creating ', self.path,
         self.absolute = path.startswith('/')
         self.alias = os.path.basename(self.path)
         if self.alias == '':
@@ -106,6 +107,7 @@ class File(object):
         self.on_top_level = False
         self.add_parent(parent) # Adds to view
         self.direction_update()
+        # print 'created ', self.path
     def __getitem__(self, key):
         return getattr(self, key)
     def set_attributes(self, attributes):
@@ -134,9 +136,12 @@ class File(object):
         self.set_progress(progress_float)
     def set_parse_progress(self, stack=False, progress_float=0.0):
         self.placeholder_child.set_progress(progress_float)
-        # if progress_float >= 1.0:
-            # self.placeholder_child.alias = 'No dependencies found'
-            # gobject.idle_add(self.placeholder_child.gui_remove)
+        if progress_float >= 1.0:
+            if len(self.children) > 1:
+                gobject.idle_add(self.placeholder_child.gui_remove)
+            else:
+                self.placeholder_child.alias = 'No dependencies found'
+                gobject.idle_add(self.placeholder_child.gui_update)
     @property
     def treestore_values(self):
         #self.projectsTreeStore = gtk.TreeStore(str, str, str, gtk.gdk.Pixbuf, str, int, str, bool, str, bool, gtk.gdk.Pixbuf, str, str, str, int, int) # Basename, Tree Path, Local time, Direction, Remote time, Progress int, Progress text, Progress visibility, remote_address, no_reload, icon, Local size, Remote size, Color(str), int(bytes_done), int(bytes_total)
@@ -225,10 +230,9 @@ class File(object):
             self._parents.append(parent)
             parent.children = self
             gobject.idle_add(self.gui_add_parent, parent)
-            if not parent.virtual:
-                # gobject.idle_add(parent.gui_expand)
-                if parent.placeholder_child:
-                    gobject.idle_add(parent.placeholder_child.gui_remove)
+            # if not parent.virtual:
+            if parent.placeholder_child and parent.placeholder_child.progress_percent >= 100.0:
+                gobject.idle_add(parent.placeholder_child.gui_remove)
         elif parent == None and not self.on_top_level:
             self.on_top_level = True
             gobject.idle_add(self.gui_add_parent, parent)
@@ -874,32 +878,32 @@ class MainThread(threading.Thread):
         t.start()
     def on_host_disconnect(self, widget):
         self.queue_remote.put([self.remote_disconnect])
-    def buffer_clear_remote(self):
-        model = self.projectsTreeStore
-        for file_path in self.buffer.keys():
-            row_path = self.buffer[file_path].row_reference.get_path()
-            if row_path == None:
-                print file_path
-                continue
-            row_iter = model.get_iter(row_path)
-            if self.buffer[file_path].mtime_local < 0:
-                self.projectsTreeStore.remove(row_iter)
-                del self.buffer[file_path]
-            elif self.buffer[file_path].mtime_remote >= 0:
-                self.buffer[file_path].mtime_remote = -1
-                self.buffer[file_path].size_remote = -1
-                self.buffer[file_path].fingerprint_remote = ''
-                self.gobject.idle_add(self.gui_refresh_path, file_path)
-    def on_list_associated(self, widget):
-        selection = self.projectsTree.get_selection()
-        (model, pathlist) = selection.get_selected_rows()
-        for path in pathlist:
-            path_id = model[path][1]
-            if path_id.lower().rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS:
-                t = threading.Thread(target=self.io_get_associated, args=[path_id])
-                self.threads.append(t)
-                t.setDaemon(True)
-                t.start()
+    # def buffer_clear_remote(self):
+    #     model = self.projectsTreeStore
+    #     for file_path in self.buffer.keys():
+    #         row_path = self.buffer[file_path].row_reference.get_path()
+    #         if row_path == None:
+    #             print file_path
+    #             continue
+    #         row_iter = model.get_iter(row_path)
+    #         if self.buffer[file_path].mtime_local < 0:
+    #             self.projectsTreeStore.remove(row_iter)
+    #             del self.buffer[file_path]
+    #         elif self.buffer[file_path].mtime_remote >= 0:
+    #             self.buffer[file_path].mtime_remote = -1
+    #             self.buffer[file_path].size_remote = -1
+    #             self.buffer[file_path].fingerprint_remote = ''
+                # self.gobject.idle_add(self.gui_refresh_path, file_path)
+    # def on_list_associated(self, widget):
+    #     selection = self.projectsTree.get_selection()
+    #     (model, pathlist) = selection.get_selected_rows()
+    #     for path in pathlist:
+    #         path_id = model[path][1]
+    #         if path_id.lower().rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS:
+    #             t = threading.Thread(target=self.io_get_associated, args=[path_id])
+    #             self.threads.append(t)
+    #             t.setDaemon(True)
+    #             t.start()
     def gui_refresh_progress(self, row_reference, progress_float=0.0):
         model = self.projectsTreeStore
         row_path = row_reference.get_path()
@@ -919,7 +923,7 @@ class MainThread(threading.Thread):
         file_object.set_parse_progress(progress_float=0.0)
         abs_path = os.path.join(mistika.projects_folder, path_id)
         stack = file_object.stack = Stack(abs_path)
-        files_chunk_max_size = 10
+        files_chunk_max_size = 100
         files_chunk = []
         parent_file_path = path_id
         for dependency in stack.iter_dependencies(progress_callback=file_object.set_parse_progress):
@@ -928,6 +932,8 @@ class MainThread(threading.Thread):
                 files_chunk.append(dependency.path)
             else:
                 files_chunk.append(dependency.path.replace(mistika.projects_folder+'/', ''))
+            if not dependency.type == 'dat':
+                print 'Dependency: ', dependency.path
             if len(files_chunk) >= files_chunk_max_size:
                 self.queue_buffer.put_nowait([self.buffer_list_files, {
                     'paths' : files_chunk,
@@ -1146,7 +1152,7 @@ class MainThread(threading.Thread):
             self.gui_parent_modified(parent, parent_direction)
         except: # Reached top level
             pass
-    def gui_refresh_path(self, path):
+    def gui_refresh_path_disabled(self, path):
         #print 'Refreshing ' + path
         tree = self.projectsTreeStore
         file_path = path
@@ -1234,7 +1240,7 @@ class MainThread(threading.Thread):
                 #print 'Appending to parent: ' + repr(parent)
                 row_iter = tree.append(parent_row_iter, [basename, path, mtime_local_str, self.directions[path]['direction'], mtime_remote_str, progress, progress_str, progress_visibility, remote_address, no_reload, icon, size_local_str, size_remote_str, fg_color, bytes_done, bytes_total])
                 self.buffer[path]['row_references'].append(gtk.TreeRowReference(tree, tree.get_path(row_iter)))
-                if self.buffer[path]['mtime_local'] >= self.buffer[path]['mtime_remote'] and basename.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS and not 'placeholder_child_row_reference' in self.buffer[path]:
+                if self.buffer[path]['mtime_local'] >= self.buffer[path]['mtime_remote'] and basename.rsplit('.', 1)[-1] in MISTIKA_EXTENSIONS and not 'placeholder_child_row_reference' in self.buffer[path] and not self.buffer[path].virtual:
                     placeholder_child_iter = tree.append(row_iter, ['<i>Getting associated files ...</i>', '', '', None, '', 0, '0%', True, '', True, self.pixbuf_search, '', '', '', 0, 0])
                     self.buffer[path]['placeholder_child_row_reference'] = gtk.TreeRowReference(tree, tree.get_path(placeholder_child_iter))
                 # if parent.split('.', 1)[-1] in MISTIKA_EXTENSIONS:
@@ -1543,7 +1549,7 @@ class MainThread(threading.Thread):
         path_id = os.path.dirname(child_path_id)
         parent_path = os.path.dirname(path_id)
         alias = os.path.basename(path_id)
-        if parent_path in self.buffer:
+        if parent_path in self.buffer and not '//' in parent_path:
             if '//' in path_id:
                 alias = '/'+alias
             else:
@@ -2030,10 +2036,12 @@ class MainThread(threading.Thread):
                 search_paths += ' "%s%s"' % (root, string_format_to_wildcard(f_path, wrapping='"'))
             else:
                 search_paths += ' "%s%s"' % (root, f_path)
-        if pre_allocate and not f_path in self.buffer:
-            attributes = {'color':COLOR_WARNING, 'placeholder':True, 'virtual':True}
-            self.buffer[f_path] = File(f_path, self.buffer_get_parent(parent.path+'/'+f_path), self.projectsTreeStore, self.projectsTree, attributes)
-            # gobject.idle_add(self.gui_expand, parent)
+            # print 'buffer_list_files()', f_path, 'in buffer:', f_path in self.buffer
+            if pre_allocate and not f_path in self.buffer:
+                print 'pre_allocate', f_path
+                attributes = {'color':COLOR_WARNING, 'placeholder':True, 'virtual':True}
+                self.buffer[f_path] = File(f_path, self.buffer_get_parent(parent.path+'/'+f_path), self.projectsTreeStore, self.projectsTree, attributes)
+                # gobject.idle_add(self.gui_expand, parent)
         if search_paths == '':
             print 'no search paths'
             return
