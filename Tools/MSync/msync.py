@@ -2044,18 +2044,21 @@ class MainThread(threading.Thread):
         history = self.gui_periodical_updates_history
         history.append([time.time(), self.queue_push_size[0], self.queue_pull_size[0]])
         del history[:-10]
+        push_speed_string = pull_speed_string = ''
         if len(history) > 1:
-            push_speed = ' rate: %sps' % human.size((history[0][1] - history[-1][1]) / (history[-1][0] - history[0][0]), print_null=True)
-            pull_speed = ' rate: %sps' % human.size((history[0][2] - history[-1][2]) / (history[-1][0] - history[0][0]), print_null=True)
-        else:
-            push_speed = pull_speed = ''
+            push_speed = (history[0][1] - history[-1][1]) / (history[-1][0] - history[0][0])
+            if push_speed >= 0:
+                push_speed_string = ' rate: %sps' % human.size(push_speed, print_null=True)
+            pull_speed = (history[0][2] - history[-1][2]) / (history[-1][0] - history[0][0])
+            if pull_speed >= 0:
+                pull_speed_string = ' rate: %sps' % human.size(pull_speed, print_null=True)
         # print 'gui_periodical_updates()'
         if self.queue_push_size[0] > 0:
-            self.push_queue_size_label.set_text('Push queue: %s%s' % (human.size(self.queue_push_size[0]), push_speed))
+            self.push_queue_size_label.set_text('Push queue: %s%s' % (human.size(self.queue_push_size[0]), push_speed_string))
         else:
             self.push_queue_size_label.set_text('')
         if self.queue_pull_size[0] > 0:
-            self.push_queue_size_label.set_text('Pull queue: %s%s' % (human.size(self.queue_pull_size[0]), pull_speed))
+            self.push_queue_size_label.set_text('Pull queue: %s%s' % (human.size(self.queue_pull_size[0]), pull_speed_string))
         else:
             self.pull_queue_size_label.set_text('')
         return True
