@@ -51,6 +51,7 @@ ICON_LEFT = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/left.png', 16, 1
 ICON_RIGHT = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/right.png', 16, 16)
 ICON_BIDIR = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/reset.png', 16, 16)
 ICON_INFO = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/info.png', 16, 16)
+ICON_HELP = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/info.png', 12, 12)
 PIXBUF_PLUS = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/plus.png', 16, 16)
 PIXBUF_MINUS = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/minus.png', 16, 16)
 PIXBUF_CANCEL = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/cancel.png', 16, 16)
@@ -464,11 +465,19 @@ class MainThread(threading.Thread):
     def init_connection_panel(self):
         tooltips = self.tooltips
         vbox = gtk.VBox(False, 10)
-        tree_store = self.hostsTreeStore = gtk.TreeStore(str, str, str, int, str) # Name, url, color, underline
+        tree_store = self.hostsTreeStore = gtk.TreeStore(
+            str, # alias
+            str, # Address
+            str, # User
+            int, # Port
+            str, # Remote project path
+            str  # Local media root
+        )
         hbox = gtk.HBox(False, 10)
         label_markup = '<span foreground="#888888">%s</span>'
 
         vbox2 = gtk.VBox(False, 5)
+        tooltips.set_tip(vbox2, "Enter an alias for this remote")
         hbox2 = gtk.HBox(False, 0)
         label = gtk.Label(label_markup % 'Remote host:')
         label.set_use_markup(True)
@@ -481,6 +490,7 @@ class MainThread(threading.Thread):
         hbox.pack_start(vbox2, False, False, 0)
 
         vbox2 = gtk.VBox(False, 5)
+        tooltips.set_tip(vbox2, "Domain or IP address")
         hbox2 = gtk.HBox(False, 0)
         label = gtk.Label(label_markup % 'Address:')
         label.set_use_markup(True)
@@ -493,6 +503,7 @@ class MainThread(threading.Thread):
         hbox.pack_start(vbox2, False, False, 0)
 
         vbox2 = gtk.VBox(False, 5)
+        tooltips.set_tip(vbox2, "SSH username")
         hbox2 = gtk.HBox(False, 0)
         label = gtk.Label(label_markup % 'User:')
         label.set_use_markup(True)
@@ -504,6 +515,7 @@ class MainThread(threading.Thread):
         hbox.pack_start(vbox2, False, False, 0)
 
         vbox2 = gtk.VBox(False, 5)
+        tooltips.set_tip(vbox2, "SSH port")
         hbox2 = gtk.HBox(False, 0)
         label = gtk.Label(label_markup % 'Port:')
         label.set_use_markup(True)
@@ -517,6 +529,7 @@ class MainThread(threading.Thread):
         hbox.pack_start(vbox2, False, False, 0)
 
         vbox2 = gtk.VBox(False, 5)
+        tooltips.set_tip(vbox2, "The path to the projects folder on the remote.\nIf left empty, this setting will be set automatically when connecting to a Mistika system.")
         hbox2 = gtk.HBox(False, 0)
         label = gtk.Label(label_markup % 'Projects path (optional):')
         label.set_use_markup(True)
@@ -525,6 +538,24 @@ class MainThread(threading.Thread):
         entry = self.entry_projects_path = gtk.Entry()
         entry.connect('key-release-event', self.on_host_update)
         vbox2.pack_start(entry, True, True, 0)
+        hbox.pack_start(vbox2, True, True, 0)
+
+        vbox2 = gtk.VBox(False, 5)
+        tooltips.set_tip(vbox2, "Collect all media from this remote in a single folder on this computer.\nThe default value of / means all media is copied to the same folder as on the server. Set a different folder if you don't have permissions for those folders or you need to separate media collections.")
+        hbox2 = gtk.HBox(False, 0)
+        label = gtk.Label(label_markup % 'Local media root:')
+        label.set_use_markup(True)
+        hbox2.pack_start(label, False, False, 0)
+        vbox2.pack_start(hbox2, False, False, 0)
+        hbox2 = gtk.HBox(False, 0)
+        entry = self.entry_local_media_root = gtk.Entry()
+        entry.set_text('/')
+        entry.connect('key-release-event', self.on_host_update)
+        hbox2.pack_start(entry, True, True, 0)
+        button = self.entry_local_media_root_button = gtk.Button('...')
+        button.connect('clicked', self.on_local_media_root_pick)
+        hbox2.pack_start(button, False, False, 0)
+        vbox2.pack_start(hbox2, True, True, 0)
         hbox.pack_start(vbox2, True, True, 0)
 
         #cell = gtk.CellRendererText()
@@ -846,6 +877,7 @@ class MainThread(threading.Thread):
         model.set_value(selected_row_iter, 2, self.entry_user.get_text())
         model.set_value(selected_row_iter, 3, self.entry_port.get_value_as_int())
         model.set_value(selected_row_iter, 4, self.entry_projects_path.get_text())
+        model.set_value(selected_row_iter, 5, self.entry_local_media_root.get_text())
         hosts = {}
         # i = model.get_iter(0)
         # row = model[i]
@@ -865,6 +897,7 @@ class MainThread(threading.Thread):
             host_dict['user'] = row[2]
             host_dict['port'] = row[3]
             host_dict['path'] = row[4]
+            host_dict['local_media_root'] = row[5]
             host_dict['selected'] = selected
             hosts[alias] = host_dict
         print 'hosts: ' + repr(hosts)
@@ -1103,13 +1136,23 @@ class MainThread(threading.Thread):
     def gui_host_add(self, widget, hosts):
         model = self.hostsTreeStore
         for host in hosts:
-            row_iter = self.hostsTreeStore.append(None, [host, hosts[host]['address'], hosts[host]['user'], hosts[host]['port'], hosts[host]['path']])
+            row_values = [
+                host,
+                hosts[host]['address'],
+                hosts[host]['user'],
+                hosts[host]['port'],
+                hosts[host]['path'],
+                '/' # media root
+            ]
+            if 'local_media_root' in hosts[host]:
+                row_values[5] = hosts[host]['local_media_root']
+            row_iter = self.hostsTreeStore.append(None, row_values)
             #, alias='New host', address='', user='mistika', port=22, path='', selected=False
             if hosts[host]['selected']:
                 self.entry_host.set_active_iter(row_iter)
                 #selection.select_iter(row_iter)
                 self.on_host_selected(None)
-        row_iter = self.hostsTreeStore.append(None, ['[ New connection ]', '', 'mistika', 22, ''])
+        row_iter = self.hostsTreeStore.append(None, ['[ New connection ]', '', 'mistika', 22, '', '/'])
     def on_host_selected(self, host):
         #selected_host = self.entry_host.get_text()
         model = self.hostsTreeStore
@@ -1122,6 +1165,7 @@ class MainThread(threading.Thread):
         self.entry_user.set_text(model[selected_row_iter][2])
         self.entry_port.set_value(model[selected_row_iter][3])
         self.entry_projects_path.set_text(model[selected_row_iter][4])
+        self.entry_local_media_root.set_text(model[selected_row_iter][5])
         # status = 'Loaded hosts.'
         # self.status_bar.push(self.context_id, status)
     def gui_host_remove(self, widget):
@@ -1310,6 +1354,25 @@ class MainThread(threading.Thread):
                             message_format=None)
         dialog.set_markup(message)
         dialog.run()
+    def on_local_media_root_pick(self, widget):
+        dialog = gtk.FileChooserDialog(
+            title='Local media root folder',
+            parent=self.window,
+            action=gtk.FILE_CHOOSER_ACTION_SELECT_FOLDER,
+            buttons=(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL, gtk.STOCK_OPEN, gtk.RESPONSE_OK),
+            backend=None
+        )
+        # dialog.set_default_response(gtk.RESPONSE_OK)
+        current_folder = self.entry_local_media_root.get_text()
+        dialog.set_current_folder(current_folder)
+        response = dialog.run()
+        if response == gtk.RESPONSE_OK:
+            folder = dialog.get_filename().rstrip('/')+'/'
+            self.entry_local_media_root.set_text(folder)
+        else:
+            print 'No folder selected'
+        dialog.destroy()
+        self.on_host_update(self.entry_local_media_root)
     def gui_copy_ssh_key(self, user, host, port):
         # message = 'Please enter the password for %s@%s' % (user, host)
         # dialog = gtk.MessageDialog(
@@ -1711,7 +1774,7 @@ class MainThread(threading.Thread):
             if absolute:
                 base_path_local = '/'
                 base_path_remote = self.remote['root']
-                extra_args.append('-KkO')
+                extra_args.append('-KO')
             else:
                 base_path_local = mistika.projects_folder+'/'
                 base_path_remote = self.remote['projects_path']+'/'
@@ -1950,6 +2013,7 @@ class MainThread(threading.Thread):
         self.remote['user'] = self.entry_user.get_text()
         self.remote['port'] = self.entry_port.get_value_as_int()
         self.remote['projects_path'] = self.entry_projects_path.get_text().rstrip('/')
+        self.remote['local_media_root'] = self.entry_local_media_root.get_text().rstrip('/')+'/'
         #self.remote['projects_path'] = self.remote['projects_path'].rstrip('/')+'/'
         cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), 'uname']
         p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -1990,6 +2054,8 @@ class MainThread(threading.Thread):
             self.entry_user.set_sensitive(False)
             self.entry_port.set_sensitive(False)
             self.entry_projects_path.set_sensitive(False)
+            self.entry_local_media_root.set_sensitive(False)
+            self.entry_local_media_root_button.set_sensitive(False)
             gobject.idle_add(self.button_connect.set_property, 'visible', False)
             gobject.idle_add(self.button_disconnect.set_property, 'visible', True)
             # gobject.idle_add(self.label_active_host.set_markup,
