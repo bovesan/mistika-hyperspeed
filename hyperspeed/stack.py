@@ -318,7 +318,7 @@ class Stack(object):
         except AttributeError:
             list(self.iter_dependencies())
         return self._dependencies
-    def iter_dependencies(self, progress_callback=False, relink=False):
+    def iter_dependencies(self, progress_callback=False, relink=False, remap=False):
         self._dependencies = []
         self._dependency_paths = []
         try:
@@ -330,7 +330,8 @@ class Stack(object):
             last_progress_update_time = 0
             level = 0
             hidden_level = False
-            if relink:
+            if relink or remap:
+                pre_stat = os.stat(self.path)
                 temp_handle = tempfile.NamedTemporaryFile(delete=False)
                 changes = False
             line_i = 0
@@ -414,7 +415,15 @@ class Stack(object):
                                 dependency = Dependency(f_path, f_type, CdIs, CdIe, parent=self)
                             else:
                                 dependency = Dependency(f_path, f_type, parent=self)
-                            if relink and not dependency.complete:
+                            if remap:
+                                new_line, dependency = self.remap_line(line, dependency, mappings=remap)
+                                if line != new_line:
+                                    print 'Remap dependency: ', dependency.name
+                                    print 'From:', line
+                                    changes = True
+                                    line = new_line
+                                    print 'To:', line
+                            elif relink and not dependency.complete:
                                 print 'Missing dependency: ', dependency.name
                                 new_line, dependency = self.relink_line(line, dependency)
                                 if line != new_line:
@@ -437,9 +446,9 @@ class Stack(object):
                     elif char:
                         char_buffer += char
                     escape = False
-                if relink:
+                if relink or remap:
                     temp_handle.write(line)
-            if relink:
+            if relink or remap:
                 if changes:
                     temp_handle.flush()
                     temp_handle.close()
@@ -447,6 +456,8 @@ class Stack(object):
                     os.rename(self.path, backup_path)
                     os.rename(temp_handle.name, self.path)
                     print 'Wrote changes to file:', self.path
+                    os.utime(self.path, (pre_stat.st_atime, pre_stat.st_mtime))
+                    print 'Recovered original atime/mtime'
                 else:
                     temp_handle.close()
                     os.remove(temp_handle.name)
@@ -484,6 +495,46 @@ class Stack(object):
                     elif dependency.type in ['highres', 'lowres', 'audio']:
                         return (line.replace('('+escape_par(dependency_foldername)+'/)', '('+escape_par(root)+'/)'), dependency_new)
         return (line, dependency)
+    def remap_line(self, line, dependency, mappings):
+        foldername = os.path.dirname(dependency.path)
+        foldername_new = foldername
+        for mapping in mappings:
+            if foldername_new.startswith(mapping[0]):
+                foldername_new = foldername_new.replace(mapping[0], mapping[1], 1)
+        new_path = dependency.path
+        new_line = line
+        change = False
+        if dependency.type in ['dat']:
+            pass
+        elif dependency.type in ['lnk']:
+            for mapping in mappings:
+                if dependency.path.startswith(mapping[0]):
+                    change = True
+                    new_path = new_path.replace(mapping[0], mapping[1], 1)
+                if '('+escape_par(foldername) in new_line:
+                    change = True
+                    new_line = new_line.replace('('+escape_par(foldername), '('+escape_par(foldername_new), 1)
+        elif dependency.type in ['glsl', 'lut']:
+            for mapping in mappings:
+                if dependency.path.startswith(mapping[0]):
+                    change = True
+                    new_path = new_path.replace(mapping[0], mapping[1], 1)
+                if '('+escape_par(foldername) in new_line:
+                    change = True
+                    new_line = new_line.replace('('+escape_par(foldername), '('+escape_par(foldername_new), 1)
+        elif dependency.type in ['highres', 'lowres', 'audio']:
+            for mapping in mappings:
+                if dependency.path.startswith(mapping[0]):
+                    change = True
+                    new_path = new_path.replace(mapping[0], mapping[1], 1)
+                if '('+escape_par(foldername) in new_line:
+                    change = True
+                    new_line = new_line.replace('('+escape_par(foldername), '('+escape_par(foldername_new), 1)
+        if change:
+            new_dependency = Dependency(new_path, dependency.type, dependency.start, dependency.end, dependency.parents[0])
+            return (new_line, new_dependency)
+        else:
+            return (line, dependency)
 
 class Render(Stack):
     def __init__(self, path):
