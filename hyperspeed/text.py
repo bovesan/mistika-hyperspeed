@@ -59,6 +59,6 @@ class Title(object):
             if italic:
                     string += '</i>'
         except IOError:
-            print 'Could not read file: %s' % self.path
+            # print 'Could not read file: %s' % self.path
             return
         self._string = string
