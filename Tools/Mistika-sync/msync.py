@@ -473,7 +473,9 @@ class MainThread(threading.Thread):
             str, # User
             int, # Port
             str, # Remote project path
-            str  # Local media root
+            str, # Local media root
+            bool,# Push
+            bool,# Pull
         )
         hbox = gtk.HBox(False, 10)
         label_markup = '<span foreground="#888888">%s</span>'
@@ -527,6 +529,30 @@ class MainThread(threading.Thread):
         entry.connect('key-release-event', self.on_host_update)
         entry.connect('button-release-event', self.on_host_update)
         #spinner.set_size_request(80,0)
+        vbox2.pack_start(entry, False, False, 0)
+        hbox.pack_start(vbox2, False, False, 0)
+
+        vbox2 = gtk.VBox(False, 5)
+        tooltips.set_tip(vbox2, "Allow sending changes")
+        hbox2 = gtk.HBox(False, 0)
+        label = gtk.Label(label_markup % 'Push:')
+        label.set_use_markup(True)
+        hbox2.pack_start(label, False, False, 0)
+        vbox2.pack_start(hbox2, False, False, 0)
+        entry = self.allow_push = gtk.CheckButton()
+        entry.connect('clicked', self.on_host_update)
+        vbox2.pack_start(entry, False, False, 0)
+        hbox.pack_start(vbox2, False, False, 0)
+
+        vbox2 = gtk.VBox(False, 5)
+        tooltips.set_tip(vbox2, "Allow receiving changes")
+        hbox2 = gtk.HBox(False, 0)
+        label = gtk.Label(label_markup % 'Pull:')
+        label.set_use_markup(True)
+        hbox2.pack_start(label, False, False, 0)
+        vbox2.pack_start(hbox2, False, False, 0)
+        entry = self.allow_pull = gtk.CheckButton()
+        entry.connect('clicked', self.on_host_update)
         vbox2.pack_start(entry, False, False, 0)
         hbox.pack_start(vbox2, False, False, 0)
 
@@ -871,18 +897,23 @@ class MainThread(threading.Thread):
             except AttributeError:
                 selected_row_iter = self.hostsTreeStore.append(None, ['new', '', '', 0, ''])
 
-        if widget == self.entry_host:
-            print widget.get_active_text()
-        elif widget == self.entry_port:
-            print widget.get_value_as_int()
-        else:
-            print widget.get_text()
+        # if widget == self.entry_host:
+        #     print widget.get_active_text()
+        # elif widget == self.entry_port:
+        #     print widget.get_value_as_int()
+        # else:
+        #     try:
+        #         print widget.get_text()
+        #     except AttributeError:
+        #         pass
         model.set_value(selected_row_iter, 0, self.entry_host.get_active_text())
         model.set_value(selected_row_iter, 1, self.entry_address.get_text())
         model.set_value(selected_row_iter, 2, self.entry_user.get_text())
         model.set_value(selected_row_iter, 3, self.entry_port.get_value_as_int())
         model.set_value(selected_row_iter, 4, self.entry_projects_path.get_text())
         model.set_value(selected_row_iter, 5, self.entry_local_media_root.get_text())
+        model.set_value(selected_row_iter, 6, self.allow_push.get_active())
+        model.set_value(selected_row_iter, 7, self.allow_pull.get_active())
         hosts = {}
         # i = model.get_iter(0)
         # row = model[i]
@@ -903,6 +934,8 @@ class MainThread(threading.Thread):
             host_dict['port'] = row[3]
             host_dict['path'] = row[4]
             host_dict['local_media_root'] = row[5]
+            host_dict['push'] = row[6]
+            host_dict['pull'] = row[7]
             host_dict['selected'] = selected
             hosts[alias] = host_dict
         print 'hosts: ' + repr(hosts)
@@ -1145,25 +1178,47 @@ class MainThread(threading.Thread):
                 child_iter = model.iter_next(child_iter)
         print 'Removed ' + path_str
     def gui_host_add(self, widget, hosts):
+        default_connection = {
+            'alias'            : '[ New connection ]',
+            'address'          : '',
+            'user'             : 'mistika',
+            'port'             : 22,
+            'path'             : '',
+            'local_media_root' : '/',
+            'push'             : False,
+            'pull'             : False,
+        }
         model = self.hostsTreeStore
         for host in hosts:
+            connection = default_connection.copy()
+            connection.update(hosts[host])
             row_values = [
                 host,
-                hosts[host]['address'],
-                hosts[host]['user'],
-                hosts[host]['port'],
-                hosts[host]['path'],
-                '/' # media root
+                connection['address'],
+                connection['user'],
+                connection['port'],
+                connection['path'],
+                connection['local_media_root'],
+                connection['push'],
+                connection['pull'],
             ]
-            if 'local_media_root' in hosts[host]:
-                row_values[5] = hosts[host]['local_media_root']
             row_iter = self.hostsTreeStore.append(None, row_values)
             #, alias='New host', address='', user='mistika', port=22, path='', selected=False
             if hosts[host]['selected']:
                 self.entry_host.set_active_iter(row_iter)
                 #selection.select_iter(row_iter)
                 self.on_host_selected(None)
-        row_iter = self.hostsTreeStore.append(None, ['[ New connection ]', '', 'mistika', 22, '', '/'])
+        row_values = [
+                host,
+                default_connection['address'],
+                default_connection['user'],
+                default_connection['port'],
+                default_connection['path'],
+                default_connection['local_media_root'],
+                default_connection['push'],
+                default_connection['pull'],
+            ]
+        row_iter = self.hostsTreeStore.append(None, row_values)
     def on_host_selected(self, host):
         #selected_host = self.entry_host.get_text()
         model = self.hostsTreeStore
@@ -1177,6 +1232,8 @@ class MainThread(threading.Thread):
         self.entry_port.set_value(model[selected_row_iter][3])
         self.entry_projects_path.set_text(model[selected_row_iter][4])
         self.entry_local_media_root.set_text(model[selected_row_iter][5])
+        self.allow_push.set_active(model[selected_row_iter][6])
+        self.allow_pull.set_active(model[selected_row_iter][7])
         # status = 'Loaded hosts.'
         # self.status_bar.push(self.context_id, status)
     def gui_host_remove(self, widget):
@@ -1680,6 +1737,9 @@ class MainThread(threading.Thread):
         queue_size_absolute = 0
         queue_size_relative = 0
         while self.daemon_push_active:
+            if not self.allow_push.get_active():
+                time.sleep(1)
+                continue
             do_now = False
             try:
                 item = q.get(True, 1)
@@ -1711,6 +1771,9 @@ class MainThread(threading.Thread):
         queue_size_absolute = 0
         queue_size_relative = 0
         while self.daemon_pull_active:
+            if not self.allow_pull.get_active():
+                time.sleep(1)
+                continue
             do_now = False
             try:
                 item = q.get(True, 1)
