@@ -1940,7 +1940,7 @@ class MainThread(threading.Thread):
         temp_handle.write('\n'.join(relative_paths_remote) + '\n')
         temp_handle.flush()
         if absolute:
-            base_path_local = '/'
+            base_path_local = self.remote['local_media_root']
             base_path_remote = self.remote['root']
             # extra_args.append('-O')
         else:
