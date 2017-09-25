@@ -1495,7 +1495,7 @@ class MainThread(threading.Thread):
         gobject.idle_add(self.spinner_local.set_property, 'visible', True)
         gobject.idle_add(self.local_status_label.set_label, 'Listing local files')
         try:
-            cmd = find_cmd.replace('<projects>', mistika.projects_folder).replace('<absolute>/', self.remote['local_media_root'])
+            cmd = find_cmd.replace('<projects>', mistika.projects_folder).replace('<absolute>/', '/')
             if self.is_mac:
                 cmd = self.aux_fix_mac_printf(cmd)
             # print repr(cmd)
@@ -1567,6 +1567,14 @@ class MainThread(threading.Thread):
                 f_size = 0
             else:
                 f_size = int(f_size)
+            # if self.mappings:
+            #     if host == 'localhost':
+            #         mappings = [(y, x) for (x, y) in self.mappings] # reverse
+            #     else:
+            #         mappings = self.mappings
+            #     for mapping in mappings:
+            #         if full_path.startswith(mapping[0]):
+            #             full_path.replace(mapping[0], mapping[1], 1)
             f_basename = full_path.strip('/').split('/')[-1]
             # parent_path_to_store = parent_path
             if full_path.startswith(root): # Relative path
@@ -1577,10 +1585,16 @@ class MainThread(threading.Thread):
                 #     parent_dir = ''
                 #     basename = path_id
             else: # Absolute path
-                if host == 'localhost':
-                    path_id = full_path.replace(self.remote['local_media_root'], '/', 1)
-                else:
-                    path_id = full_path.replace(self.remote['root'], '/', 1)
+                if self.mappings:
+                    if host != 'localhost':
+                        full_path = self.remap_to_local(full_path)
+                # if host == 'localhost':
+                #     if full_path.startswith(self.remote['local_media_root']):
+                #         full_path.replace(self.remote['local_media_root'], '/', 1)
+                # else:
+                #     if full_path.startswith(self.remote['root']):
+                #         full_path.replace(self.remote['root'], '/', 1)
+                path_id = full_path.rstrip('/')
                 # if '/' in path_id.strip('/'):
                 #     parent_dir, basename = path_id.rsplit('/', 1) # parent_dir will not have trailing slash
                     #parent_path += parent_dir
@@ -1628,7 +1642,7 @@ class MainThread(threading.Thread):
                 'type_local' : 'd',
                 'type_remote': 'd',
                 'direction'  : 'unknown',
-                'alias'      : alias,
+                'alias'      : alias ,
             }
             parent = self.buffer_get_parent(path_id)
             self.buffer[path_id] = File(path_id, parent, self.projectsTreeStore, self.projectsTree, attributes)
@@ -1962,7 +1976,7 @@ class MainThread(threading.Thread):
                 char = proc.stdout.read(1)
                 output += char
             fields = output.split()
-            # print output,
+            print output.zfill(100), repr(item)
             if item and len(fields) >= 4 and fields[1].endswith('%'):
                 bytes_done = int(fields[0])
                 bytes_done_delta = bytes_done - item.bytes_done
@@ -2127,6 +2141,7 @@ class MainThread(threading.Thread):
             (mistika.projects_folder, self.remote['projects_path'])
         ]
         mappings = [x for x in mappings if not x[0] == x[1]]
+        self.mappings_to_local = [(y, x) for (x, y) in mappings]
         gobject.idle_add(self.gui_connected)
         self.queue_buffer.put_nowait([self.buffer_list_files])
     def buffer_clear(self):
@@ -2164,12 +2179,23 @@ class MainThread(threading.Thread):
         t.setDaemon(True)
         t.start()
         return t
+    def remap_to_remote(self, path):
+        for mapping in self.mappings:
+            if path.startswith(mapping[0]):
+                path = path.replace(mapping[0], mapping[1], 1)
+        return path
+    def remap_to_local(self, path):
+        for mapping in self.mappings_to_local:
+            if path.startswith(mapping[0]):
+                path = path.replace(mapping[0], mapping[1], 1)
+        return path
     def buffer_list_files(self, paths=[''], parent=None, sync=False, maxdepth = 2, pre_allocate=False):
         type_filter = ''
         maxdepth_str = ''
         if paths == ['']:
             type_filter = ' -type d'
-        search_paths = ''
+        search_paths_local  = ''
+        search_paths_remote = ''
         for path in paths:
             if type(path) is tuple:
                 f_path, start, end = path
@@ -2183,26 +2209,35 @@ class MainThread(threading.Thread):
             else:
                 root = '<projects>/'
                 pre_alloc_path = f_path
+            f_path_remote = self.remap_to_remote(f_path)
             if '%' in f_path:
-                search_paths += ' "%s%s"' % (root, string_format_to_wildcard(f_path, wrapping='"'))
+                search_paths_local  += ' "%s%s"' % (root, string_format_to_wildcard(f_path       , wrapping='"'))
+                search_paths_remote += ' "%s%s"' % (root, string_format_to_wildcard(f_path_remote, wrapping='"'))
             else:
-                search_paths += ' "%s%s"' % (root, f_path)
+                search_paths_local  += ' "%s%s"' % (root, f_path       )
+                search_paths_remote += ' "%s%s"' % (root, f_path_remote)
             # print 'buffer_list_files()', f_path, 'in buffer:', f_path in self.buffer
             if pre_allocate and not pre_alloc_path in self.buffer:
                 # print 'pre_allocate', f_path
-                attributes = {'color':COLOR_WARNING, 'placeholder':True, 'virtual':True}
+                attributes = {
+                    'color':COLOR_WARNING,
+                    'placeholder':True,
+                    'virtual':True,
+                    # 'alias' : f_path+':'+f_path_remote
+                }
                 self.buffer[pre_alloc_path] = File(pre_alloc_path, self.buffer_get_parent(parent.path+'/'+pre_alloc_path), self.projectsTreeStore, self.projectsTree, attributes)
                 # gobject.idle_add(self.gui_expand, parent)
-        if search_paths == '':
+        if search_paths_local == '':
             print 'no search paths'
             return
         if maxdepth:
             maxdepth_str = ' -maxdepth %i' % maxdepth
-        find_cmd = 'find %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%p\\\\n"' % (search_paths, maxdepth_str, type_filter)
-        self.lines_remote = []
+        find_cmd_local  = 'find %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%p\\\\n"' % (search_paths_local , maxdepth_str, type_filter)
+        find_cmd_remote = 'find %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%p\\\\n"' % (search_paths_remote, maxdepth_str, type_filter)
         self.lines_local = []
-        thread_remote = self.launch_thread(target=self.io_list_files_remote, args=[find_cmd])
-        thread_local = self.launch_thread(target=self.io_list_files_local, args=[find_cmd])
+        self.lines_remote = []
+        thread_local = self.launch_thread(target=self.io_list_files_local, args=[find_cmd_local])
+        thread_remote = self.launch_thread(target=self.io_list_files_remote, args=[find_cmd_remote])
         thread_local.join()
         thread_remote.join()
         #print 'Adding local files to buffer'
