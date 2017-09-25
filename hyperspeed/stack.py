@@ -418,11 +418,11 @@ class Stack(object):
                             if remap:
                                 new_line, dependency = self.remap_line(line, dependency, mappings=remap)
                                 if line != new_line:
-                                    print 'Remap dependency: ', dependency.name
-                                    print 'From:', line
+                                    # print 'Remap dependency: ', dependency.name
+                                    # print 'From:', line
                                     changes = True
                                     line = new_line
-                                    print 'To:', line
+                                    # print 'To:', line
                             elif relink and not dependency.complete:
                                 print 'Missing dependency: ', dependency.name
                                 new_line, dependency = self.relink_line(line, dependency)
