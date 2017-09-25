@@ -8,6 +8,16 @@ import platform as platform_module
 from xml.etree import ElementTree
 from distutils.version import LooseVersion
 
+PROJECT_STRUCTURE = [
+    'BACKUP',
+    'DATA',
+    'EXT_MEDIA',
+    'IMPORT',
+    'OUTPUT',
+    'PRESETS',
+    'PRIVATE'
+]
+
 def get_rnd_path(rnd_name):
     for root, dirs, files in os.walk(os.path.join(projects_folder, project, 'DATA/RENDER')):
         for basename in files:
