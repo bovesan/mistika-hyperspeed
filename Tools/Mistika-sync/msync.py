@@ -334,8 +334,8 @@ class File(object):
         self.progress_update()
         for parent in self.parents:
             parent.queue_change(add_bytes_done=bytes_done_delta)
-    def enqueue(self, queue_push, queue_pull, queue_push_size, queue_pull_size):
-        if len(self.children) > 0:
+    def enqueue(self, queue_push, queue_pull, queue_push_size, queue_pull_size, recursive=True):
+        if recursive and len(self.children) > 0:
             for child in self.children:
                 child.enqueue(queue_push, queue_pull, queue_push_size, queue_pull_size)
         if not self.transfer:
@@ -958,15 +958,19 @@ class MainThread(threading.Thread):
         model = self.projectsTreeStore
         row_path = row_reference.get_path()
         del model[row_path]
-    def io_get_associated(self, path_id, sync=False):
+    def io_get_associated(self, path_id, sync=False, remap=False):
         file_object = self.buffer[path_id]
-        file_object.set_parse_progress(progress_float=0.0)
         abs_path = os.path.join(mistika.projects_folder, path_id)
         stack = file_object.stack = Stack(abs_path)
         files_chunk_max_size = 100
         files_chunk = []
         parent_file_path = path_id
-        for dependency in stack.iter_dependencies(progress_callback=file_object.set_parse_progress):
+        if remap:
+            progress_callback = file_object.set_remap_progress
+        else:
+            progress_callback = file_object.set_parse_progress
+        progress_callback(progress_float=0.0)
+        for dependency in stack.iter_dependencies(progress_callback=progress_callback, remap=remap):
             search_path = dependency.path
             if search_path.startswith(mistika.projects_folder):
                 search_path = search_path.replace(mistika.projects_folder+'/', '', 1)
@@ -990,7 +994,7 @@ class MainThread(threading.Thread):
                                 'pre_allocate' : True,
                                 }])
             files_chunk = []
-        self.queue_buffer.put_nowait([file_object.set_parse_progress, {'progress_float':1.0}])
+        self.queue_buffer.put_nowait([progress_callback, {'progress_float':1.0}])
         if sync:
             self.queue_buffer.put_nowait([self.buffer[path_id].enqueue, {
                 'queue_push' : self.queue_push,
@@ -1976,7 +1980,7 @@ class MainThread(threading.Thread):
                 char = proc.stdout.read(1)
                 output += char
             fields = output.split()
-            print output.zfill(100), repr(item)
+            print output.strip().ljust(100), repr(item)
             if item and len(fields) >= 4 and fields[1].endswith('%'):
                 bytes_done = int(fields[0])
                 bytes_done_delta = bytes_done - item.bytes_done
@@ -2004,7 +2008,7 @@ class MainThread(threading.Thread):
             else:
                 prev_line = output.strip()
                 try:
-                    item = self.buffer[item]
+                    item = self.buffer[prev_line]
                 except KeyError:
                     pass
             proc.poll()
@@ -2012,9 +2016,34 @@ class MainThread(threading.Thread):
         if proc.returncode > 0:
             print 'Error: %i' % proc.returncode
         for item in items:
-            if item.is_stack and self.mappings:
-                mapping_reverse = [(y, x) for (x, y) in self.mappings]
-                list(Stack(os.path.join(mistika.projects_folder, item.path)).iter_dependencies(progress_callback=item.set_remap_progress, remap=mapping_reverse))
+            if item.is_stack:
+                if not item.path.startswith('/'):
+                    project = item.path.split('/', 1)[0]
+                    project_structure = []
+                    for required_file in mistika.PROJECT_STRUCTURE:
+                        project_structure.append(os.path.join(project, required_file))
+                    for child in self.buffer[project].children:
+                        project_structure.append(child.path)
+                    for required_path in project_structure:
+                        if required_path in self.buffer:
+                            if self.buffer[required_path].size_local < 0:
+                                self.queue_buffer.put_nowait([self.buffer[required_path].enqueue, {
+                                    'queue_push' : self.queue_push,
+                                    'queue_pull':self.queue_pull,
+                                    'queue_push_size' : self.queue_push_size,
+                                    'queue_pull_size' : self.queue_pull_size,
+                                    'recursive' : False
+                                }])
+                        else:
+                            try:
+                                os.mkdir(os.path.join(mistika.projects_folder, required_path))
+                            except OSError as e:
+                                print 'Could not mkdir: ', required_path, e
+                self.queue_buffer.put_nowait([self.io_get_associated, {
+                    'path_id': item.path,
+                    'sync': False,
+                    'remap': self.mappings_to_local
+                }])
         self.queue_buffer.put_nowait([self.buffer_list_files, {
                     'paths' : relative_paths.values(),
                     'sync' : False
