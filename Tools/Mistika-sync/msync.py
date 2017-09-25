@@ -47,6 +47,7 @@ ICON_LIST = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/list.png', 16, 1
 PIXBUF_SEARCH = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/search.png', 16, 16)
 PIXBUF_EQUAL = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/equal.png', 16, 16)
 ICON_FILE = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/file.png', 16, 16)
+ICON_LINK = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/link.png', 16, 16)
 ICON_LEFT = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/left.png', 16, 16)
 ICON_RIGHT = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/right.png', 16, 16)
 ICON_BIDIR = gtk.gdk.pixbuf_new_from_file_at_size('../../res/img/reset.png', 16, 16)
@@ -210,6 +211,8 @@ class File(object):
                 self._icon = ICON_LIST
             elif 'd' in [self.type_local, self.type_remote]:
                 self._icon = ICON_FOLDER
+            elif 'l' in [self.type_local, self.type_remote]:
+                self._icon = ICON_LINK
             else:
                 self._icon = ICON_FILE
         return self._icon
@@ -2014,7 +2017,12 @@ class MainThread(threading.Thread):
             'rsync',
             '-e',
             'ssh -p %i' % self.remote['port'],
-            '-uavvKL'
+            '-u',
+            '-a',
+            '-v',
+            '-v',
+            '-K',
+            # '-L',
         ] + extra_args + [
             '--no-perms',
             '--progress',
@@ -2081,7 +2089,24 @@ class MainThread(threading.Thread):
         if proc.returncode > 0:
             print 'Error: %i' % proc.returncode
         for item in items:
-            if item.is_stack:
+            full_path_local = base_path_local+'/'+item.path
+            # if item.type_remote == 'l':
+            if os.path.islink(full_path_local):
+                link_dest = os.readlink(full_path_local)
+                link_dest_remapped = self.remap_to_local(link_dest)
+                if link_dest_remapped != link_dest:
+                    try: 
+                        os.unlink(full_path_local)
+                        os.symlink(link_dest_remapped, full_path_local)
+                    except OSError:
+                        print 'Could not link:', link_dest
+                link_dest_abs = os.path.join(full_path_local, link_dest_remapped)
+                if not os.path.exists(link_dest_abs):
+                    try:
+                        os.makedirs(link_dest_abs)
+                    except OSError:
+                        print 'Could not create dir:', link_dest_abs
+            elif item.is_stack:
                 if not item.path.startswith('/'):
                     project = item.path.split('/', 1)[0]
                     project_structure = []
