@@ -1883,6 +1883,7 @@ class MainThread(threading.Thread):
         if len(items) == 0:
             return
         relative_paths = {}
+        relative_paths_remote = {}
         extra_args = []
         # if len(items) == 1:
         #     for item in items:
@@ -1933,12 +1934,13 @@ class MainThread(threading.Thread):
         for item in items:
             item.transfer_start()
             relative_paths[item.path.lstrip('/')] = item.path
+            relative_paths_remote[self.remap_to_remote(item.path).lstrip('/')] = item.path
         item = False
         temp_handle = tempfile.NamedTemporaryFile()
-        temp_handle.write('\n'.join(relative_paths) + '\n')
+        temp_handle.write('\n'.join(relative_paths_remote) + '\n')
         temp_handle.flush()
         if absolute:
-            base_path_local = self.remote['local_media_root']
+            base_path_local = '/'
             base_path_remote = self.remote['root']
             # extra_args.append('-O')
         else:
@@ -1993,7 +1995,7 @@ class MainThread(threading.Thread):
                 else:
                     rel_path = output.replace('is uptodate', '')
                 try:
-                    path_id = relative_paths[rel_path.rstrip('/')]
+                    path_id = relative_paths_remote[rel_path.rstrip('/')]
                     self.buffer[path_id].transfer_end()
                     self.queue_pull_size[0] -= self.buffer[path_id].size_remote
                 except KeyError:
@@ -2001,8 +2003,8 @@ class MainThread(threading.Thread):
                 item = False
             elif 'rsync: recv_generator: mkdir' in output and 'failed: Permission denied (13)' in output:
                 folder = output.split('"', 2)[1]
-                for rel_path in relative_paths:
-                    path_id = relative_paths[rel_path.rsynctrip('/')]
+                for rel_path in relative_paths_remote:
+                    path_id = relative_paths_remote[rel_path.rstrip('/')]
                     if path_id.startswith(folder):
                         self.buffer[path_id].transfer_fail('Permission denied')
             else:
