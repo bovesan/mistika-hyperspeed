@@ -172,7 +172,7 @@ class File(object):
             self.status_visibility, # 17
         ]
     def direction_update(self):
-        if self.type_local == self.type_remote == 'd':
+        if self.type_local in ['d', 'l'] and self.type_remote in ['d', 'l']:
             self.direction = 'unknown'
         elif self.placeholder:
             self.direction = 'unknown'
@@ -826,7 +826,7 @@ class MainThread(threading.Thread):
         t.setDaemon(True)
         t.start()
     def aux_fix_mac_printf(self, str):
-        return str.replace('-printf',  '-print0 | xargs -0 stat -f').replace('%T@', '%m').replace('%s', '%z').replace('%y', '%T').replace('%p', '%N').replace('\\\\n', '')
+        return str.replace('-printf',  '-print0 | xargs -0 stat -f').replace('%T@', '%m').replace('%s', '%z').replace('%y', '%T').replace('%p', '%N').replace('%l', '%Y').replace('\\\\n', '')
     def aux_mistika_object_path(self, level_names):
         #print repr(level_names)
         return '/'.join(level_names)
@@ -1623,10 +1623,10 @@ class MainThread(threading.Thread):
                 'placeholder': False,
             }
             f_inode, f_type, f_size, f_time, full_path = file_line.strip().split(' ', 4)
+            full_path, f_link_dest = full_path.split('->')
             f_inode = int(f_inode)
             f_time = int(f_time.split('.')[0])
-            if f_type == '/': # Host is Mac
-                f_type = 'd'
+            f_type.replace('/', 'd').replace('@', 'l') # Convert mac to linux types
             if f_type == 'd':
                 f_size = 0
             else:
@@ -1673,14 +1673,20 @@ class MainThread(threading.Thread):
                 this_parent = parent
             else:
                 this_parent = self.buffer_get_parent(parent.path+'/'+path_id)
+            if f_link_dest == '':
+                f_link_dest = False
+            elif host != 'localhost':
+                f_link_dest = self.remap_to_local(f_link_dest)
             if host == 'localhost':
                 attributes['type_local'] = f_type
                 attributes['size_local'] = f_size
                 attributes['mtime_local'] = f_time
+                attributes['link_local'] = f_link_dest
             else:
                 attributes['type_remote'] = f_type
                 attributes['size_remote'] = f_size
                 attributes['mtime_remote'] = f_time
+                attributes['link_remote'] = f_link_dest
                 attributes['host'] = host
             if not path_id in self.buffer:
                 self.buffer[path_id] = File(path_id, this_parent, self.projectsTreeStore, self.projectsTree, attributes)
@@ -2351,8 +2357,8 @@ class MainThread(threading.Thread):
             return
         if maxdepth:
             maxdepth_str = ' -maxdepth %i' % maxdepth
-        find_cmd_local  = 'find %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%p\\\\n"' % (search_paths_local , maxdepth_str, type_filter)
-        find_cmd_remote = 'find %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%p\\\\n"' % (search_paths_remote, maxdepth_str, type_filter)
+        find_cmd_local  = 'find %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%p->%%l\\\\n"' % (search_paths_local , maxdepth_str, type_filter)
+        find_cmd_remote = 'find %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%p->%%l\\\\n"' % (search_paths_remote, maxdepth_str, type_filter)
         self.lines_local = []
         self.lines_remote = []
         thread_local = self.launch_thread(target=self.io_list_files_local, args=[find_cmd_local])
