@@ -1704,7 +1704,7 @@ class MainThread(threading.Thread):
                 # if '/' in path_id.strip('/'):
                 #     parent_dir, basename = path_id.rsplit('/', 1) # parent_dir will not have trailing slash
                     #parent_path += parent_dir
-            if parent != None:
+            if parent != None and f_type != 'f':
                 path_id = parent.path+'/'+path_id
             parent_path = os.path.dirname(path_id)
             if path_id == '': # Skip root item
