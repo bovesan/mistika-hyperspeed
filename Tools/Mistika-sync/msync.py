@@ -209,10 +209,10 @@ class File(object):
         if not self._icon:
             if self.is_stack:
                 self._icon = ICON_LIST
-            elif 'd' in [self.type_local, self.type_remote]:
-                self._icon = ICON_FOLDER
             elif 'l' in [self.type_local, self.type_remote]:
                 self._icon = ICON_LINK
+            elif 'd' in [self.type_local, self.type_remote]:
+                self._icon = ICON_FOLDER
             else:
                 self._icon = ICON_FILE
         return self._icon
@@ -233,6 +233,7 @@ class File(object):
         return self._parents
     def add_parent(self, parent):
         if parent != None and not parent in self._parents:
+            # print self.path, 'add_parent()', parent.path
             self._parents.append(parent)
             parent.children = self
             gobject.idle_add(self.gui_add_parent, parent)
@@ -493,6 +494,7 @@ class MainThread(threading.Thread):
         entry = self.entry_host = gtk.ComboBoxEntry(model=tree_store, column=0)
         entry.connect("key-release-event", self.on_host_update)
         entry.connect('changed', self.on_host_selected)
+        # entry.connect('activate', self.on_host_connect)
         vbox2.pack_start(entry, False, False, 0)
         hbox.pack_start(vbox2, False, False, 0)
 
@@ -505,6 +507,7 @@ class MainThread(threading.Thread):
         vbox2.pack_start(hbox2, False, False, 0)
         entry = self.entry_address = gtk.Entry()
         entry.connect('key-release-event', self.on_host_update)
+        entry.connect('activate', self.on_host_connect)
         #entry.connect('event', print_str)
         vbox2.pack_start(entry, False, False, 0)
         hbox.pack_start(vbox2, False, False, 0)
@@ -518,6 +521,7 @@ class MainThread(threading.Thread):
         vbox2.pack_start(hbox2, False, False, 0)
         entry = self.entry_user = gtk.Entry()
         entry.connect('key-release-event', self.on_host_update)
+        entry.connect('activate', self.on_host_connect)
         vbox2.pack_start(entry, False, False, 0)
         hbox.pack_start(vbox2, False, False, 0)
 
@@ -530,6 +534,7 @@ class MainThread(threading.Thread):
         vbox2.pack_start(hbox2, False, False, 0)
         entry = self.entry_port = gtk.SpinButton(gtk.Adjustment(value=22, lower=0, upper=9999999, step_incr=1))
         entry.connect('key-release-event', self.on_host_update)
+        entry.connect('activate', self.on_host_connect)
         entry.connect('button-release-event', self.on_host_update)
         #spinner.set_size_request(80,0)
         vbox2.pack_start(entry, False, False, 0)
@@ -568,6 +573,7 @@ class MainThread(threading.Thread):
         vbox2.pack_start(hbox2, False, False, 0)
         entry = self.entry_projects_path = gtk.Entry()
         entry.connect('key-release-event', self.on_host_update)
+        entry.connect('activate', self.on_host_connect)
         vbox2.pack_start(entry, True, True, 0)
         hbox.pack_start(vbox2, True, True, 0)
 
@@ -582,6 +588,7 @@ class MainThread(threading.Thread):
         entry = self.entry_local_media_root = gtk.Entry()
         entry.set_text('/')
         entry.connect('key-release-event', self.on_host_update)
+        entry.connect('activate', self.on_host_connect)
         hbox2.pack_start(entry, True, True, 0)
         button = self.entry_local_media_root_button = gtk.Button('...')
         button.connect('clicked', self.on_local_media_root_pick)
@@ -631,6 +638,16 @@ class MainThread(threading.Thread):
 
         #button.set_image(spinner)
         vbox.pack_start(hbox, False, False, 0)
+
+        textview = self.console = gtk.TextView()
+        fontdesc = pango.FontDescription("monospace")
+        textview.modify_font(fontdesc)
+        textview.set_editable(False)
+        scroll = gtk.ScrolledWindow()
+        scroll.add(textview)
+        expander = gtk.Expander("Log")
+        expander.add(scroll)
+        vbox.pack_start(expander, True, True, 0)
 
         return vbox
     def init_files_panel(self):
@@ -879,11 +896,11 @@ class MainThread(threading.Thread):
         print 'on_search(%s, %s, %s, %s, %s, %s)' % (self, model, column, key, iter, user_data)
     def on_host_edit(self, cell, path, new_text, user_data):
         tree, column = user_data
-        print tree[path][column],
+        # print tree[path][column],
         row_reference = gtk.TreeRowReference(tree, path)
         gobject.idle_add(self.gui_set_value, tree, row_reference, column, new_text)
         #tree[path][column] = new_text
-        print '-> ' + tree[path][column]
+        # print '-> ' + tree[path][column]
         t = threading.Thread(target=self.io_hosts_store)
         self.threads.append(t)
         t.setDaemon(True)
@@ -891,7 +908,7 @@ class MainThread(threading.Thread):
     def on_host_update(self, widget, *user_data):
         #print model[iter][0]
         model = self.hostsTreeStore
-        print repr(self.entry_host.get_active_iter())
+        # print repr(self.entry_host.get_active_iter())
         selected_row_iter = self.entry_host.get_active_iter()
         if selected_row_iter == None:
             try:
@@ -899,16 +916,6 @@ class MainThread(threading.Thread):
                 selected_row_iter = model.get_iter(selected_row_path)
             except AttributeError:
                 selected_row_iter = self.hostsTreeStore.append(None, ['new', '', '', 0, ''])
-
-        # if widget == self.entry_host:
-        #     print widget.get_active_text()
-        # elif widget == self.entry_port:
-        #     print widget.get_value_as_int()
-        # else:
-        #     try:
-        #         print widget.get_text()
-        #     except AttributeError:
-        #         pass
         model.set_value(selected_row_iter, 0, self.entry_host.get_active_text())
         model.set_value(selected_row_iter, 1, self.entry_address.get_text())
         model.set_value(selected_row_iter, 2, self.entry_user.get_text())
@@ -926,9 +933,9 @@ class MainThread(threading.Thread):
             selected = model[selected_row_iter][0] == row[0]
             #selected = selection.iter_is_selected(model[row])
             alias = row[0]
-            for value in row:
-                print value,
-            print ''
+            # for value in row:
+            #     print value,
+            # print ''
             host_dict = {}
             host_dict['address'] = row[1]
             if host_dict['address'] == '':
@@ -941,11 +948,16 @@ class MainThread(threading.Thread):
             host_dict['pull'] = row[7]
             host_dict['selected'] = selected
             hosts[alias] = host_dict
-        print 'hosts: ' + repr(hosts)
+        # print 'hosts: ' + repr(hosts)
         t = threading.Thread(target=self.io_hosts_store, args=[hosts])
         self.threads.append(t)
         t.setDaemon(True)
         t.start()
+        try:
+            if gtk.gdk.keyval_name(user_data[0].keyval) == 'Return':
+                self.on_host_connect(widget)
+        except (IndexError, AttributeError):
+            pass
     def on_host_connect(self, widget):
         self.daemon_remote_active = True
         t = threading.Thread(target=self.daemon_remote)
@@ -1020,6 +1032,7 @@ class MainThread(threading.Thread):
                     'parent' : file_object,
                     'sync' : False,
                     'pre_allocate' : True,
+                    'maxdepth' : 0,
                     }])
                 files_chunk = []
         if len(files_chunk) > 0:
@@ -1028,9 +1041,14 @@ class MainThread(threading.Thread):
                                 'parent' : file_object,
                                 'sync' : False,
                                 'pre_allocate' : True,
+                    'maxdepth' : 0,
                                 }])
             files_chunk = []
         self.queue_buffer.put_nowait([progress_callback, {'progress_float':1.0}])
+        self.queue_buffer.put_nowait([self.buffer_get_virtual_details, {
+            'item' : file_object,
+            'real_parent' : file_object
+            }])
         if sync:
             self.queue_buffer.put_nowait([self.buffer[path_id].enqueue, {
                 'queue_push' : self.queue_push,
@@ -1038,8 +1056,27 @@ class MainThread(threading.Thread):
                 'queue_push_size' : self.queue_push_size,
                 'queue_pull_size' : self.queue_pull_size,
                 }])
-    def buffer_remove_item(self, row_reference):
-        gobject.idle_add(self.gui_row_delete, row_reference)
+    def buffer_get_virtual_details(self, item, real_parent):
+        # Blocks buffer to complete before sync starts
+        paths = []
+        if len(item.children) > 0:
+            for child in item.children:
+                paths += self.buffer_get_virtual_details(item=child, real_parent=real_parent)
+            if item.virtual:
+                f_path = item.path.replace(real_parent.path+'/', '', 1)
+                paths.append(f_path)
+                # print 'Virtual:', item.path, 'parent:', real_parent.path, 'real_path:', f_path
+        if item == real_parent or len(paths) > 20:
+            # print repr(paths),
+            self.buffer_list_files(
+                    paths = paths[:],
+                    parent = real_parent,
+                    maxdepth = 0,
+            )
+            gobject.idle_add(item.gui_update)
+            paths = []
+            # print repr(paths)
+        return paths
     def on_sync_selected(self, widget):
         selection = self.projectsTree.get_selection()
         (model, pathlist) = selection.get_selected_rows()
@@ -1208,6 +1245,7 @@ class MainThread(threading.Thread):
             row_iter = self.hostsTreeStore.append(None, row_values)
             #, alias='New host', address='', user='mistika', port=22, path='', selected=False
             if hosts[host]['selected']:
+                print 'Loaded connection:', host
                 self.entry_host.set_active_iter(row_iter)
                 #selection.select_iter(row_iter)
                 self.on_host_selected(None)
@@ -1586,10 +1624,10 @@ class MainThread(threading.Thread):
         #loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
         #gobject.idle_add(self.button_load_remote_projects.set_image, loader)
         gobject.idle_add(self.spinner_remote.set_property, 'visible', True)
-        gobject.idle_add(self.remote_status_label.set_label, 'Listing remote files')
         cmd = find_cmd.replace('<projects>', self.remote['projects_path']).replace('<absolute>/', self.remote['root'])
         if self.remote['is_mac']:
             cmd = self.aux_fix_mac_printf(cmd)
+        gobject.idle_add(self.remote_status_label.set_label, 'Listing remote files: '+cmd)
         ssh_cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), cmd]
         # print ssh_cmd
         try:
@@ -1622,8 +1660,12 @@ class MainThread(threading.Thread):
                 'color' : COLOR_DEFAULT,
                 'placeholder': False,
             }
-            f_inode, f_type, f_size, f_time, full_path = file_line.strip().split(' ', 4)
-            full_path, f_link_dest = full_path.split('->')
+            try:
+                f_inode, f_type, f_size, f_time, full_path = file_line.strip().split(' ', 4)
+                full_path, f_link_dest = full_path.split('->')
+            except ValueError:
+                print 'Error line:', file_line
+                continue
             f_inode = int(f_inode)
             f_time = int(f_time.split('.')[0])
             f_type.replace('/', 'd').replace('@', 'l') # Convert mac to linux types
@@ -1662,6 +1704,8 @@ class MainThread(threading.Thread):
                 # if '/' in path_id.strip('/'):
                 #     parent_dir, basename = path_id.rsplit('/', 1) # parent_dir will not have trailing slash
                     #parent_path += parent_dir
+            if parent != None:
+                path_id = parent.path+'/'+path_id
             parent_path = os.path.dirname(path_id)
             if path_id == '': # Skip root item
                 continue
@@ -1670,7 +1714,7 @@ class MainThread(threading.Thread):
                 if f_inode == -1: # This is a virtual folder
                     attributes['alias'] = full_path.replace(parent_path+'/', '', 1) # Prepends the slash to first level, absolute path virtual folders
             elif parent == None:
-                this_parent = parent
+                this_parent = None
             else:
                 this_parent = self.buffer_get_parent(parent.path+'/'+path_id)
             if f_link_dest == '':
@@ -1693,7 +1737,8 @@ class MainThread(threading.Thread):
             else:
                 self.buffer[path_id].set_attributes(attributes)
                 if this_parent != None:
-                        self.buffer[path_id].add_parent(this_parent)
+                    # print 'this_parent:', this_parent.path
+                    self.buffer[path_id].add_parent(this_parent)
 
     def buffer_get_parent(self, child_path_id):
         if child_path_id == '/':
@@ -1714,8 +1759,17 @@ class MainThread(threading.Thread):
                 'direction'  : 'unknown',
                 'alias'      : alias ,
             }
+            # real_parent_path = parent_path
+            # while not (real_parent_path in self.buffer and not self.buffer[real_parent_path].virtual):
+            #     real_parent_path = os.path.dirname(real_parent_path)
             parent = self.buffer_get_parent(path_id)
             self.buffer[path_id] = File(path_id, parent, self.projectsTreeStore, self.projectsTree, attributes)
+            # real_path = path_id.replace(real_parent_path, '', 1)
+            # self.queue_buffer.put_nowait([self.buffer_list_files, {
+            #         'paths' : [real_path],
+            #         'parent' : self.buffer[real_parent_path],
+            #         'maxdepth' : 1,
+            #         }])
         return self.buffer[path_id]
     def daemon_buffer(self):
         q = self.queue_buffer
@@ -1949,7 +2003,8 @@ class MainThread(threading.Thread):
                 list(Stack(item.path).iter_dependencies(progress_callback=file_object.set_remap_progress, remap=self.mappings))
         self.queue_buffer.put_nowait([self.buffer_list_files, {
                     'paths' : relative_paths.values(),
-                    'sync' : False
+                    'sync' : False,
+                    'maxdepth' : 0,
                     }])
     def pull(self, items, absolute=False):
         if len(items) == 0:
@@ -2142,7 +2197,8 @@ class MainThread(threading.Thread):
                 }])
         self.queue_buffer.put_nowait([self.buffer_list_files, {
                     'paths' : relative_paths.values(),
-                    'sync' : False
+                    'sync' : False,
+                    'maxdepth' : 0,
                     }])
     def daemon_remote(self):
         q = self.queue_remote
@@ -2225,6 +2281,7 @@ class MainThread(threading.Thread):
         #selection = self.hostsTree.get_selection()
         #(model, iter) = selection.get_selected()
         #self.spinner_remote.set_property('visible', True)
+        self.gui_connection_panel_lock()
         self.remote['alias'] = self.entry_host.get_active_text()
         self.remote_status_label.set_markup('Connecting')
         self.remote['address'] = self.entry_address.get_text()
@@ -2242,10 +2299,12 @@ class MainThread(threading.Thread):
             if 'Permission denied' in stderr:
                 gobject.idle_add(self.remote_status_label.set_markup, '')
                 gobject.idle_add(self.gui_copy_ssh_key, self.remote['user'], self.remote['address'], self.remote['port'])
+                gobject.idle_add(self.gui_connection_panel_lock, False)
                 return
             else:
                 gobject.idle_add(self.gui_show_error, stderr)
                 gobject.idle_add(self.remote_status_label.set_markup, 'Connection error.')
+                gobject.idle_add(self.gui_connection_panel_lock, False)
                 raise 'Connection error'
         else:
             if 'Darwin' in output:
@@ -2255,6 +2314,7 @@ class MainThread(threading.Thread):
         if self.remote['projects_path'] == '':
             remote_projects_path = self.remote_get_projects_path()
             if remote_projects_path == None:
+                gobject.idle_add(self.gui_connection_panel_lock, False)
                 return
             else:
                 self.remote['projects_path'] = remote_projects_path
@@ -2275,27 +2335,24 @@ class MainThread(threading.Thread):
         self.queue_buffer.put_nowait([self.buffer_list_files])
     def buffer_clear(self):
         self.buffer = {}
+    def gui_connection_panel_lock(self, lock=True):
+        state = not lock
+        self.entry_host.set_sensitive(state)
+        self.entry_address.set_sensitive(state)
+        self.entry_user.set_sensitive(state)
+        self.entry_port.set_sensitive(state)
+        self.entry_projects_path.set_sensitive(state)
+        self.entry_local_media_root.set_sensitive(state)
+        self.entry_local_media_root_button.set_sensitive(state)
     def gui_connected(self):
-            self.remote_status_label.set_markup('')
-            self.entry_host.set_sensitive(False)
-            self.entry_address.set_sensitive(False)
-            self.entry_user.set_sensitive(False)
-            self.entry_port.set_sensitive(False)
-            self.entry_projects_path.set_sensitive(False)
-            self.entry_local_media_root.set_sensitive(False)
-            self.entry_local_media_root_button.set_sensitive(False)
-            gobject.idle_add(self.button_connect.set_property, 'visible', False)
-            gobject.idle_add(self.button_disconnect.set_property, 'visible', True)
-            # gobject.idle_add(self.label_active_host.set_markup,
-            #     '<span foreground="#888888">Connected to host:</span> %s <span foreground="#888888">(%s)</span>'
-            #     % (self.remote['alias'], self.remote['address']))
+        self.remote_status_label.set_markup('')
+        gobject.idle_add(self.button_connect.set_property, 'visible', False)
+        gobject.idle_add(self.button_disconnect.set_property, 'visible', True)
+        # gobject.idle_add(self.label_active_host.set_markup,
+        #     '<span foreground="#888888">Connected to host:</span> %s <span foreground="#888888">(%s)</span>'
+        #     % (self.remote['alias'], self.remote['address']))
     def gui_disconnected(self):
-        self.projectsTreeStore.clear()
-        self.entry_host.set_sensitive(True)
-        self.entry_address.set_sensitive(True)
-        self.entry_user.set_sensitive(True)
-        self.entry_port.set_sensitive(True)
-        self.entry_projects_path.set_sensitive(True)
+        self.gui_connection_panel_lock(False)
         self.button_disconnect.set_property('visible', False)
         self.button_connect.set_property('visible', True)
         self.spinner_remote.set_property('visible', False)
@@ -2373,6 +2430,8 @@ class MainThread(threading.Thread):
             maxdepth_str = ' -maxdepth %i' % maxdepth
         find_cmd_local  = 'find %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%p->%%l\\\\n"' % (search_paths_local , maxdepth_str, type_filter)
         find_cmd_remote = 'find %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%p->%%l\\\\n"' % (search_paths_remote, maxdepth_str, type_filter)
+        # print find_cmd_local
+        # print find_cmd_remote
         self.lines_local = []
         self.lines_remote = []
         thread_local = self.launch_thread(target=self.io_list_files_local, args=[find_cmd_local])
@@ -2419,10 +2478,12 @@ class MainThread(threading.Thread):
         try:
             open(CFG_HOSTS_PATH, 'w').write(json.dumps(hosts, sort_keys=True, indent=4, separators=(',', ': ')))
             status = 'Wrote to %s' % CFG_HOSTS_PATH
-            print status
+            # print status
             #gobject.idle_add(self.status_bar.push, self.context_id, status)
         except IOError as e:
-            gobject.idle_add(self.gui_show_error, 'Could not write to file:\n'+CFG_HOSTS_PATH)
+            msg = 'Could not write to file:\n'+CFG_HOSTS_PATH
+            print msg
+            gobject.idle_add(self.gui_show_error,msg)
         except:
             raise
     def gui_periodical_updates(self):
@@ -2457,14 +2518,18 @@ class MainThread(threading.Thread):
         else:
             self.pull_queue_size_label.set_text('')
         return True
-
-
-
+    def write(self, string, **args):
+        sys.__stdout__.write(string)
+        sys.__stdout__.flush()
+        gobject.idle_add(self.console.get_buffer().insert_at_cursor, string)
+    def flush(self, **args):
+        pass
 
 os.environ['LC_CTYPE'] = 'en_US.utf8'
 os.environ['LC_ALL'] = 'en_US.utf8'
 
 t = MainThread()
 t.start()
+sys.stdout = t
 gtk.main()
 t.quit = True
