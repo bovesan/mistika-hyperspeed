@@ -2081,7 +2081,7 @@ class MainThread(threading.Thread):
             else:
                 prev_line = output.strip()
                 try:
-                    item = self.buffer[prev_line]
+                    item = self.buffer[relative_paths_remote[prev_line.rstrip('/')]]
                 except KeyError:
                     pass
             proc.poll()
@@ -2418,9 +2418,15 @@ class MainThread(threading.Thread):
             push_speed = (history[0][1] - history[-1][1]) / (history[-1][0] - history[0][0])
             if push_speed >= 0:
                 push_speed_string = ' rate: %sps' % human.size(push_speed, print_null=True)
+                if push_speed > 0:
+                    seconds_left = float(self.queue_push_size[0]) / float(push_speed)
+                    push_speed_string += ' Estimated time left: ' + human.duration(seconds_left)
             pull_speed = (history[0][2] - history[-1][2]) / (history[-1][0] - history[0][0])
             if pull_speed >= 0:
                 pull_speed_string = ' rate: %sps' % human.size(pull_speed, print_null=True)
+                if pull_speed > 0:
+                    seconds_left = float(self.queue_pull_size[0]) / float(pull_speed)
+                    pull_speed_string += ' Estimated time left: ' + human.duration(seconds_left)
         # print 'gui_periodical_updates()'
         if self.queue_push_size[0] > 0:
             self.push_queue_size_label.set_text('Push queue: %s%s' % (human.size(self.queue_push_size[0]), push_speed_string))
