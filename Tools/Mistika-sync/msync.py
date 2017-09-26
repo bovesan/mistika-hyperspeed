@@ -1010,8 +1010,8 @@ class MainThread(threading.Thread):
             search_path = dependency.path
             if search_path.startswith(mistika.projects_folder):
                 search_path = search_path.replace(mistika.projects_folder+'/', '', 1)
-            elif search_path.startswith(self.remote['projects_path']):
-                search_path = search_path.replace(self.remote['projects_path']+'/', '', 1)
+            # elif search_path.startswith(self.remote['projects_path']):
+            #     search_path = search_path.replace(self.remote['projects_path']+'/', '', 1)
             # print 'search_path:', search_path
             files_chunk.append(search_path)
             if len(files_chunk) >= files_chunk_max_size:
@@ -2261,12 +2261,16 @@ class MainThread(threading.Thread):
                 self.entry_projects_path.set_text(remote_projects_path)
             #self.entry_address.set_property('editable', False)
         self.remote['root'] = self.remote_get_root_path()
-        mappings = self.mappings = [
-            (self.remote['local_media_root'], self.remote['root']),
-            (mistika.projects_folder, self.remote['projects_path'])
-        ]
-        mappings = [x for x in mappings if not x[0] == x[1]]
-        self.mappings_to_local = [(y, x) for (x, y) in mappings]
+        mappings = self.mappings = {
+            'projects' : (mistika.projects_folder, self.remote['projects_path']),
+            'media'    : (self.remote['local_media_root'], self.remote['root']),
+        }
+        self.mappings_to_local = {}
+        for map_id, mapping in mappings.iteritems():
+            if mapping[0] == mapping[1]:
+                del mappings[map_id]
+            else:
+                self.mappings_to_local[map_id] = (mapping[1], mapping[0])
         gobject.idle_add(self.gui_connected)
         self.queue_buffer.put_nowait([self.buffer_list_files])
     def buffer_clear(self):
@@ -2305,14 +2309,24 @@ class MainThread(threading.Thread):
         t.start()
         return t
     def remap_to_remote(self, path):
-        for mapping in self.mappings:
+        mappings = self.mappings
+        for map_id in ['projects', 'media']:
+            mapping = mappings[map_id]
             if path.startswith(mapping[0]):
+                # print 'Remap:', path,
                 path = path.replace(mapping[0], mapping[1], 1)
+                # print '>', path
+                break
         return path
     def remap_to_local(self, path):
-        for mapping in self.mappings_to_local:
+        mappings = self.mappings_to_local
+        for map_id in ['projects', 'media']:
+            mapping = mappings[map_id]
             if path.startswith(mapping[0]):
+                # print 'Remap:', path,
                 path = path.replace(mapping[0], mapping[1], 1)
+                # print '>', path
+                break
         return path
     def buffer_list_files(self, paths=[''], parent=None, sync=False, maxdepth = 2, pre_allocate=False):
         type_filter = ''
@@ -2348,7 +2362,7 @@ class MainThread(threading.Thread):
                     'color':COLOR_WARNING,
                     'placeholder':True,
                     'virtual':True,
-                    # 'alias' : f_path+':'+f_path_remote
+                    'alias' : f_path+':'+f_path_remote
                 }
                 self.buffer[pre_alloc_path] = File(pre_alloc_path, self.buffer_get_parent(parent.path+'/'+pre_alloc_path), self.projectsTreeStore, self.projectsTree, attributes)
                 # gobject.idle_add(self.gui_expand, parent)
