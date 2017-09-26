@@ -1627,9 +1627,9 @@ class MainThread(threading.Thread):
         cmd = find_cmd.replace('<projects>', self.remote['projects_path']).replace('<absolute>/', self.remote['root'])
         if self.remote['is_mac']:
             cmd = self.aux_fix_mac_printf(cmd)
-        gobject.idle_add(self.remote_status_label.set_label, 'Listing remote files: '+cmd)
+        gobject.idle_add(self.remote_status_label.set_label, 'Listing remote files')
         ssh_cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), cmd]
-        # print ssh_cmd
+        print ' '.join(ssh_cmd)
         try:
             p1 = subprocess.Popen(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, stderr = p1.communicate()
@@ -1639,7 +1639,7 @@ class MainThread(threading.Thread):
                 return
             self.lines_remote = output.splitlines()
             #self.buffer_add(lines, self.remote['alias'], self.remote['projects_path'], parent_path)
-        except:
+        except KeyError:
             print stderr
             raise
             gobject.idle_add(self.gui_show_error, stderr)
@@ -2426,7 +2426,7 @@ class MainThread(threading.Thread):
         if search_paths_local == '':
             print 'no search paths'
             return
-        if maxdepth:
+        if type(maxdepth) == int:
             maxdepth_str = ' -maxdepth %i' % maxdepth
         find_cmd_local  = 'find %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%p->%%l\\\\n"' % (search_paths_local , maxdepth_str, type_filter)
         find_cmd_remote = 'find %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%p->%%l\\\\n"' % (search_paths_remote, maxdepth_str, type_filter)
