@@ -177,7 +177,11 @@ class File(object):
             self.status_visibility, # 17
         ]
     def direction_update(self):
-        if self.type_local in ['d', 'l'] and self.type_remote in ['d', 'l']:
+        if self.size_local >= 0 > self.size_remote:
+            self.direction = 'push'
+        elif self.size_local < 0 <= self.size_remote:
+            self.direction = 'pull'
+        elif self.type_local in ['d', 'l'] and self.type_remote in ['d', 'l']:
             self.direction = 'unknown'
         elif self.placeholder:
             self.direction = 'unknown'
@@ -343,25 +347,37 @@ class File(object):
         self.progress_update()
         for parent in self.parents:
             parent.queue_change(add_bytes_done=bytes_done_delta)
-    def enqueue(self, queue_push, queue_pull, queue_push_size, queue_pull_size, recursive=True):
+    def enqueue(self, push_allow, pull_allow, queue_push, queue_pull, queue_push_size, queue_pull_size, recursive=True, parents=True):
+        print 3, 'Enqueing:', self.path
         if recursive and len(self.children) > 0:
             for child in self.children:
-                child.enqueue(queue_push, queue_pull, queue_push_size, queue_pull_size)
+                child.enqueue(push_allow, pull_allow, queue_push, queue_pull, queue_push_size, queue_pull_size, parents=False)
+        if parents and len(self.parents) > 0:
+            for parent in self.parents:
+                parent.enqueue(push_allow, pull_allow, queue_push, queue_pull, queue_push_size, queue_pull_size, recursive=False)
         if not self.transfer:
             # print 'Enqueing:', self.path
             bytes_total_before = self.bytes_total
-            if self.virtual:
+            if self.placeholder:
                 return
             if self.direction == 'push':
+                if not push_allow:
+                    print 3, 'Push is disabled, skipping', self.path
+                    return
                 self.bytes_total = self.size_local
                 queue_push_size[0] += self.size_local
+                print 4, 'Put in queue_push:', self.path
                 queue_push.put(self)
                 self.progress_string = 'Queued'
                 self.progress_visibility = True
                 self.status_visibility = False
             elif self.direction == 'pull':
+                if not pull_allow:
+                    print 3, 'Pull is disabled, skipping', self.path
+                    return
                 self.bytes_total = self.size_remote
                 queue_pull_size[0] += self.size_remote
+                print 4, 'Put in queue_pull:', self.path
                 queue_pull.put(self)
                 self.progress_string = 'Queued'
                 self.progress_visibility = True
@@ -561,7 +577,10 @@ class MainThread(threading.Thread):
         hbox2.pack_start(label, False, False, 0)
         vbox2.pack_start(hbox2, False, False, 0)
         entry = self.allow_push = gtk.CheckButton()
-        entry.connect('clicked', self.on_host_update)
+        self.push_allow = False
+        entry.connect('toggled', self.checkbox_to_var, self.push_allow, 'Allow push')
+        entry.connect('toggled', self.on_host_update)
+        # entry.connect('event', self.on_any_event)
         vbox2.pack_start(entry, False, False, 0)
         hbox.pack_start(vbox2, False, False, 0)
 
@@ -573,7 +592,10 @@ class MainThread(threading.Thread):
         hbox2.pack_start(label, False, False, 0)
         vbox2.pack_start(hbox2, False, False, 0)
         entry = self.allow_pull = gtk.CheckButton()
-        entry.connect('clicked', self.on_host_update)
+        self.pull_allow = False
+        entry.connect('toggled', self.checkbox_to_var, self.pull_allow, 'Allow pull')
+        entry.connect('toggled', self.on_host_update)
+        # entry.connect('event', self.on_any_event)
         vbox2.pack_start(entry, False, False, 0)
         hbox.pack_start(vbox2, False, False, 0)
 
@@ -653,6 +675,10 @@ class MainThread(threading.Thread):
         vbox.pack_start(hbox, False, False, 0)
 
         return vbox
+    def checkbox_to_var(self, widget, target, identifier):
+        target = widget.get_active()
+        print 5, identifier, ':', str(target)
+
     def init_log_panel(self):
         vbox = gtk.VBox()
         hbox = gtk.HBox()
@@ -1111,8 +1137,10 @@ class MainThread(threading.Thread):
             }])
         if sync:
             self.queue_buffer.put_nowait([self.buffer[path_id].enqueue, {
+                'push_allow' : self.push_allow,
+                'pull_allow' : self.pull_allow, 
                 'queue_push' : self.queue_push,
-                'queue_pull':self.queue_pull,
+                'queue_pull' : self.queue_pull,
                 'queue_push_size' : self.queue_push_size,
                 'queue_pull_size' : self.queue_pull_size,
                 }])
@@ -1143,6 +1171,7 @@ class MainThread(threading.Thread):
         for row_path in pathlist:
             row_reference = gtk.TreeRowReference(model, row_path)
             path_id = model[row_path][1]
+            parent_id = os.path.dirname(path_id)
             print 3, 'on_sync_selected()', path_id
             if len(self.buffer[path_id].children) > 0 and not self.buffer[path_id].deep_searched and not self.buffer[path_id].virtual:
                 if self.buffer[path_id].direction == 'pull':
@@ -1161,8 +1190,10 @@ class MainThread(threading.Thread):
                 # self.queue_buffer.put_nowait([self.buffer[path_id].fetch_dependencies])
             else:
                 self.queue_buffer.put_nowait([self.buffer[path_id].enqueue, {
+                    'push_allow' : self.push_allow,
+                    'pull_allow' : self.pull_allow, 
                     'queue_push' : self.queue_push,
-                    'queue_pull':self.queue_pull,
+                    'queue_pull' : self.queue_pull,
                     'queue_push_size' : self.queue_push_size,
                     'queue_pull_size' : self.queue_pull_size,
                     }])
@@ -1216,9 +1247,9 @@ class MainThread(threading.Thread):
                 connection['pull'],
             ]
             row_iter = self.hostsTreeStore.append(None, row_values)
+            print 3, 'Loaded connection:', host
             #, alias='New host', address='', user='mistika', port=22, path='', selected=False
             if hosts[host]['selected']:
-                print 1, 'Loaded connection:', host
                 self.entry_host.set_active_iter(row_iter)
                 #selection.select_iter(row_iter)
                 self.on_host_selected(None)
@@ -1246,8 +1277,13 @@ class MainThread(threading.Thread):
         self.entry_port.set_value(model[selected_row_iter][3])
         self.entry_projects_path.set_text(model[selected_row_iter][4])
         self.entry_local_media_root.set_text(model[selected_row_iter][5])
+        print 4, 'allow_push.set_active', str(model[selected_row_iter][6])
+        print 4, 'allow_pull.set_active', str(model[selected_row_iter][7])
         self.allow_push.set_active(model[selected_row_iter][6])
         self.allow_pull.set_active(model[selected_row_iter][7])
+        print 1, 'Selected connection:', model[selected_row_iter][0]
+        self.checkbox_to_var(self.allow_push, self.push_allow, 'push')
+        self.checkbox_to_var(self.allow_pull, self.pull_allow, 'pull')
         # status = 'Loaded hosts.'
         # self.status_bar.push(self.context_id, status)
     def gui_host_remove(self, widget):
@@ -1627,6 +1663,7 @@ class MainThread(threading.Thread):
         for file_line in lines:
             print 5, file_line
             attributes = {
+                'real_parent' : parent,
                 'virtual' : False,
                 'color' : COLOR_DEFAULT,
                 'placeholder': False,
@@ -1780,14 +1817,16 @@ class MainThread(threading.Thread):
         queue_size_absolute = 0
         queue_size_relative = 0
         while self.daemon_push_active:
-            if not self.allow_push.get_active():
+            if not self.push_allow:
                 time.sleep(1)
                 continue
             do_now = False
             try:
                 item = q.get(True, 1)
                 if item.transfer:
-                    if item.absolute:
+                    if item.virtual:
+                        pass
+                    elif item.absolute:
                         # print 'Push absolute path:', repr(item.path)
                         items_absolute.append(item)
                         queue_size_absolute += item.size_local
@@ -1814,19 +1853,21 @@ class MainThread(threading.Thread):
         queue_size_absolute = 0
         queue_size_relative = 0
         while self.daemon_pull_active:
-            if not self.allow_pull.get_active():
+            if not self.pull_allow:
                 time.sleep(1)
                 continue
             do_now = False
             try:
                 item = q.get(True, 1)
                 if item.transfer:
-                    if item.absolute:
-                        # print 'pull absolute path:', repr(item.path)
+                    if item.type_remote == 'l':
+                        self.pull_link(item)
+                    elif item.absolute:
+                        print 4, 'pull absolute path:', repr(item.path)
                         items_absolute.append(item)
                         queue_size_absolute += item.size_local
                     else:
-                        # print 'pull relative path:', repr(item.path)
+                        print 4, 'pull relative path:', repr(item.path)
                         items_relative.append(item)
                         queue_size_relative += item.size_local
             except Queue.Empty:
@@ -1839,6 +1880,31 @@ class MainThread(threading.Thread):
                 self.pull(items_relative)
                 items_relative = []
                 queue_size_relative = 0
+    def pull_link(self, item):
+        real_path = item.path
+        if item.virtual and real_parent != None:
+            if real_path.startswith(real_parent.path):
+                real_path = real_path.replace(real_parent_path+'/', '', 1)
+        if not os.path.isabs(realpath):
+            real_path = os.path.join(mistika.projects_folder, real_path)
+        if os.path.exists(real_path):
+            return
+        else:
+            target = self.remap_to_local(item.link_remote)
+            try:
+                os.symlink(target, real_path)
+                print 2, 'Created symlink:', '%s -> %s' % (real_path, target)
+            except OSError as e:
+                print 1, 'Could not create symlink:', '%s -> %s' % (real_path, target)
+                print 2, e
+            link_target_abs = os.path.join(os.path.dirname(real_path), target)
+            if not os.path.exists(link_target_abs):
+                try:
+                    os.makedirs(link_target_abs)
+                    print 2, 'Created folder:', link_target_abs
+                except OSError as e:
+                    print 1, 'Could not create dir:', link_target_abs
+                    print 2, e
     def push(self, items, absolute=False):
         if len(items) == 0:
             return
@@ -2048,7 +2114,7 @@ class MainThread(threading.Thread):
                 char = proc.stdout.read(1)
                 output += char
             fields = output.split()
-            print 3, output.strip().ljust(100)
+            print 5, output.strip().ljust(100)
             if item and len(fields) >= 4 and fields[1].endswith('%'):
                 bytes_done = int(fields[0])
                 bytes_done_delta = bytes_done - item.bytes_done
@@ -2113,8 +2179,10 @@ class MainThread(threading.Thread):
                         if required_path in self.buffer:
                             if self.buffer[required_path].size_local < 0:
                                 self.queue_buffer.put_nowait([self.buffer[required_path].enqueue, {
+                                    'push_allow' : self.push_allow,
+                                    'pull_allow' : self.pull_allow, 
                                     'queue_push' : self.queue_push,
-                                    'queue_pull':self.queue_pull,
+                                    'queue_pull' : self.queue_pull,
                                     'queue_push_size' : self.queue_push_size,
                                     'queue_pull_size' : self.queue_pull_size,
                                     'recursive' : False
@@ -2387,6 +2455,8 @@ class MainThread(threading.Thread):
                     #gobject.idle_add(self.gui_refresh_path, f_path)
             if sync:
                 self.buffer[path].enqueue(
+                    push_allow = self.push_allow,
+                    pull_allow = self.pull_allow, 
                     queue_push = self.queue_push,
                     queue_pull = self.queue_pull,
                     queue_push_size = self.queue_push_size,
@@ -2474,6 +2544,6 @@ os.environ['LC_ALL'] = 'en_US.utf8'
 
 t = MainThread()
 t.start()
-sys.stdout = t
+# sys.stdout = t
 gtk.main()
 t.quit = True
