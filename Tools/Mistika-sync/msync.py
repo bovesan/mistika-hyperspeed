@@ -114,8 +114,13 @@ class File(object):
         return getattr(self, key)
     def set_attributes(self, attributes):
         for key, value in attributes.iteritems():
+            if self.path.endswith('Exports'):
+                print '%s setattr(%s, %s)' % (self.path, key, value)
             setattr(self, key, value)
+        if self.path.endswith('Exports'):
+            print 'type_remote:', self.type_remote
         self.direction_update()
+        self._icon = False
         gobject.idle_add(self.gui_update)
     def set_progress(self, progress_float, prefix=''):
         self.progress_percent = progress_float*100.0
@@ -1584,6 +1589,7 @@ class MainThread(threading.Thread):
                 file_info += '* %s: %s\n' % (attribute, cgi.escape(repr(getattr(self.buffer[path], attribute))))
             file_infos.append(file_info)
             #file_infos.append('File path: path + cgi.escape(pprint.pformat(self.buffer[path])))
+        print '\n'.join(file_infos)
         dialog = gtk.MessageDialog(parent=self.window, 
                             #flags=gtk.DIALOG_MODAL, 
                             type=gtk.MESSAGE_INFO, 
@@ -1596,27 +1602,24 @@ class MainThread(threading.Thread):
         #gobject.idle_add(self.button_load_local_projects.set_image, loader)
         gobject.idle_add(self.spinner_local.set_property, 'visible', True)
         gobject.idle_add(self.local_status_label.set_label, 'Listing local files')
+        cmd = find_cmd.replace('<projects>', mistika.projects_folder).replace('<absolute>/', '/')
+        if self.is_mac:
+            cmd = self.aux_fix_mac_printf(cmd)
+        # print repr(cmd)
         try:
-            cmd = find_cmd.replace('<projects>', mistika.projects_folder).replace('<absolute>/', '/')
-            if self.is_mac:
-                cmd = self.aux_fix_mac_printf(cmd)
-            # print repr(cmd)
-            try:
-                p1 = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                output, stderr = p1.communicate()
-                if False and p1.returncode > 0:
-                    loader.set_from_stock(gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
-                    gobject.idle_add(self.gui_show_error, stderr)
-                    return
-                self.lines_local = output.splitlines()
-                #self.buffer_add(lines, 'localhost', self.projects_path_local, parent_path)
-            except:
-                print stderr
-                raise
+            p1 = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            output, stderr = p1.communicate()
+            if False and p1.returncode > 0:
+                loader.set_from_stock(gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
                 gobject.idle_add(self.gui_show_error, stderr)
                 return
+            self.lines_local = output.splitlines()
+            #self.buffer_add(lines, 'localhost', self.projects_path_local, parent_path)
         except:
+            print stderr
             raise
+            gobject.idle_add(self.gui_show_error, stderr)
+            return
         gobject.idle_add(self.spinner_local.set_property, 'visible', False)
         gobject.idle_add(self.local_status_label.set_label, '')
         #gobject.idle_add(loader.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
@@ -1629,7 +1632,7 @@ class MainThread(threading.Thread):
             cmd = self.aux_fix_mac_printf(cmd)
         gobject.idle_add(self.remote_status_label.set_label, 'Listing remote files')
         ssh_cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), cmd]
-        print ' '.join(ssh_cmd)
+        # print ' '.join(ssh_cmd)
         try:
             p1 = subprocess.Popen(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, stderr = p1.communicate()
@@ -1733,10 +1736,17 @@ class MainThread(threading.Thread):
                 attributes['link_remote'] = f_link_dest
                 attributes['host'] = host
             if not path_id in self.buffer:
+                if path_id.endswith('Exports'):
+                    print 'new File(%s)' % path_id
                 self.buffer[path_id] = File(path_id, this_parent, self.projectsTreeStore, self.projectsTree, attributes)
             else:
+                if path_id.endswith('Exports'):
+                    print 'New attributes for:', path_id
+                    print repr(attributes)
                 self.buffer[path_id].set_attributes(attributes)
-                if this_parent != None:
+                if this_parent != None and not this_parent in self.buffer[path_id].parents:
+                    if path_id.endswith('Exports'):
+                            print 'New parent for:', path_id, this_parent.path
                     # print 'this_parent:', this_parent.path
                     self.buffer[path_id].add_parent(this_parent)
 
@@ -1763,6 +1773,8 @@ class MainThread(threading.Thread):
             # while not (real_parent_path in self.buffer and not self.buffer[real_parent_path].virtual):
             #     real_parent_path = os.path.dirname(real_parent_path)
             parent = self.buffer_get_parent(path_id)
+            if path_id.endswith('Exports'):
+                print 'New virtual file:', path_id, parent.path
             self.buffer[path_id] = File(path_id, parent, self.projectsTreeStore, self.projectsTree, attributes)
             # real_path = path_id.replace(real_parent_path, '', 1)
             # self.queue_buffer.put_nowait([self.buffer_list_files, {
