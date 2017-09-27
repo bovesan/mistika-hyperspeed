@@ -427,6 +427,9 @@ class MainThread(threading.Thread):
         self.transfer_queue = {}
         self.abort = False
         self.window = gtk.Window()
+        self.log_level = 4
+        self.line_log_level = 0
+        self.prev_stdout_string = '\n'
         window = self.window
         screen = self.window.get_screen()
         monitor = screen.get_monitor_geometry(0)
@@ -652,6 +655,23 @@ class MainThread(threading.Thread):
 
         return vbox
     def init_log_panel(self):
+        vbox = gtk.VBox()
+        hbox = gtk.HBox()
+        label = gtk.Label('Log')
+        hbox.pack_start(label, False, False, 0)
+        controls = self.log_control = gtk.HBox()
+        label = gtk.Label(' level:')
+        controls.pack_start(label, False, False, 0)
+        entry = self.entry_log_level = gtk.SpinButton(gtk.Adjustment(value=22, lower=0, upper=9999999, step_incr=1))
+        entry.set_value(self.log_level)
+        entry.connect('key-release-event', self.on_log_level_change)
+        entry.connect('button-release-event', self.on_log_level_change)
+        controls.pack_start(entry, False, False, 0)
+        controls.show_all()
+        controls.set_visible(False)
+        controls.set_no_show_all(True)
+        hbox.pack_start(controls, False, False, 0)
+        vbox.pack_start(hbox, False, False, 10)
         textview = self.console = gtk.TextView()
         fontdesc = pango.FontDescription("monospace")
         textview.modify_font(fontdesc)
@@ -660,10 +680,11 @@ class MainThread(threading.Thread):
         scroll.add(textview)
         scroll.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
         expander = gtk.Expander("Log")
+        expander.set_label_widget(vbox)
         expander.add(scroll)
-        size = [None]
-        expander.connect('activate', self.on_expander_activate, size)
-        expander.connect("expose-event", self.on_expander_expose)
+        size = self.log_size = [None]
+        expander.connect('activate', self.on_log_show, size, controls)
+        # expander.connect("expose-event", self.on_expander_expose)
         return expander
     def init_files_panel(self):
         tooltips = self.tooltips
@@ -857,28 +878,58 @@ class MainThread(threading.Thread):
         self.threads.append(t)
         t.setDaemon(True)
         t.start()
-    def on_expander_expose(self, expander, event, **user_data):
-        height = event.area[3]
-        if height > 90 and not expander.get_expanded():
-            expander.set_expanded(True)
-    def on_any_event(self, widget, event, **user_data):
-        print 'Widget:', repr(widget), 'event:', repr(event)
-    def on_paned_resize(self, paned, **user_data):
-        print 'Resize'
-        children = paned.get_children()
-        for child in children:
-            print repr(child)
-    def on_expander_activate(self, expander, size):
+    def on_log_show(self, expander, size, controls):
         parent = expander.get_parent()
         if not expander.get_expanded():
+            print 4, 'Expanding log'
+            controls.set_visible(True)
             if size[0] == None:
                 return
                 # parent.set_position(-1)
             else:
                 parent.set_position(size[0])
         else:
+            print 4, 'Collapsing log'
+            controls.set_visible(False)
+            expander.set_expanded(True) # Because the hiding the controls triggered expose on the expander, which might have revealed it again.
             size[0] = parent.get_position()
             parent.set_position(-1)
+    def on_log_level_change(self, widget, user_data):
+        self.log_level = widget.get_value()
+        print 'Set log level: %i' % self.log_level
+    def on_expander_expose(self, expander, event, **user_data):
+        print 'on_expander_expose()'
+        height = event.area[3]
+        if height > 90 and not expander.get_expanded():
+            expander.set_expanded(True)
+    def on_any_event(self, widget, event, **user_data):
+        print 4, 'Widget:', repr(widget), 'event:', repr(event)
+    def on_paned_resize(self, paned, **user_data):
+        print 'Resize'
+        children = paned.get_children()
+        for child in children:
+            print repr(child)
+    # def on_expander_show(self, expander, target):
+    #     print 4, 'on_expander_show()'
+    #     if not expander.get_expanded():
+    #         print 'Hiding controls'
+    #         target.hide()
+    #     else:
+    #         print 'Showing controls'
+    #         target.show()
+    # def on_expander_activate(self, expander, size):
+    #     parent = expander.get_parent()
+    #     if not expander.get_expanded():
+    #         print 'Collapsing'
+    #         if size[0] == None:
+    #             return
+    #             # parent.set_position(-1)
+    #         else:
+    #             parent.set_position(size[0])
+    #     else:
+    #         print 'Expanding'
+    #         size[0] = parent.get_position()
+    #         parent.set_position(-1)
     def aux_fix_mac_printf(self, str):
         return str.replace('-printf',  '-print0 | xargs -0 stat -f').replace('%T@', '%m').replace('%s', '%z').replace('%y', '%T').replace('%p', '%N').replace('%l', '%Y').replace('\\\\n', '')
     def aux_mistika_object_path(self, level_names):
@@ -2562,9 +2613,21 @@ class MainThread(threading.Thread):
         else:
             self.pull_queue_size_label.set_text('')
         return True
-    def write(self, string, **args):
+    def write(self, string):
+        if string.isdigit() and self.prev_stdout_string == '\n':
+            self.line_log_level = string
+            return
+        elif string == '\n':
+            if self.line_log_level > self.log_level:
+                self.line_log_level = 0
+                return
+            else:
+                self.line_log_level = 0
+        elif self.line_log_level > self.log_level:
+            return
         sys.__stdout__.write(string)
         sys.__stdout__.flush()
+        self.prev_stdout_string = string
         gobject.idle_add(self.console.get_buffer().insert_at_cursor, string)
     def flush(self, **args):
         pass
@@ -2575,5 +2638,6 @@ os.environ['LC_ALL'] = 'en_US.utf8'
 t = MainThread()
 t.start()
 sys.stdout = t
+print 1, 'This is a test'
 gtk.main()
 t.quit = True
