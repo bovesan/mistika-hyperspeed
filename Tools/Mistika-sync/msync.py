@@ -99,6 +99,7 @@ class File(object):
         self.status_visibility = True
         self.placeholder_child = False
         self.placeholder = False
+        self.real_parent = None
         if attributes:
             for key, value in attributes.iteritems():
                 key_private = '_'+key
@@ -352,6 +353,7 @@ class File(object):
         if recursive and len(self.children) > 0:
             for child in self.children:
                 child.enqueue(push_allow, pull_allow, queue_push, queue_pull, queue_push_size, queue_pull_size, parents=False)
+        # We do parents first to allow creation of missing folders/links
         if parents and len(self.parents) > 0:
             for parent in self.parents:
                 parent.enqueue(push_allow, pull_allow, queue_push, queue_pull, queue_push_size, queue_pull_size, recursive=False)
@@ -577,8 +579,6 @@ class MainThread(threading.Thread):
         hbox2.pack_start(label, False, False, 0)
         vbox2.pack_start(hbox2, False, False, 0)
         entry = self.allow_push = gtk.CheckButton()
-        self.push_allow = False
-        entry.connect('toggled', self.checkbox_to_var, self.push_allow, 'Allow push')
         entry.connect('toggled', self.on_host_update)
         # entry.connect('event', self.on_any_event)
         vbox2.pack_start(entry, False, False, 0)
@@ -592,8 +592,6 @@ class MainThread(threading.Thread):
         hbox2.pack_start(label, False, False, 0)
         vbox2.pack_start(hbox2, False, False, 0)
         entry = self.allow_pull = gtk.CheckButton()
-        self.pull_allow = False
-        entry.connect('toggled', self.checkbox_to_var, self.pull_allow, 'Allow pull')
         entry.connect('toggled', self.on_host_update)
         # entry.connect('event', self.on_any_event)
         vbox2.pack_start(entry, False, False, 0)
@@ -675,9 +673,6 @@ class MainThread(threading.Thread):
         vbox.pack_start(hbox, False, False, 0)
 
         return vbox
-    def checkbox_to_var(self, widget, target, identifier):
-        target = widget.get_active()
-        print 5, identifier, ':', str(target)
 
     def init_log_panel(self):
         vbox = gtk.VBox()
@@ -1137,8 +1132,8 @@ class MainThread(threading.Thread):
             }])
         if sync:
             self.queue_buffer.put_nowait([self.buffer[path_id].enqueue, {
-                'push_allow' : self.push_allow,
-                'pull_allow' : self.pull_allow, 
+                'push_allow' : self.allow_push.get_active(),
+                'pull_allow' : self.allow_pull.get_active(), 
                 'queue_push' : self.queue_push,
                 'queue_pull' : self.queue_pull,
                 'queue_push_size' : self.queue_push_size,
@@ -1190,8 +1185,8 @@ class MainThread(threading.Thread):
                 # self.queue_buffer.put_nowait([self.buffer[path_id].fetch_dependencies])
             else:
                 self.queue_buffer.put_nowait([self.buffer[path_id].enqueue, {
-                    'push_allow' : self.push_allow,
-                    'pull_allow' : self.pull_allow, 
+                    'push_allow' : self.allow_push.get_active(),
+                    'pull_allow' : self.allow_pull.get_active(), 
                     'queue_push' : self.queue_push,
                     'queue_pull' : self.queue_pull,
                     'queue_push_size' : self.queue_push_size,
@@ -1282,8 +1277,6 @@ class MainThread(threading.Thread):
         self.allow_push.set_active(model[selected_row_iter][6])
         self.allow_pull.set_active(model[selected_row_iter][7])
         print 1, 'Selected connection:', model[selected_row_iter][0]
-        self.checkbox_to_var(self.allow_push, self.push_allow, 'push')
-        self.checkbox_to_var(self.allow_pull, self.pull_allow, 'pull')
         # status = 'Loaded hosts.'
         # self.status_bar.push(self.context_id, status)
     def gui_host_remove(self, widget):
@@ -1664,7 +1657,7 @@ class MainThread(threading.Thread):
             print 5, file_line
             attributes = {
                 'real_parent' : parent,
-                'virtual' : False,
+                # 'virtual' : False,
                 'color' : COLOR_DEFAULT,
                 'placeholder': False,
             }
@@ -1727,8 +1720,8 @@ class MainThread(threading.Thread):
                 this_parent = self.buffer_get_parent(parent.path+'/'+path_id)
             if f_link_dest == '':
                 f_link_dest = False
-            elif host != 'localhost':
-                f_link_dest = self.remap_to_local(f_link_dest)
+            # elif host != 'localhost':
+            #     f_link_dest = self.remap_to_local(f_link_dest)
             if host == 'localhost':
                 attributes['type_local'] = f_type
                 attributes['size_local'] = f_size
@@ -1817,7 +1810,7 @@ class MainThread(threading.Thread):
         queue_size_absolute = 0
         queue_size_relative = 0
         while self.daemon_push_active:
-            if not self.push_allow:
+            if not self.allow_push.get_active():
                 time.sleep(1)
                 continue
             do_now = False
@@ -1853,7 +1846,7 @@ class MainThread(threading.Thread):
         queue_size_absolute = 0
         queue_size_relative = 0
         while self.daemon_pull_active:
-            if not self.pull_allow:
+            if not self.allow_pull.get_active():
                 time.sleep(1)
                 continue
             do_now = False
@@ -1862,6 +1855,8 @@ class MainThread(threading.Thread):
                 if item.transfer:
                     if item.type_remote == 'l':
                         self.pull_link(item)
+                    elif item.type_remote == 'd':
+                        self.pull_dir(item)
                     elif item.absolute:
                         print 4, 'pull absolute path:', repr(item.path)
                         items_absolute.append(item)
@@ -1880,23 +1875,60 @@ class MainThread(threading.Thread):
                 self.pull(items_relative)
                 items_relative = []
                 queue_size_relative = 0
-    def pull_link(self, item):
+    def pull_dir(self, item):
         real_path = item.path
-        if item.virtual and real_parent != None:
-            if real_path.startswith(real_parent.path):
-                real_path = real_path.replace(real_parent_path+'/', '', 1)
-        if not os.path.isabs(realpath):
+        print 4, 'pull_dir():', real_path
+        if item.virtual and item.real_parent != None:
+            print 4, 'real parent path:', item.real_parent.path
+            if real_path.startswith(item.real_parent.path):
+                real_path = real_path.replace(item.real_parent.path+'/', '', 1)
+                print 4, 'updated dir path:', real_path
+        if not os.path.isabs(real_path):
             real_path = os.path.join(mistika.projects_folder, real_path)
+            print 4, 'Absolute dir path:', real_path
         if os.path.exists(real_path):
+            item.transfer_fail('File exists: '+ real_path)
+            self.queue_pull_size[0] -= item.size_remote
             return
         else:
+            try:
+                os.makedirs(real_path)
+                print 2, 'Created folder:', real_path
+                item.transfer_end()
+                self.queue_pull_size[0] -= item.size_remote
+            except OSError as e:
+                print 1, 'Could not create dir:', real_path
+                item.transfer_fail('Could not create dir: '+ link_target_abs)
+                self.queue_pull_size[0] -= item.size_remote
+                print 2, e
+    def pull_link(self, item):
+        real_path = item.path
+        print 4, 'pull_link():', real_path
+        if item.virtual and item.real_parent != None:
+            print 4, 'real parent path:', item.real_parent.path
+            if real_path.startswith(item.real_parent.path):
+                real_path = real_path.replace(item.real_parent.path+'/', '', 1)
+                print 4, 'updated link path:', real_path
+        if not os.path.isabs(real_path):
+            real_path = os.path.join(mistika.projects_folder, real_path)
+            print 4, 'Absolute link path:', real_path
+        if os.path.exists(real_path):
+            item.transfer_fail('File exists: '+ real_path)
+            self.queue_pull_size[0] -= item.size_remote
+            return
+        else:
+            print 4, 'link target:', item.link_remote
             target = self.remap_to_local(item.link_remote)
+            print 4, 'remapped link target:', target
             try:
                 os.symlink(target, real_path)
                 print 2, 'Created symlink:', '%s -> %s' % (real_path, target)
             except OSError as e:
-                print 1, 'Could not create symlink:', '%s -> %s' % (real_path, target)
+                print 1, 'Could not create symlink: %s -> %s' % (real_path, target)
+                item.transfer_fail('Could not create symlink: %s -> %s' % (real_path, target))
+                self.queue_pull_size[0] -= item.size_remote
                 print 2, e
+                return
             link_target_abs = os.path.join(os.path.dirname(real_path), target)
             if not os.path.exists(link_target_abs):
                 try:
@@ -1904,7 +1936,12 @@ class MainThread(threading.Thread):
                     print 2, 'Created folder:', link_target_abs
                 except OSError as e:
                     print 1, 'Could not create dir:', link_target_abs
+                    item.transfer_fail('Could not create dir: '+ link_target_abs)
+                    self.queue_pull_size[0] -= item.size_remote
                     print 2, e
+                    return
+        item.transfer_end()
+        self.queue_pull_size[0] -= item.size_remote
     def push(self, items, absolute=False):
         if len(items) == 0:
             return
@@ -2060,8 +2097,12 @@ class MainThread(threading.Thread):
         extra_args = []
         for item in items:
             item.transfer_start()
-            relative_paths[item.path.lstrip('/')] = item.path
-            relative_paths_remote[self.remap_to_remote(item.path).lstrip('/')] = item.path
+            item_real_path = item.path
+            if item.virtual and item.real_parent != None:
+                if item_real_path.startswith(item.real_parent.path):
+                    item_real_path = item_real_path.replace(item.real_parent.path+'/', '', 1)
+            relative_paths[item_real_path.lstrip('/')] = item_real_path
+            relative_paths_remote[self.remap_to_remote(item_real_path).lstrip('/')] = item_real_path
         item = False
         temp_handle = tempfile.NamedTemporaryFile()
         temp_handle.write('\n'.join(relative_paths_remote) + '\n')
@@ -2179,8 +2220,8 @@ class MainThread(threading.Thread):
                         if required_path in self.buffer:
                             if self.buffer[required_path].size_local < 0:
                                 self.queue_buffer.put_nowait([self.buffer[required_path].enqueue, {
-                                    'push_allow' : self.push_allow,
-                                    'pull_allow' : self.pull_allow, 
+                                    'push_allow' : self.allow_push.get_active(),
+                                    'pull_allow' : self.allow_pull.get_active(), 
                                     'queue_push' : self.queue_push,
                                     'queue_pull' : self.queue_pull,
                                     'queue_push_size' : self.queue_push_size,
@@ -2356,6 +2397,7 @@ class MainThread(threading.Thread):
         self.button_disconnect.set_property('visible', False)
         self.button_connect.set_property('visible', True)
         self.spinner_remote.set_property('visible', False)
+        gobject.idle_add(self.projectsTreeStore, clear)
     def launch_thread(self, target, args=False):
         if args:
             t = threading.Thread(target=target, args=args)
@@ -2419,7 +2461,7 @@ class MainThread(threading.Thread):
                     'color':COLOR_WARNING,
                     'placeholder':True,
                     'virtual':True,
-                    'alias' : f_path+':'+f_path_remote
+                    # 'alias' : f_path+':'+f_path_remote
                 }
                 self.buffer[pre_alloc_path] = File(pre_alloc_path, self.buffer_get_parent(parent.path+'/'+pre_alloc_path), self.projectsTreeStore, self.projectsTree, attributes)
                 # gobject.idle_add(self.gui_expand, parent)
@@ -2455,8 +2497,8 @@ class MainThread(threading.Thread):
                     #gobject.idle_add(self.gui_refresh_path, f_path)
             if sync:
                 self.buffer[path].enqueue(
-                    push_allow = self.push_allow,
-                    pull_allow = self.pull_allow, 
+                    push_allow = self.allow_push.get_active(),
+                    pull_allow = self.allow_pull.get_active(), 
                     queue_push = self.queue_push,
                     queue_pull = self.queue_pull,
                     queue_push_size = self.queue_push_size,
