@@ -464,10 +464,16 @@ class MainThread(threading.Thread):
         self.spinner = gtk.Image()
         self.spinner.set_from_file('../../res/img/spinner01.gif')
 
+        vbox = gtk.VBox()
+        vbox.pack_start(self.init_connection_panel(), expand=False, fill=False, padding=0)
+
         vpane = gtk.VPaned()
-        vpane.add1(self.init_connection_panel())
-        vpane.add2(self.init_files_panel())
-        window.add(vpane)
+        vpane.connect("check-resize", self.on_paned_resize)
+        vpane.pack1(self.init_log_panel(), resize=False, shrink=False)
+        vpane.pack2(self.init_files_panel(), resize=True, shrink=False)
+        vbox.pack_start(vpane, expand=True, fill=True, padding=0)
+        window.add(vbox)
+
         window.show_all()
         window.connect("destroy", self.on_quit)
         self.window.connect("key-press-event",self.on_key_press_event)
@@ -644,17 +650,21 @@ class MainThread(threading.Thread):
         #button.set_image(spinner)
         vbox.pack_start(hbox, False, False, 0)
 
+        return vbox
+    def init_log_panel(self):
         textview = self.console = gtk.TextView()
         fontdesc = pango.FontDescription("monospace")
         textview.modify_font(fontdesc)
         textview.set_editable(False)
         scroll = gtk.ScrolledWindow()
         scroll.add(textview)
+        scroll.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
         expander = gtk.Expander("Log")
         expander.add(scroll)
-        vbox.pack_start(expander, True, True, 0)
-
-        return vbox
+        size = [None]
+        expander.connect('activate', self.on_expander_activate, size)
+        expander.connect("expose-event", self.on_expander_expose)
+        return expander
     def init_files_panel(self):
         tooltips = self.tooltips
         vbox = gtk.VBox(False, 10)
@@ -847,6 +857,28 @@ class MainThread(threading.Thread):
         self.threads.append(t)
         t.setDaemon(True)
         t.start()
+    def on_expander_expose(self, expander, event, **user_data):
+        height = event.area[3]
+        if height > 90 and not expander.get_expanded():
+            expander.set_expanded(True)
+    def on_any_event(self, widget, event, **user_data):
+        print 'Widget:', repr(widget), 'event:', repr(event)
+    def on_paned_resize(self, paned, **user_data):
+        print 'Resize'
+        children = paned.get_children()
+        for child in children:
+            print repr(child)
+    def on_expander_activate(self, expander, size):
+        parent = expander.get_parent()
+        if not expander.get_expanded():
+            if size[0] == None:
+                return
+                # parent.set_position(-1)
+            else:
+                parent.set_position(size[0])
+        else:
+            size[0] = parent.get_position()
+            parent.set_position(-1)
     def aux_fix_mac_printf(self, str):
         return str.replace('-printf',  '-print0 | xargs -0 stat -f').replace('%T@', '%m').replace('%s', '%z').replace('%y', '%T').replace('%p', '%N').replace('%l', '%Y').replace('\\\\n', '')
     def aux_mistika_object_path(self, level_names):
