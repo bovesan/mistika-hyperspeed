@@ -496,42 +496,33 @@ class Stack(object):
                         return (line.replace('('+escape_par(dependency_foldername)+'/)', '('+escape_par(root)+'/)'), dependency_new)
         return (line, dependency)
     def remap_line(self, line, dependency, mappings):
+        REMAP_ORDER = ['projects', 'media']
         foldername = os.path.dirname(dependency.path)
         foldername_new = foldername
-        for mapping in mappings:
-            if foldername_new.startswith(mapping[0]):
-                foldername_new = foldername_new.replace(mapping[0], mapping[1], 1)
         new_path = dependency.path
         new_line = line
         change = False
         if dependency.type in ['dat']:
             pass
-        elif dependency.type in ['lnk']:
-            for mapping in mappings:
-                if dependency.path.startswith(mapping[0]):
-                    change = True
-                    new_path = new_path.replace(mapping[0], mapping[1], 1)
-                if '('+escape_par(foldername) in new_line:
-                    change = True
-                    new_line = new_line.replace('('+escape_par(foldername), '('+escape_par(foldername_new), 1)
-        elif dependency.type in ['glsl', 'lut']:
-            for mapping in mappings:
-                if dependency.path.startswith(mapping[0]):
-                    change = True
-                    new_path = new_path.replace(mapping[0], mapping[1], 1)
-                if '('+escape_par(foldername) in new_line:
-                    change = True
-                    new_line = new_line.replace('('+escape_par(foldername), '('+escape_par(foldername_new), 1)
-        elif dependency.type in ['highres', 'lowres', 'audio']:
-            for mapping in mappings:
-                if dependency.path.startswith(mapping[0]):
-                    change = True
-                    new_path = new_path.replace(mapping[0], mapping[1], 1)
-                if '('+escape_par(foldername) in new_line:
-                    change = True
-                    new_line = new_line.replace('('+escape_par(foldername), '('+escape_par(foldername_new), 1)
+        elif dependency.type in ['lnk', 'glsl', 'lut', 'highres', 'lowres', 'audio']:
+            for mapping_id in REMAP_ORDER:
+                print ''
+                print mapping_id,
+                if mapping_id in mappings:
+                    mapping = mappings[mapping_id]
+                    print 'match', repr(mapping), 'foldername:', foldername_new,
+                    if foldername_new.startswith(mapping[0]):
+                        foldername_new = foldername_new.replace(mapping[0], mapping[1])
+                        print 'change line',
+                        new_line = new_line.replace(mapping[0], mapping[1], 1)
+                        if dependency.path.startswith(mapping[0]):
+                            print 'change path',
+                            new_path = new_path.replace(mapping[0], mapping[1], 1)
+                        change = True
+                        break
         if change:
             new_dependency = Dependency(new_path, dependency.type, dependency.start, dependency.end, dependency.parents[0])
+            print 'New line:  ', new_line
             return (new_line, new_dependency)
         else:
             return (line, dependency)
