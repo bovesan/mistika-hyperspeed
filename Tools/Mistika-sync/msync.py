@@ -422,6 +422,7 @@ def string_format_to_wildcard(raw_str, wrapping=''):
     return output
 def responseToDialog(entry, dialog, response):
     dialog.response(response)
+
 class MainThread(threading.Thread):
     def __init__(self):
         super(MainThread, self).__init__()
@@ -461,6 +462,10 @@ class MainThread(threading.Thread):
             self.window.set_resizable(False) # Because resizing crashes the app on Mac
             self.window.maximize()
 
+        self.markup = {
+            'h3'    : '<span foreground="#333333" size="large">%s</span>',
+            'label' : '<span foreground="#888888">%s</span>'
+        }
         tooltips = self.tooltips = gtk.Tooltips()
 
         self.icon_connect = gtk.image_new_from_stock(gtk.STOCK_CONNECT,  gtk.ICON_SIZE_BUTTON)
@@ -487,6 +492,7 @@ class MainThread(threading.Thread):
 
         vbox = gtk.VBox()
         vbox.pack_start(self.init_connection_panel(), expand=False, fill=False, padding=0)
+        vbox.pack_start(self.init_settings_panel(), expand=False, fill=False, padding=0)
 
         vpane = gtk.VPaned()
         vpane.pack1(self.init_log_panel(), resize=False, shrink=False)
@@ -513,7 +519,7 @@ class MainThread(threading.Thread):
             bool,# Pull
         )
         hbox = gtk.HBox(False, 10)
-        label_markup = '<span foreground="#888888">%s</span>'
+        label_markup = self.markup['label']
 
         vbox2 = gtk.VBox(False, 5)
         tooltips.set_tip(vbox2, "Enter an alias for this remote")
@@ -673,7 +679,140 @@ class MainThread(threading.Thread):
         vbox.pack_start(hbox, False, False, 0)
 
         return vbox
-
+    def init_settings_panel(self):
+        tooltips = self.tooltips
+        markup = self.markup
+        expander = gtk.Expander('Settings')
+        vbox = gtk.VBox()
+        hbox = gtk.HBox()
+        label = gtk.Label(markup['h3'] % 'Rename/move detection')
+        label.set_use_markup(True)
+        hbox.pack_start(label, False, False, 20)
+        vbox.pack_start(hbox, False, False, 10)
+        padding_hbox = gtk.HBox()
+        padding_hbox.pack_start(gtk.Label(''), False, False, 20)
+        setting_block = gtk.VBox()
+        hbox = gtk.HBox()
+        label = gtk.Label("""These settings control how renamed or moved files are detected.
+This is triggered if a file's inode number used to belong to a file with a different path.
+The conditions can be set either as absolute requirements, or as 'weights' for the algorithm.""")
+        hbox.pack_start(label, False, False, 0)
+        setting_block.pack_start(hbox, False, False, 10)
+        rows = []
+        weights = gtk.Adjustment(value=1, lower=-99, upper=99, step_incr=1)
+        rows.append([
+            None,
+            gtk.Label('Required'),
+            gtk.Label('Match significance'),
+            gtk.Label('Mismatch significance'),
+        ])
+        label = gtk.Label('Size')
+        label_box = gtk.HBox()
+        label_box.pack_start(label, False, False, 0)
+        toggle = self.setting_size_toggle = gtk.CheckButton()
+        tooltips.set_tip(toggle, "The file has the same size as the counterpart.")
+        match = self.setting_size_match = gtk.SpinButton(gtk.Adjustment(value=1, lower=0, upper=99, step_incr=1))
+        match.set_value(1)
+        mismatch = self.setting_size_mismatch = gtk.SpinButton(gtk.Adjustment(value=-1, lower=-99, upper=0, step_incr=1))
+        mismatch.set_value(-1)
+        rows.append([
+            label_box,
+            toggle,
+            match,
+            mismatch
+        ])
+        label = gtk.Label('Extension')
+        label_box = gtk.HBox()
+        label_box.pack_start(label, False, False, 0)
+        toggle = self.setting_ext_toggle = gtk.CheckButton()
+        tooltips.set_tip(toggle, "The file has the same extension as the counterpart.")
+        match = self.setting_ext_match= gtk.SpinButton(gtk.Adjustment(value=1, lower=0, upper=99, step_incr=1))
+        match.set_value(1)
+        mismatch = self.setting_ext_mismatch = gtk.SpinButton(gtk.Adjustment(value=-1, lower=-99, upper=0, step_incr=1))
+        mismatch.set_value(-1)
+        rows.append([
+            label_box,
+            toggle,
+            match,
+            mismatch
+        ])
+        label = gtk.Label('Folder')
+        label_box = gtk.HBox()
+        label_box.pack_start(label, False, False, 0)
+        toggle = self.setting_folder_toggle = gtk.CheckButton()
+        tooltips.set_tip(toggle, "The file is in the same folder as the counterpart.")
+        match = self.setting_folder_match = gtk.SpinButton(gtk.Adjustment(value=1, lower=0, upper=99, step_incr=1))
+        match.set_value(1)
+        mismatch = self.setting_folder_mismatch = gtk.SpinButton(gtk.Adjustment(value=-1, lower=-99, upper=0, step_incr=1))
+        mismatch.set_value(-1)
+        rows.append([
+            label_box,
+            toggle,
+            match,
+            mismatch
+        ])
+        label = gtk.Label('Folder or subfolder')
+        label_box = gtk.HBox()
+        label_box.pack_start(label, False, False, 0)
+        toggle = self.setting_subfolder_toggle = gtk.CheckButton()
+        tooltips.set_tip(toggle, "The file is in the same folder or a subfolder from the counterpart.")
+        match = self.setting_subfolder_match = gtk.SpinButton(gtk.Adjustment(value=1, lower=0, upper=99, step_incr=1))
+        match.set_value(1)
+        mismatch = self.setting_subfolder_mismatch = gtk.SpinButton(gtk.Adjustment(value=-1, lower=-99, upper=0, step_incr=1))
+        mismatch.set_value(-1)
+        rows.append([
+            label_box,
+            toggle,
+            match,
+            mismatch
+        ])
+        label = gtk.Label('Filename')
+        label_box = gtk.HBox()
+        label_box.pack_start(label, False, False, 0)
+        toggle = self.setting_filename_toggle = gtk.CheckButton()
+        tooltips.set_tip(toggle, "The file itself has the same name as the counterpart.")
+        match = self.setting_filename_match = gtk.SpinButton(gtk.Adjustment(value=1, lower=0, upper=99, step_incr=1))
+        match.set_value(1)
+        mismatch = self.setting_filename_mismatch = gtk.SpinButton(gtk.Adjustment(value=-1, lower=-99, upper=0, step_incr=1))
+        mismatch.set_value(-1)
+        rows.append([
+            label_box,
+            toggle,
+            match,
+            mismatch
+        ])
+        label = gtk.Label('Total confidence required:')
+        confidence_requirement = gtk.SpinButton(gtk.Adjustment(value=2, lower=0, upper=999, step_incr=1))
+        confidence_requirement.set_value(2)
+        rows.append([
+            label,
+            None,
+            confidence_requirement,
+            None,
+        ])
+        table = gtk.Table(len(rows)+1, len(rows[0]))
+        table.set_col_spacings(10)
+        for row_number, row in enumerate(rows):
+            for cell_number, widget in enumerate(row):
+                if widget != None:
+                    table.attach(
+                        widget,
+                        left_attach=cell_number,
+                        right_attach=cell_number+1,
+                        top_attach=row_number,
+                        bottom_attach=row_number+1,
+                        xoptions=gtk.FILL,
+                        yoptions=gtk.FILL
+                    )
+        setting_block.pack_start(table)
+        # radio = gtk.RadioButton(None, 'Allways follow local file')
+        # setting_block.pack_start(radio, False, False, 5)
+        # radio = gtk.RadioButton(radio, 'Allways follow remote file')
+        # setting_block.pack_start(radio, False, False, 5)
+        padding_hbox.pack_start(setting_block)
+        vbox.pack_start(padding_hbox)
+        expander.add(vbox)
+        return expander
     def init_log_panel(self):
         vbox = gtk.VBox()
         hbox = gtk.HBox()
