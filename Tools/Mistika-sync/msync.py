@@ -450,7 +450,7 @@ class MainThread(threading.Thread):
         self.transfer_queue = {}
         self.abort = False
         self.window = gtk.Window()
-        self.log_level = 4
+        self.log_level = 2
         self.line_log_level = 0
         self.prev_stdout_string = '\n'
         window = self.window
@@ -839,6 +839,8 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
         fontdesc = pango.FontDescription("monospace")
         textview.modify_font(fontdesc)
         textview.set_editable(False)
+        textview.set_cursor_visible(False)
+        textbuffer = self.console_buffer = textview.get_buffer()
         scroll = gtk.ScrolledWindow()
         scroll.add(textview)
         scroll.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
@@ -848,6 +850,13 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
         size = self.log_size = [None]
         expander.connect('activate', self.on_log_show, size, controls)
         # expander.connect("expose-event", self.on_expander_expose)
+        self.tags = {
+            'lvl1': textbuffer.create_tag(None, weight=pango.WEIGHT_BOLD),
+            'lvl2': textbuffer.create_tag(None, foreground='#000000'),
+            'lvl3': textbuffer.create_tag(None, foreground='#888888'),
+            'lvl4': textbuffer.create_tag(None, foreground='#cc1111'),
+            'lvl5': textbuffer.create_tag(None, foreground='#11cc11'),
+        }
         return expander
     def init_files_panel(self):
         tooltips = self.tooltips
@@ -1390,9 +1399,9 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
             if hosts[host]['selected']:
                 self.entry_host.set_active_iter(row_iter)
                 #selection.select_iter(row_iter)
-                self.on_host_selected(None)
+                # self.on_host_selected(None)
         row_values = [
-                host,
+                default_connection['alias'],
                 default_connection['address'],
                 default_connection['user'],
                 default_connection['port'],
@@ -1415,8 +1424,6 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
         self.entry_port.set_value(model[selected_row_iter][3])
         self.entry_projects_path.set_text(model[selected_row_iter][4])
         self.entry_local_media_root.set_text(model[selected_row_iter][5])
-        print 4, 'allow_push.set_active', str(model[selected_row_iter][6])
-        print 4, 'allow_pull.set_active', str(model[selected_row_iter][7])
         self.allow_push.set_active(model[selected_row_iter][6])
         self.allow_pull.set_active(model[selected_row_iter][7])
         print 1, 'Selected connection:', model[selected_row_iter][0]
@@ -2463,6 +2470,7 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
         self.gui_connection_panel_lock()
         self.remote['alias'] = self.entry_host.get_active_text()
         self.remote_status_label.set_markup('Connecting')
+        print 1, 'Connecting to %s' % self.remote['alias']
         self.remote['address'] = self.entry_address.get_text()
         self.remote['user'] = self.entry_user.get_text()
         self.remote['port'] = self.entry_port.get_value_as_int()
@@ -2476,27 +2484,34 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
             #gobject.idle_add(self.loader_remote.set_from_stock, gtk.STOCK_STOP, gtk.ICON_SIZE_BUTTON)
             gobject.idle_add(self.button_connect.set_image, self.icon_connect)
             if 'Permission denied' in stderr:
+                print 1, 'Permission denied. Attempting to copy ssh key ...'
                 gobject.idle_add(self.remote_status_label.set_markup, '')
                 gobject.idle_add(self.gui_copy_ssh_key, self.remote['user'], self.remote['address'], self.remote['port'])
                 gobject.idle_add(self.gui_connection_panel_lock, False)
                 return
             else:
+                print 1, 'Connection error'
                 gobject.idle_add(self.gui_show_error, stderr)
                 gobject.idle_add(self.remote_status_label.set_markup, 'Connection error.')
                 gobject.idle_add(self.gui_connection_panel_lock, False)
                 raise 'Connection error'
         else:
+            print 1, 'Connected to %s' % self.remote['alias']
             if 'Darwin' in output:
+                print 3, '%s is identified as a Mac' % self.remote['address']
                 self.remote['is_mac'] = True
             else:
                 self.remote['is_mac'] = False
         if self.remote['projects_path'] == '':
+            print 2, 'Getting projects path ...'
             remote_projects_path = self.remote_get_projects_path()
             if remote_projects_path == None:
+                print 1, 'Could not get remote projects path.'
                 gobject.idle_add(self.gui_connection_panel_lock, False)
                 return
             else:
                 self.remote['projects_path'] = remote_projects_path
+                print 1, 'Remote projects path: %s' % remote_projects_path
                 self.entry_projects_path.set_text(remote_projects_path)
             #self.entry_address.set_property('editable', False)
         self.remote['root'] = self.remote_get_root_path()
@@ -2509,6 +2524,7 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
             if mapping[0] == mapping[1]:
                 del mappings[map_id]
             else:
+                print 2, 'Mapping local %s to remote %s' % (mapping[0], mapping[1])
                 self.mappings_to_local[map_id] = (mapping[1], mapping[0])
         gobject.idle_add(self.gui_connected)
         self.queue_buffer.put_nowait([self.buffer_list_files])
@@ -2701,29 +2717,55 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
             self.pull_queue_size_label.set_text('')
         return True
     def write(self, string):
-        if string.isdigit() and self.prev_stdout_string == '\n':
-            self.line_log_level = string
+        # sys.__stdout__.write(repr(string)+'\n')
+        # sys.__stdout__.flush()
+        if len(string) == 1 and string.isdigit() and self.prev_stdout_string == '\n':
+            self.line_log_level = int(string)
+            self.prev_stdout_string = None
             return
-        elif string == '\n':
+        elif self.prev_stdout_string == None and string == ' ':
+            self.prev_stdout_string = ' '
+            return
+        elif string.endswith('\n'):
             if self.line_log_level > self.log_level:
                 self.line_log_level = 0
                 return
             else:
                 self.line_log_level = 0
         elif self.line_log_level > self.log_level:
+            # sys.__stdout__.write('line_log_level %i > log_level %i\n' % (self.line_log_level, self.log_level))
+            # sys.__stdout__.flush()
+            self.prev_stdout_string = '\n'
             return
         sys.__stdout__.write(string)
         sys.__stdout__.flush()
         self.prev_stdout_string = string
-        gobject.idle_add(self.console.get_buffer().insert_at_cursor, string)
+        markup = '%s'
+        tag = False
+        if self.line_log_level <= 1:
+            tag = self.tags['lvl1']
+        elif self.line_log_level == 2:
+            tag = self.tags['lvl2']
+        elif self.line_log_level == 3:
+            tag = self.tags['lvl3']
+        elif self.line_log_level == 4:
+            tag = self.tags['lvl4']
+        elif self.line_log_level == 5:
+            tag = self.tags['lvl5']
+        gobject.idle_add(self.gui_log_append, markup % string, tag)
     def flush(self, **args):
         pass
+    def gui_log_append(self, string, tag):
+        if tag:
+            self.console_buffer.insert_with_tags(self.console_buffer.get_end_iter(), string, tag)
+        else:
+            self.console_buffer.insert(self.console_buffer.get_end_iter(), string)
 
 os.environ['LC_CTYPE'] = 'en_US.utf8'
 os.environ['LC_ALL'] = 'en_US.utf8'
 
 t = MainThread()
 t.start()
-# sys.stdout = t
+sys.stdout = t
 gtk.main()
 t.quit = True
