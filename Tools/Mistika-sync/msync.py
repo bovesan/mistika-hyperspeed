@@ -65,6 +65,10 @@ class File(object):
         self._icon = False
         self.row_references = []
         self.path = path
+        self.path_local = False
+        self.path_remote = False
+        self.inode_local = False
+        self.inode_remote = False
         # print 'Creating ', self.path,
         self.absolute = path.startswith('/')
         self.alias = os.path.basename(self.path)
@@ -1833,17 +1837,8 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
             else: # Absolute path
                 if self.mappings:
                     if host != 'localhost':
-                        full_path = self.remap_to_local(full_path)
-                # if host == 'localhost':
-                #     if full_path.startswith(self.remote['local_media_root']):
-                #         full_path.replace(self.remote['local_media_root'], '/', 1)
-                # else:
-                #     if full_path.startswith(self.remote['root']):
-                #         full_path.replace(self.remote['root'], '/', 1)
-                path_id = full_path.rstrip('/')
-                # if '/' in path_id.strip('/'):
-                #     parent_dir, basename = path_id.rsplit('/', 1) # parent_dir will not have trailing slash
-                    #parent_path += parent_dir
+                        path_id = self.remap_to_local(full_path)
+                path_id = path_id.rstrip('/')
             if parent != None and f_type != 'f':
                 path_id = parent.path+'/'+path_id
             parent_path = os.path.dirname(path_id)
@@ -1852,7 +1847,7 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
             if parent_path in self.buffer:
                 this_parent = self.buffer[parent_path]
                 if f_inode == -1: # This is a virtual folder
-                    attributes['alias'] = full_path.replace(parent_path+'/', '', 1) # Prepends the slash to first level, absolute path virtual folders
+                    attributes['alias'] = path_id.replace(parent_path+'/', '', 1) # Prepends the slash to first level, absolute path virtual folders
             elif parent == None:
                 this_parent = None
             else:
@@ -1862,11 +1857,15 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
             # elif host != 'localhost':
             #     f_link_dest = self.remap_to_local(f_link_dest)
             if host == 'localhost':
+                attributes['path_local'] = full_path
+                attributes['inode_local'] = f_inode
                 attributes['type_local'] = f_type
                 attributes['size_local'] = f_size
                 attributes['mtime_local'] = f_time
                 attributes['link_local'] = f_link_dest
             else:
+                attributes['path_remote'] = full_path
+                attributes['inode_remote'] = f_inode
                 attributes['type_remote'] = f_type
                 attributes['size_remote'] = f_size
                 attributes['mtime_remote'] = f_time
