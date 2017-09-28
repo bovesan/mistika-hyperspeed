@@ -432,6 +432,10 @@ class MainThread(threading.Thread):
         super(MainThread, self).__init__()
         self.threads = []
         self.buffer = {}
+        self.inodes_local_to_remote = {}
+        self.inodes_remote_to_local = {}
+        self.inodes_dump_frequency = 10.0
+        self.inodes_last_dump = 0.0
         self.files = {}
         self.directions = {} # Controlled by GUI
         self.buffer_lock = threading.Lock()
@@ -444,13 +448,13 @@ class MainThread(threading.Thread):
         self.queue_pull = Queue.Queue()
         self.queue_push_size = [0]
         self.queue_pull_size = [0]
-        self.remote = {}
+        self.connection = {}
         self.is_mac = False
         self.is_mamba = False
         self.transfer_queue = {}
         self.abort = False
         self.window = gtk.Window()
-        self.log_level = 2
+        self.log_level = 4
         self.line_log_level = 0
         self.prev_stdout_string = '\n'
         window = self.window
@@ -589,7 +593,8 @@ class MainThread(threading.Thread):
         hbox2.pack_start(label, False, False, 0)
         vbox2.pack_start(hbox2, False, False, 0)
         entry = self.allow_push = gtk.CheckButton()
-        entry.connect('toggled', self.on_host_update)
+        entry.connect('key-release-event', self.on_host_update)
+        entry.connect('button-release-event', self.on_host_update)
         # entry.connect('event', self.on_any_event)
         vbox2.pack_start(entry, False, False, 0)
         hbox.pack_start(vbox2, False, False, 0)
@@ -602,7 +607,8 @@ class MainThread(threading.Thread):
         hbox2.pack_start(label, False, False, 0)
         vbox2.pack_start(hbox2, False, False, 0)
         entry = self.allow_pull = gtk.CheckButton()
-        entry.connect('toggled', self.on_host_update)
+        entry.connect('key-release-event', self.on_host_update)
+        entry.connect('button-release-event', self.on_host_update)
         # entry.connect('event', self.on_any_event)
         vbox2.pack_start(entry, False, False, 0)
         hbox.pack_start(vbox2, False, False, 0)
@@ -1129,7 +1135,7 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
         print 4, 'on_search(%s, %s, %s, %s, %s, %s)' % (self, model, column, key, iter, user_data)
     def on_host_edit(self, cell, path, new_text, user_data):
         tree, column = user_data
-        # print tree[path][column],
+        print 4, 'on_host_edit() %s' % tree[path][column]
         row_reference = gtk.TreeRowReference(tree, path)
         gobject.idle_add(self.gui_set_value, tree, row_reference, column, new_text)
         #tree[path][column] = new_text
@@ -1139,6 +1145,7 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
         t.setDaemon(True)
         t.start()
     def on_host_update(self, widget, *user_data):
+        print 4, 'on_host_update(%s, %s)' % (widget, user_data)
         #print model[iter][0]
         model = self.hostsTreeStore
         # print repr(self.entry_host.get_active_iter())
@@ -1255,8 +1262,8 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
             search_path = dependency.path
             if search_path.startswith(mistika.projects_folder):
                 search_path = search_path.replace(mistika.projects_folder+'/', '', 1)
-            # elif search_path.startswith(self.remote['projects_path']):
-            #     search_path = search_path.replace(self.remote['projects_path']+'/', '', 1)
+            # elif search_path.startswith(self.connection['projects_path']):
+            #     search_path = search_path.replace(self.connection['projects_path']+'/', '', 1)
             # print 'search_path:', search_path
             files_chunk.append(search_path)
             if len(files_chunk) >= files_chunk_max_size:
@@ -1506,7 +1513,7 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
             progress_str = ''
             progress_visibility = False
             no_reload = False
-            remote_address = str(self.remote['address'])
+            remote_address = str(self.connection['address'])
             if is_folder:
                 icon = self.icon_folder
             else:
@@ -1761,7 +1768,6 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
                 gobject.idle_add(self.gui_show_error, stderr)
                 return
             self.lines_local = output.splitlines()
-            #self.buffer_add(lines, 'localhost', self.projects_path_local, parent_path)
         except:
             print 1, stderr
             raise
@@ -1774,11 +1780,11 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
         #loader = gtk.image_new_from_animation(gtk.gdk.PixbufAnimation('../res/img/spinner01.gif'))
         #gobject.idle_add(self.button_load_remote_projects.set_image, loader)
         gobject.idle_add(self.spinner_remote.set_property, 'visible', True)
-        cmd = find_cmd.replace('<projects>', self.remote['projects_path']).replace('<absolute>/', self.remote['root'])
-        if self.remote['is_mac']:
+        cmd = find_cmd.replace('<projects>', self.connection['projects_path']).replace('<absolute>/', self.connection['root'])
+        if self.connection['is_mac']:
             cmd = self.aux_fix_mac_printf(cmd)
         gobject.idle_add(self.remote_status_label.set_label, 'Listing remote files')
-        ssh_cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), cmd]
+        ssh_cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.connection['port']), '%s@%s' % (self.connection['user'], self.connection['address']), cmd]
         print 3, ' '.join(ssh_cmd)
         try:
             p1 = subprocess.Popen(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -1788,7 +1794,6 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
                 gobject.idle_add(self.gui_show_error, stderr)
                 return
             self.lines_remote = output.splitlines()
-            #self.buffer_add(lines, self.remote['alias'], self.remote['projects_path'], parent_path)
         except KeyError:
             print 1, stderr
             raise
@@ -1824,27 +1829,14 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
                 f_size = 0
             else:
                 f_size = int(f_size)
-            # if self.mappings:
-            #     if host == 'localhost':
-            #         mappings = [(y, x) for (x, y) in self.mappings] # reverse
-            #     else:
-            #         mappings = self.mappings
-            #     for mapping in mappings:
-            #         if full_path.startswith(mapping[0]):
-            #             full_path.replace(mapping[0], mapping[1], 1)
             f_basename = full_path.strip('/').split('/')[-1]
-            # parent_path_to_store = parent_path
             if full_path.startswith(root): # Relative path
                 path_id = full_path.replace(root, '', 1).strip('/')
-                # if '/' in path_id.strip('/'):
-                #     parent_dir, basename = path_id.rsplit('/', 1) # parent_dir will not have trailing slash
-                # else:
-                #     parent_dir = ''
-                #     basename = path_id
             else: # Absolute path
+                path_id = full_path
                 if self.mappings:
                     if host != 'localhost':
-                        path_id = self.remap_to_local(full_path)
+                        path_id = self.remap_to_local(path_id)
                 path_id = path_id.rstrip('/')
             if parent != None and f_type != 'f':
                 path_id = parent.path+'/'+path_id
@@ -1861,8 +1853,6 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
                 this_parent = self.buffer_get_parent(parent.path+'/'+path_id)
             if f_link_dest == '':
                 f_link_dest = False
-            # elif host != 'localhost':
-            #     f_link_dest = self.remap_to_local(f_link_dest)
             if host == 'localhost':
                 attributes['path_local'] = full_path
                 attributes['inode_local'] = f_inode
@@ -1881,17 +1871,23 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
             if not path_id in self.buffer:
                 if path_id.endswith('Exports'):
                     print 4, 'new File(%s)' % path_id
-                self.buffer[path_id] = File(path_id, this_parent, self.projectsTreeStore, self.projectsTree, attributes)
+                item = self.buffer[path_id] = File(path_id, this_parent, self.projectsTreeStore, self.projectsTree, attributes)
             else:
+                item = self.buffer[path_id]
                 if path_id.endswith('Exports'):
                     print 4, 'New attributes for:', path_id
                     print 4, repr(attributes)
-                self.buffer[path_id].set_attributes(attributes)
-                if this_parent != None and not this_parent in self.buffer[path_id].parents:
+                item.set_attributes(attributes)
+                if this_parent != None and not this_parent in item.parents:
                     if path_id.endswith('Exports'):
                             print 4, 'New parent for:', path_id, this_parent.path
                     # print 'this_parent:', this_parent.path
-                    self.buffer[path_id].add_parent(this_parent)
+                    item.add_parent(this_parent)
+            if item.inode_local and item.inode_remote:
+                self.inodes_local_to_remote[item.inode_local] = item.inode_remote
+                self.inodes_remote_to_local[item.inode_remote] = item.inode_local
+                self.queue_buffer.put_nowait([self.buffer_inodes_cache_dump])
+
 
     def buffer_get_parent(self, child_path_id):
         if child_path_id == '/':
@@ -2102,18 +2098,18 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
         #             extra_args.append('-KO')
         #         else:
         #             local_path = os.path.join(mistika.projects_folder, item.path)
-        #             remote_path = os.path.join(self.remote['projects_path'], item.path)
-        #         uri_remote = "%s@%s:%s" % (self.remote['user'], self.remote['address'], self.remote['root']+remote_path)
+        #             remote_path = os.path.join(self.connection['projects_path'], item.path)
+        #         uri_remote = "%s@%s:%s" % (self.connection['user'], self.connection['address'], self.connection['root']+remote_path)
         #         parent_path = os.path.dirname(item.path)
         #         if not parent_path in self.buffer or self.buffer[parent_path].size_remote < 0:
         #             mkdir = 'mkdir -p '
         #             if absolute:
-        #                 mkdir += "'%s'" % self.remote['root']+os.path.dirname(remote_path)
+        #                 mkdir += "'%s'" % self.connection['root']+os.path.dirname(remote_path)
         #             else:
         #                 mkdir += "'%s'" % os.path.dirname(remote_path)
-        #             cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), mkdir]
+        #             cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.connection['port']), '%s@%s' % (self.connection['user'], self.connection['address']), mkdir]
         #             mkdir_return = subprocess.call(cmd)
-        #         cmd = ['rsync', '-e', 'ssh -p %i' % self.remote['port'], '-ua'] + extra_args + ['--progress', self.remote['local_media_root']+local_path, uri_remote]
+        #         cmd = ['rsync', '-e', 'ssh -p %i' % self.connection['port'], '-ua'] + extra_args + ['--progress', self.connection['local_media_root']+local_path, uri_remote]
         #         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         #         # print repr(cmd)
         #         while proc.returncode == None:
@@ -2151,17 +2147,17 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
         temp_handle.write('\n'.join(relative_paths) + '\n')
         temp_handle.flush()
         if absolute:
-            base_path_local = self.remote['local_media_root']
-            base_path_remote = self.remote['root']
+            base_path_local = self.connection['local_media_root']
+            base_path_remote = self.connection['root']
             # extra_args.append('-O')
         else:
             base_path_local = mistika.projects_folder+'/'
-            base_path_remote = self.remote['projects_path']+'/'
-        uri_remote = "%s@%s:%s/" % (self.remote['user'], self.remote['address'], base_path_remote)
+            base_path_remote = self.connection['projects_path']+'/'
+        uri_remote = "%s@%s:%s/" % (self.connection['user'], self.connection['address'], base_path_remote)
         cmd = [
             'rsync',
             '-e',
-            'ssh -p %i' % self.remote['port'],
+            'ssh -p %i' % self.connection['port'],
             '-uavvKL'
         ] + extra_args + [
             '--no-perms',
@@ -2253,17 +2249,17 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
         temp_handle.write('\n'.join(relative_paths_remote) + '\n')
         temp_handle.flush()
         if absolute:
-            base_path_local = self.remote['local_media_root']
-            base_path_remote = self.remote['root']
+            base_path_local = self.connection['local_media_root']
+            base_path_remote = self.connection['root']
             # extra_args.append('-O')
         else:
             base_path_local = mistika.projects_folder+'/'
-            base_path_remote = self.remote['projects_path']+'/'
-        uri_remote = "%s@%s:%s/" % (self.remote['user'], self.remote['address'], base_path_remote)
+            base_path_remote = self.connection['projects_path']+'/'
+        uri_remote = "%s@%s:%s/" % (self.connection['user'], self.connection['address'], base_path_remote)
         cmd = [
             'rsync',
             '-e',
-            'ssh -p %i' % self.remote['port'],
+            'ssh -p %i' % self.connection['port'],
             '-u',
             '-a',
             '-v',
@@ -2433,8 +2429,48 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
                     print 1, 'Error:', repr(e)
             except Queue.Empty:
                 time.sleep(1)
+    def local_inodes_cache_write(self, inodes_local_to_remote_json):
+        dir_path = os.path.dirname(self.connection['inodes_map_cache_path'])
+        if not os.path.isdir(dir_path):
+            try:
+                os.makedirs(dir_path)
+                print 2, 'Created directory for inode map cache: %s' % dir_path
+            except OSError as e:
+                print 1, 'Could not create inode map cache director: %s %s' % (dir_path, e)
+        start_time = time.time()
+        try:
+            open(self.connection['inodes_map_cache_path'], 'w').write(inodes_local_to_remote_json)
+            print 4, 'Wrote inode map cache to disk'
+        except IOError as e:
+            print 1, 'Could not write inode map cache to disk. Will not be able to detect renamed/moved files in the future.\n%s' % e
+            return
+        self.inodes_dump_time = time.time() - start_time
+        print 4, 'Inode map cache write time: %s' % human.duration(self.inodes_dump_time)
+        self.inodes_dump_frequency = max(self.inodes_dump_frequency, self.inodes_dump_time+10)
+        print 4, 'Adjusted inodes_dump_frequency: %s' % self.inodes_dump_frequency
+    def buffer_inodes_cache_dump(self):
+        if time.time() - self.inodes_last_dump < self.inodes_dump_frequency:
+            return
+        # Send to local daemon so we don't have to wait for I/O
+        print 4, 'Dumping inode map cache'
+        self.queue_local.put_nowait([self.local_inodes_cache_write, {
+            'inodes_local_to_remote_json': json.dumps(self.inodes_local_to_remote)
+            }])
+        self.inodes_last_dump = time.time()
+    def buffer_inodes_cache_read(self):
+        # This blocks intentionally
+        print 1, 'Reading inode map cache'
+        try:
+            self.inodes_local_to_remote = json.loads(open(self.connection['inodes_map_cache_path']).read())
+            self.inodes_remote_to_local = { y : x for x, y in self.inodes_local_to_remote.iteritems() }
+            print 3, 'Loaded inode map cache'
+        except IOError as e:
+            if e.errno == 2:
+                print 3, 'No cache found'
+            else:
+                print 1, e
     def remote_get_projects_path(self):
-        cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), 'cat MISTIKA-ENV/MISTIKA_WORK MAMBA-ENV/MAMBA_WORK']
+        cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.connection['port']), '%s@%s' % (self.connection['user'], self.connection['address']), 'cat MISTIKA-ENV/MISTIKA_WORK MAMBA-ENV/MAMBA_WORK']
         p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         output, stderr = p1.communicate()
         # print output
@@ -2443,10 +2479,10 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
             outfields = outline1.split(None, 1)
             if outfields[0].endswith('_WORK') and len(outfields) == 2:
                 return outfields[1]
-        self.remote_status_label.set_markup('Could not get read MISTIKA-ENV/MISTIKA_WORK or MAMBA-ENV/MAMBA_WORK in home directory of user %s' % self.remote['user'])
+        self.remote_status_label.set_markup('Could not get read MISTIKA-ENV/MISTIKA_WORK or MAMBA-ENV/MAMBA_WORK in home directory of user %s' % self.connection['user'])
         return None
     def remote_get_root_path(self):
-        cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), 'cat msync-root.cfg']
+        cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.connection['port']), '%s@%s' % (self.connection['user'], self.connection['address']), 'cat msync-root.cfg']
         p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         output, stderr = p1.communicate()
         # print output
@@ -2468,16 +2504,17 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
         #(model, iter) = selection.get_selected()
         #self.spinner_remote.set_property('visible', True)
         self.gui_connection_panel_lock()
-        self.remote['alias'] = self.entry_host.get_active_text()
+        alias = self.connection['alias'] = self.entry_host.get_active_text()
         self.remote_status_label.set_markup('Connecting')
-        print 1, 'Connecting to %s' % self.remote['alias']
-        self.remote['address'] = self.entry_address.get_text()
-        self.remote['user'] = self.entry_user.get_text()
-        self.remote['port'] = self.entry_port.get_value_as_int()
-        self.remote['projects_path'] = self.entry_projects_path.get_text().rstrip('/')
-        self.remote['local_media_root'] = self.entry_local_media_root.get_text().rstrip('/')+'/'
-        #self.remote['projects_path'] = self.remote['projects_path'].rstrip('/')+'/'
-        cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.remote['port']), '%s@%s' % (self.remote['user'], self.remote['address']), 'uname']
+        print 1, 'Connecting to %s' % self.connection['alias']
+        address = self.connection['address'] = self.entry_address.get_text()
+        user = self.connection['user'] = self.entry_user.get_text()
+        port = self.connection['port'] = self.entry_port.get_value_as_int()
+        self.connection['projects_path'] = self.entry_projects_path.get_text().rstrip('/')
+        self.connection['local_media_root'] = self.entry_local_media_root.get_text().rstrip('/')+'/'
+        self.connection['inodes_map_cache_path'] = os.path.join(CFG_DIR, 'inodes_cache_%s%s%s.map' % (address, user, port))
+        #self.connection['projects_path'] = self.connection['projects_path'].rstrip('/')+'/'
+        cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.connection['port']), '%s@%s' % (self.connection['user'], self.connection['address']), 'uname']
         p1 = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         output, stderr = p1.communicate()
         if p1.returncode > 0:
@@ -2486,7 +2523,7 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
             if 'Permission denied' in stderr:
                 print 1, 'Permission denied. Attempting to copy ssh key ...'
                 gobject.idle_add(self.remote_status_label.set_markup, '')
-                gobject.idle_add(self.gui_copy_ssh_key, self.remote['user'], self.remote['address'], self.remote['port'])
+                gobject.idle_add(self.gui_copy_ssh_key, self.connection['user'], self.connection['address'], self.connection['port'])
                 gobject.idle_add(self.gui_connection_panel_lock, False)
                 return
             else:
@@ -2496,13 +2533,13 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
                 gobject.idle_add(self.gui_connection_panel_lock, False)
                 raise 'Connection error'
         else:
-            print 1, 'Connected to %s' % self.remote['alias']
+            print 1, 'Connected to %s' % self.connection['alias']
             if 'Darwin' in output:
-                print 3, '%s is identified as a Mac' % self.remote['address']
-                self.remote['is_mac'] = True
+                print 3, '%s is identified as a Mac' % self.connection['address']
+                self.connection['is_mac'] = True
             else:
-                self.remote['is_mac'] = False
-        if self.remote['projects_path'] == '':
+                self.connection['is_mac'] = False
+        if self.connection['projects_path'] == '':
             print 2, 'Getting projects path ...'
             remote_projects_path = self.remote_get_projects_path()
             if remote_projects_path == None:
@@ -2510,14 +2547,14 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
                 gobject.idle_add(self.gui_connection_panel_lock, False)
                 return
             else:
-                self.remote['projects_path'] = remote_projects_path
+                self.connection['projects_path'] = remote_projects_path
                 print 1, 'Remote projects path: %s' % remote_projects_path
                 self.entry_projects_path.set_text(remote_projects_path)
             #self.entry_address.set_property('editable', False)
-        self.remote['root'] = self.remote_get_root_path()
+        self.connection['root'] = self.remote_get_root_path()
         mappings = self.mappings = {
-            'projects' : (mistika.projects_folder, self.remote['projects_path']),
-            'media'    : (self.remote['local_media_root'], self.remote['root']),
+            'projects' : (mistika.projects_folder, self.connection['projects_path']),
+            'media'    : (self.connection['local_media_root'], self.connection['root']),
         }
         self.mappings_to_local = {}
         for map_id, mapping in mappings.iteritems():
@@ -2545,7 +2582,7 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
         gobject.idle_add(self.button_disconnect.set_property, 'visible', True)
         # gobject.idle_add(self.label_active_host.set_markup,
         #     '<span foreground="#888888">Connected to host:</span> %s <span foreground="#888888">(%s)</span>'
-        #     % (self.remote['alias'], self.remote['address']))
+        #     % (self.connection['alias'], self.connection['address']))
     def gui_disconnected(self):
         self.gui_connection_panel_lock(False)
         self.button_disconnect.set_property('visible', False)
@@ -2632,12 +2669,17 @@ The conditions can be set either as absolute requirements, or as 'weights' for t
         self.lines_remote = []
         thread_local = self.launch_thread(target=self.io_list_files_local, args=[find_cmd_local])
         thread_remote = self.launch_thread(target=self.io_list_files_remote, args=[find_cmd_remote])
+
+        # Use the wait to load inodes cache
+        if len(self.inodes_local_to_remote) == 0:
+            self.buffer_inodes_cache_read()
+
         thread_local.join()
         thread_remote.join()
         #print 'Adding local files to buffer'
         self.buffer_add(self.lines_local, 'localhost', mistika.projects_folder, parent)
         # print 'Adding remote files to buffer'
-        self.buffer_add(self.lines_remote, self.remote['alias'], self.remote['projects_path'], parent)
+        self.buffer_add(self.lines_remote, self.connection['alias'], self.connection['projects_path'], parent)
         #print 'Adding files to GUI'
         for path in paths:
             if type(path) is tuple:
