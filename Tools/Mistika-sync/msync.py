@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 #-*- coding:utf-8 -*-
 
+import copy
 import cgi
 import datetime
 import json
@@ -140,8 +141,12 @@ class MainThread(threading.Thread):
         self.icon_left = gtk.gdk.pixbuf_new_from_file_at_size('res/img/left.png', 16, 16)
         self.icon_right = gtk.gdk.pixbuf_new_from_file_at_size('res/img/right.png', 16, 16)
         self.icon_info = gtk.gdk.pixbuf_new_from_file_at_size('res/img/info.png', 16, 16)
-        self.pixbuf_plus = gtk.gdk.pixbuf_new_from_file_at_size('res/img/plus.png', 16, 16)
-        self.pixbuf_minus = gtk.gdk.pixbuf_new_from_file_at_size('res/img/minus.png', 16, 16)
+        self.pixbuf_plus = gtk.gdk.pixbuf_new_from_file_at_size('res/img/plus.png', 32, 32)
+        self.pixbuf_plus_recursive = gtk.gdk.pixbuf_new_from_file_at_size('res/img/plus_recursive.png', 32, 32)
+        self.pixbuf_plus_children = gtk.gdk.pixbuf_new_from_file_at_size('res/img/plus_children.png', 32, 32)
+        self.pixbuf_minus = gtk.gdk.pixbuf_new_from_file_at_size('res/img/minus.png', 32, 32)
+        self.pixbuf_minus_recursive = gtk.gdk.pixbuf_new_from_file_at_size('res/img/minus_recursive.png', 32, 32)
+        self.pixbuf_minus_children = gtk.gdk.pixbuf_new_from_file_at_size('res/img/minus_children.png', 32, 32)
         self.pixbuf_cancel = gtk.gdk.pixbuf_new_from_file_at_size('res/img/cancel.png', 16, 16)
         self.pixbuf_reset = gtk.gdk.pixbuf_new_from_file_at_size('res/img/reset.png', 16, 16)
         self.spinner = gtk.Image()
@@ -501,6 +506,12 @@ class MainThread(threading.Thread):
     def init_files_panel(self):
         tooltips = self.tooltips
         vbox = gtk.VBox(False, 10)
+        entry = self.entry_filter = hyperspeed.ui.PlaceholderEntry('Filter')
+        entry.modify_font(pango.FontDescription('light 16.0'))
+        entry.add_events(gtk.gdk.KEY_RELEASE_MASK)
+        entry.connect("activate", self.on_filter)
+        entry.connect("key-release-event", self.on_filter)
+        vbox.pack_start(entry, False, False, 0)
         tree_store = self.projectsTreeStore = gtk.TreeStore(
             str,             #  0 Basename
             str,             #  1 path_id
@@ -523,7 +534,15 @@ class MainThread(threading.Thread):
         ) 
         tree_view = self.projectsTree = gtk.TreeView()
         tree_view.set_rules_hint(True)
-        tree_view.set_search_equal_func(func=self.on_search)
+        # tree_view.set_search_equal_func(func=self.on_search)
+        tree_filter = self.files_filter = tree_store.filter_new()
+        tree_filter.set_visible_func(self.filter_tree, (self.entry_filter, tree_view))
+        tree_view.set_model(tree_filter)
+        # tree_view.set_search_column(0)
+        tree_view.connect("row-expanded", self.on_expand)
+
+        tree_store.set_sort_column_id(0, gtk.SORT_ASCENDING)
+        #self.projectsTree.expand_all()
 
         column = gtk.TreeViewColumn()
         column.set_title('')
@@ -597,18 +616,12 @@ class MainThread(threading.Thread):
         column.set_expand(True)
         tree_view.append_column(column)
 
-        tree_view.set_model(tree_store)
-        tree_view.set_search_column(0)
-        tree_view.connect("row-expanded", self.on_expand)
-
-        tree_store.set_sort_column_id(0, gtk.SORT_ASCENDING)
-        #self.projectsTree.expand_all()
-
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(tree_view)
         vbox.pack_start(scrolled_window)
 
+        hbox0 = gtk.HBox(False, 0)
         hbox = gtk.HBox(False, 0)
         
         button = gtk.Button()
@@ -618,10 +631,19 @@ class MainThread(threading.Thread):
         hbox.pack_start(button, False, False, 0)
         
         button = gtk.Button()
-        button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_minus))
-        button.connect("clicked", self.on_sync_selected_abort)
-        tooltips.set_tip(button, 'Remove selected file(s) from sync queue')
+        button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_plus_recursive))
+        button.connect("clicked", self.on_sync_selected)
+        tooltips.set_tip(button, 'Sync selected file(s) and all children')
         hbox.pack_start(button, False, False, 0)
+        
+        button = gtk.Button()
+        button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_plus_children))
+        button.connect("clicked", self.on_sync_selected)
+        tooltips.set_tip(button, 'Sync all children')
+        hbox.pack_start(button, False, False, 0)
+
+        hbox0.pack_start(hbox, False, False, 0)
+        hbox = gtk.HBox(False, 0)
 
         button = gtk.Button()
         #self.button_sync_files.set_image(gtk.image_new_from_stock(gtk.STOCK_REFRESH,  gtk.ICON_SIZE_BUTTON))
@@ -630,7 +652,7 @@ class MainThread(threading.Thread):
         tooltips.set_tip(button, 'Show more information on selected file(s)')
         hbox.pack_start(button, False, False, 0)
 
-        hbox.pack_start(gtk.Label('Override action:'), False, False, 5)
+        # hbox.pack_start(gtk.Label('Override action:'), False, False, 5)
 
         button = gtk.Button()
         button.connect("clicked", self.on_force_action, 'pull')
@@ -662,7 +684,30 @@ class MainThread(threading.Thread):
         label = self.pull_queue_size_label = gtk.Label('pull size')
         hbox.pack_start(label, False, False, 5)
 
-        vbox.pack_start(hbox, False, False, 0)
+        hbox0.pack_start(hbox, True, False, 0)
+        hbox = gtk.HBox(False, 0)
+        
+        button = gtk.Button()
+        button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_minus))
+        button.connect("clicked", self.on_sync_selected_abort)
+        tooltips.set_tip(button, 'Remove selected file(s) from sync queue')
+        hbox.pack_start(button, False, False, 0)
+        
+        button = gtk.Button()
+        button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_minus_recursive))
+        button.connect("clicked", self.on_sync_selected_abort)
+        tooltips.set_tip(button, 'Remove selected file(s) and all children from sync queue')
+        hbox.pack_start(button, False, False, 0)
+        
+        button = gtk.Button()
+        button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_minus_children))
+        button.connect("clicked", self.on_sync_selected_abort)
+        tooltips.set_tip(button, 'Remove all children from sync queue')
+        hbox.pack_start(button, False, False, 0)
+
+        hbox0.pack_start(hbox, False, False, 0)
+
+        vbox.pack_start(hbox0, False, False, 0)
 
         #menu = ['Sync project', 'Sync media']
         footer = gtk.HBox(False, 10)
@@ -677,6 +722,46 @@ class MainThread(threading.Thread):
         self.io_hosts_populate(self.hostsTreeStore)
         treeselection = self.projectsTree.get_selection()
         treeselection.set_mode(gtk.SELECTION_MULTIPLE)
+    def on_filter(self, widget, event):
+        print 4, 'on_filter()'
+        self.files_filter.refilter()
+    def filter_tree(self, model, iter, user_data, seek_up=True, seek_down=True, filter_string=False):
+        widget, tree = user_data
+        # print 6, 'filter_tree() model: %s widget: %s tree: %s' % (model, widget, tree)
+        # tree.expand_all()
+        if not filter_string:
+            # print 6, 'Reading filter from entry'
+            filter_string = widget.get_text().lower()
+        if filter_string == '':
+            return True
+        # print 6, repr(filter_string)
+        row = model.get_value(iter, 0)
+        if row == None:
+            return False
+        name = model.get_value(iter, 0).lower()
+        parent = model.iter_parent(iter)
+        has_child = model.iter_has_child(iter)
+        for word in filter_string.split():
+            # print 4, word
+            if word in name:
+                continue
+            relative_match = False
+            if seek_down and has_child:
+                #print 'Seeking children'
+                for n in range(model.iter_n_children(iter)):
+                    if self.filter_tree(model, model.iter_nth_child(iter, n), user_data, seek_up=False, filter_string=word):
+                        #print 'Child matches!'
+                        relative_match = True
+            if seek_up and parent != None:
+                #print 'Seeking parents'
+                if self.filter_tree(model, parent, user_data, seek_down=False, filter_string=word):
+                    #print 'Parent matches!'
+                    relative_match = True
+            if relative_match:
+                continue
+            return False
+
+        return True
     def start_daemon(self, daemon):
         t = threading.Thread(target=daemon)
         self.threads.append(t)
@@ -730,12 +815,14 @@ class MainThread(threading.Thread):
             return False
         return True
     def on_expand(self, treeview, iter, path, *user_params):
-        # print 'Expanding'
-        # print repr(model)
-        # print repr(iter)
-        # print repr(path)
-        model = self.projectsTreeStore
-        file_path = model[iter][1]
+        treestore = treeview.get_model()
+        try: # If there is a filter in the middle
+            treestore = treestore.get_model()
+        except AttributeError:
+            pass
+        treestore = treeview.get_model()
+        print 4, repr(treestore), repr(iter), repr(treestore[iter][1])
+        file_path = treestore[iter][1]
         # print 'Expanding ' + file_path
         file_item = self.buffer[file_path]
         if file_path.rsplit('.', 1)[-1] in hyperspeed.stack.EXTENSIONS: # Should already be loaded
@@ -746,7 +833,7 @@ class MainThread(threading.Thread):
             return
         if file_item.virtual:
             # print 'Virtual item'
-            if model.iter_n_children(iter) == 1:
+            if treestore.iter_n_children(iter) == 1:
                 # print 'Expand'
                 treeview.expand_row(path+(0,), False) # Expand single child items automatically
         elif not file_item.deep_searched:
@@ -877,18 +964,18 @@ class MainThread(threading.Thread):
                 files_chunk = []
         if len(files_chunk) > 0:
             self.queue_buffer.put_nowait([self.buffer_list_files, {
-                                'paths' : files_chunk,
-                                'parent' : item,
-                                'sync' : False,
-                                'pre_allocate' : True,
-                    'maxdepth' : 0,
-                                }])
+                'paths' : files_chunk,
+                'parent' : item,
+                'sync' : False,
+                'pre_allocate' : True,
+                'maxdepth' : 0,
+            }])
             files_chunk = []
         self.queue_buffer.put_nowait([progress_callback, {'progress_float':1.0}])
-        self.queue_buffer.put_nowait([self.buffer_get_virtual_details, {
-            'item' : item,
-            'real_parent' : item
-            }])
+        # self.queue_buffer.put_nowait([self.buffer_get_virtual_details, {
+        #     'item' : item,
+        #     'real_parent' : item
+        #     }])
         if sync:
             self.queue_buffer.put_nowait([self.buffer[path_id].enqueue, {
                 'push_allow' : self.allow_push.get_active(),
@@ -905,14 +992,14 @@ class MainThread(threading.Thread):
         if len(item.children) > 0:
             for child in item.children:
                 paths += self.buffer_get_virtual_details(item=child, real_parent=real_parent)
-            if item.virtual:
-                f_path = item.path_id.replace(real_parent.path_id+'/', '', 1)
-                paths.append(f_path)
-                # print 'Virtual:', item.path_id, 'parent:', real_parent.path_id, 'real_path:', f_path
+        if item.virtual:
+            f_path = item.path_id.replace(real_parent.path_id+'/', '', 1)
+            paths.append(f_path)
+            # print 'Virtual:', item.path_id, 'parent:', real_parent.path_id, 'real_path:', f_path
         if item == real_parent or len(paths) > 20:
             # print repr(paths),
             self.buffer_list_files(
-                    paths = paths[:],
+                    paths = copy.deepcopy(paths),
                     parent = real_parent,
                     maxdepth = 0,
             )
@@ -1157,16 +1244,20 @@ class MainThread(threading.Thread):
 
         # self.queue_remote.put_nowait([self.remote_connect])        
     def on_force_action(self, widget, action, row_path=None):
+        treestore = self.projectsTreeStore.get_model()
+        try: # If there is a filter in the middle
+            treestore = treestore.get_model()
+        except AttributeError:
+            pass
         file_infos = []
         if row_path == None:
-            selection = self.projectsTree.get_selection()
-            (model, pathlist) = selection.get_selected_rows()
+            selection = treestore.get_selection()
+            (treestore, pathlist) = selection.get_selected_rows()
         else:
-            model = self.projectsTreeStore
             pathlist = [row_path]
         for row_path in pathlist:
-            row_iter = model.get_iter(row_path)
-            path_id = model[row_path][1]
+            row_iter = treestore.get_iter(row_path)
+            path_id = treestore[row_path][1]
             if action == 'pull':
                 self.buffer[path_id].direction = 'pull'
             elif action == 'push':
@@ -1176,12 +1267,12 @@ class MainThread(threading.Thread):
             elif action == 'reset':
                 self.buffer[path_id].direction_update()
             gobject.idle_add(self.buffer[path_id].gui_update)
-            child_iter = model.iter_children(row_iter)
+            child_iter = treestore.iter_children(row_iter)
             while child_iter != None:
-                row_path_child = model.get_path(child_iter)
-                path_str_child = model[row_path_child][1]
+                row_path_child = treestore.get_path(child_iter)
+                path_str_child = treestore[row_path_child][1]
                 if not path_str_child == '': self.on_force_action(None, action, row_path_child) # Avoid placeholders
-                child_iter = model.iter_next(child_iter)
+                child_iter = treestore.iter_next(child_iter)
     def on_file_info(self, widget):
         file_infos = []
         selection = self.projectsTree.get_selection()
@@ -2348,6 +2439,8 @@ class Item(object):
             progress_float = 1.0
         self.set_progress(progress_float)
     def set_parse_progress(self, stack=False, progress_float=0.0):
+        if not self.placeholder_child:
+            self.add_fetcher()
         self.placeholder_child.set_progress(progress_float)
         if progress_float >= 1.0:
             if len(self.children) > 1:
@@ -2498,14 +2591,16 @@ class Item(object):
             row_reference = gtk.TreeRowReference(self.treestore, row_path)
             self.row_references.append(row_reference)
         if self.is_stack and self.size_local > 0:
-            dependency_fetcher_path = '%s dependency fetcher' % self.path_id
-            attributes = {
+            self.add_fetcher()
+    def add_fetcher(self):
+        dependency_fetcher_path = '%s dependency fetcher' % self.path_id
+        attributes = {
             'alias': ' <i>Getting dependencies ...</i>',
             'icon' : PIXBUF_SEARCH,
             'placeholder' : True,
             'progress_visibility' : True
-            }
-            self.placeholder_child = Item(dependency_fetcher_path, self, self.treestore, self.treeview, attributes)
+        }
+        self.placeholder_child = Item(dependency_fetcher_path, self, self.treestore, self.treeview, attributes)
     def gui_update(self):
         for row_reference in self.row_references:
             row_path = row_reference.get_path()
