@@ -1119,7 +1119,7 @@ class MainThread(threading.Thread):
 
     def on_settings_rename_change(self, widget, event, **user_data):
         print 3, 'Rename detection settings where changed. Rechecking suspects.'
-        for suspect in self.suspects:
+        for suspect in self.connection['suspected_renames']:
             print 4, suspect.path_local
     def gui_parent_add_bytes(self, row_reference, size):
         model = self.projectsTreeStore
@@ -2152,7 +2152,9 @@ class MainThread(threading.Thread):
         self.abort = True
         gobject.idle_add(self.gui_disconnected)
     def remote_connect(self):
-        self.connection = {}
+        self.connection = {
+            'suspected_renames' : []
+        }
         gobject.idle_add(self.gui_connection_panel_lock)
         alias = self.connection['alias'] = self.entry_host.get_active_text()
         gobject.idle_add(self.spinner_remote.set_visible, True)
