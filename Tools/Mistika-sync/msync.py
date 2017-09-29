@@ -825,11 +825,6 @@ class MainThread(threading.Thread):
         return True
     def on_expand(self, treeview, iter, path, *user_params):
         treestore = treeview.get_model()
-        try: # If there is a filter in the middle
-            treestore = treestore.get_model()
-        except AttributeError:
-            pass
-        treestore = treeview.get_model()
         print 4, repr(treestore), repr(iter), repr(treestore[iter][1])
         file_path = treestore[iter][1]
         # print 'Expanding ' + file_path
@@ -1262,42 +1257,18 @@ class MainThread(threading.Thread):
         output_full = proc.communicate()[0]
         if proc.returncode > 0:
             gobject.idle_add(self.gui_show_error, 'Could not copy ssh key:')
-            return
-        # proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.PIPE)
-        # output_full = ''
-        # while proc.returncode == None:
-        #     output = ''
-        #     char = None
-        #     while not char in ['\r', '\n']:
-        #         proc.poll()
-        #         if proc.returncode != None:
-        #             break
-        #         char = proc.stdout.read(1)
-        #         print char
-        #         output += char
-        #         if output.endswith('password:'):
-        #             proc.stdin.write(password+'\n')
-        #             proc.stdin.flush()
-        #     output_full += output
-        # output_full += proc.stdout.read()
-        # if proc.returncode > 0:
-        #     gobject.idle_add(self.gui_show_error, 'Could not copy ssh key:\n\n'+output_full)
-        #     return
-
-        # self.queue_remote.put_nowait([self.remote_connect])        
+            return        
     def on_force_action(self, widget, action, row_path=None):
-        treestore = self.projectsTreeStore.get_model()
-        try: # If there is a filter in the middle
-            treestore = treestore.get_model()
-        except AttributeError:
-            pass
+        treeview = self.projectsTree
+        treestore = treeview.get_model()
         file_infos = []
         if row_path == None:
-            selection = treestore.get_selection()
-            (treestore, pathlist) = selection.get_selected_rows()
+            selection = treeview.get_selection()
+            treestore, pathlist = selection.get_selected_rows()
         else:
             pathlist = [row_path]
         for row_path in pathlist:
+            # print 4, 'get_iter(%s)' % repr(row_path)
             row_iter = treestore.get_iter(row_path)
             path_id = treestore[row_path][1]
             if action == 'pull':
