@@ -83,7 +83,6 @@ class MainThread(threading.Thread):
         self.queue_pull = Queue.Queue()
         self.queue_push_size = [0]
         self.queue_pull_size = [0]
-        self.connection = {}
         self.is_mac = False
         self.is_mamba = False
         self.transfer_queue = {}
@@ -373,12 +372,20 @@ class MainThread(threading.Thread):
         label = gtk.Label('Size')
         label_box = gtk.HBox()
         label_box.pack_start(label, False, False, 0)
-        toggle = self.setting_size_toggle = gtk.CheckButton()
+        toggle = self.setting_size_require = gtk.CheckButton()
         tooltips.set_tip(toggle, "The file has the same size as the counterpart.")
         match = self.setting_size_match = gtk.SpinButton(gtk.Adjustment(value=1, lower=0, upper=99, step_incr=1))
         match.set_value(1)
         mismatch = self.setting_size_mismatch = gtk.SpinButton(gtk.Adjustment(value=-1, lower=-99, upper=0, step_incr=1))
         mismatch.set_value(-1)
+        toggle.connect('key-release-event', self.on_settings_rename_change)
+        toggle.connect('button-release-event', self.on_settings_rename_change)
+        match.connect('key-release-event', self.on_settings_rename_change)
+        match.connect('activate', self.on_settings_rename_change)
+        match.connect('button-release-event', self.on_settings_rename_change)
+        mismatch.connect('key-release-event', self.on_settings_rename_change)
+        mismatch.connect('activate', self.on_settings_rename_change)
+        mismatch.connect('button-release-event', self.on_settings_rename_change)
         rows.append([
             label_box,
             toggle,
@@ -388,12 +395,20 @@ class MainThread(threading.Thread):
         label = gtk.Label('Extension')
         label_box = gtk.HBox()
         label_box.pack_start(label, False, False, 0)
-        toggle = self.setting_ext_toggle = gtk.CheckButton()
+        toggle = self.setting_ext_require = gtk.CheckButton()
         tooltips.set_tip(toggle, "The file has the same extension as the counterpart.")
         match = self.setting_ext_match= gtk.SpinButton(gtk.Adjustment(value=1, lower=0, upper=99, step_incr=1))
         match.set_value(1)
         mismatch = self.setting_ext_mismatch = gtk.SpinButton(gtk.Adjustment(value=-1, lower=-99, upper=0, step_incr=1))
         mismatch.set_value(-1)
+        toggle.connect('key-release-event', self.on_settings_rename_change)
+        toggle.connect('button-release-event', self.on_settings_rename_change)
+        match.connect('key-release-event', self.on_settings_rename_change)
+        match.connect('activate', self.on_settings_rename_change)
+        match.connect('button-release-event', self.on_settings_rename_change)
+        mismatch.connect('key-release-event', self.on_settings_rename_change)
+        mismatch.connect('activate', self.on_settings_rename_change)
+        mismatch.connect('button-release-event', self.on_settings_rename_change)
         rows.append([
             label_box,
             toggle,
@@ -403,12 +418,20 @@ class MainThread(threading.Thread):
         label = gtk.Label('Folder')
         label_box = gtk.HBox()
         label_box.pack_start(label, False, False, 0)
-        toggle = self.setting_folder_toggle = gtk.CheckButton()
+        toggle = self.setting_folder_require = gtk.CheckButton()
         tooltips.set_tip(toggle, "The file is in the same folder as the counterpart.")
         match = self.setting_folder_match = gtk.SpinButton(gtk.Adjustment(value=1, lower=0, upper=99, step_incr=1))
         match.set_value(1)
         mismatch = self.setting_folder_mismatch = gtk.SpinButton(gtk.Adjustment(value=-1, lower=-99, upper=0, step_incr=1))
         mismatch.set_value(-1)
+        toggle.connect('key-release-event', self.on_settings_rename_change)
+        toggle.connect('button-release-event', self.on_settings_rename_change)
+        match.connect('key-release-event', self.on_settings_rename_change)
+        match.connect('activate', self.on_settings_rename_change)
+        match.connect('button-release-event', self.on_settings_rename_change)
+        mismatch.connect('key-release-event', self.on_settings_rename_change)
+        mismatch.connect('activate', self.on_settings_rename_change)
+        mismatch.connect('button-release-event', self.on_settings_rename_change)
         rows.append([
             label_box,
             toggle,
@@ -418,12 +441,20 @@ class MainThread(threading.Thread):
         label = gtk.Label('Folder or subfolder')
         label_box = gtk.HBox()
         label_box.pack_start(label, False, False, 0)
-        toggle = self.setting_subfolder_toggle = gtk.CheckButton()
+        toggle = self.setting_subfolder_require = gtk.CheckButton()
         tooltips.set_tip(toggle, "The file is in the same folder or a subfolder from the counterpart.")
         match = self.setting_subfolder_match = gtk.SpinButton(gtk.Adjustment(value=1, lower=0, upper=99, step_incr=1))
         match.set_value(1)
         mismatch = self.setting_subfolder_mismatch = gtk.SpinButton(gtk.Adjustment(value=-1, lower=-99, upper=0, step_incr=1))
         mismatch.set_value(-1)
+        toggle.connect('key-release-event', self.on_settings_rename_change)
+        toggle.connect('button-release-event', self.on_settings_rename_change)
+        match.connect('key-release-event', self.on_settings_rename_change)
+        match.connect('activate', self.on_settings_rename_change)
+        match.connect('button-release-event', self.on_settings_rename_change)
+        mismatch.connect('key-release-event', self.on_settings_rename_change)
+        mismatch.connect('activate', self.on_settings_rename_change)
+        mismatch.connect('button-release-event', self.on_settings_rename_change)
         rows.append([
             label_box,
             toggle,
@@ -433,12 +464,20 @@ class MainThread(threading.Thread):
         label = gtk.Label('Filename')
         label_box = gtk.HBox()
         label_box.pack_start(label, False, False, 0)
-        toggle = self.setting_filename_toggle = gtk.CheckButton()
+        toggle = self.setting_filename_require = gtk.CheckButton()
         tooltips.set_tip(toggle, "The file itself has the same name as the counterpart.")
         match = self.setting_filename_match = gtk.SpinButton(gtk.Adjustment(value=1, lower=0, upper=99, step_incr=1))
         match.set_value(1)
         mismatch = self.setting_filename_mismatch = gtk.SpinButton(gtk.Adjustment(value=-1, lower=-99, upper=0, step_incr=1))
         mismatch.set_value(-1)
+        toggle.connect('key-release-event', self.on_settings_rename_change)
+        toggle.connect('button-release-event', self.on_settings_rename_change)
+        match.connect('key-release-event', self.on_settings_rename_change)
+        match.connect('activate', self.on_settings_rename_change)
+        match.connect('button-release-event', self.on_settings_rename_change)
+        mismatch.connect('key-release-event', self.on_settings_rename_change)
+        mismatch.connect('activate', self.on_settings_rename_change)
+        mismatch.connect('button-release-event', self.on_settings_rename_change)
         rows.append([
             label_box,
             toggle,
@@ -446,8 +485,11 @@ class MainThread(threading.Thread):
             mismatch
         ])
         label = gtk.Label('Total confidence required:')
-        confidence_requirement = gtk.SpinButton(gtk.Adjustment(value=2, lower=0, upper=999, step_incr=1))
+        confidence_requirement = self.confidence_requirement = gtk.SpinButton(gtk.Adjustment(value=2, lower=0, upper=999, step_incr=1))
         confidence_requirement.set_value(2)
+        confidence_requirement.connect('key-release-event', self.on_settings_rename_change)
+        confidence_requirement.connect('activate', self.on_settings_rename_change)
+        confidence_requirement.connect('button-release-event', self.on_settings_rename_change)
         rows.append([
             label,
             None,
@@ -1075,7 +1117,10 @@ class MainThread(threading.Thread):
                             }])
 
 
-
+    def on_settings_rename_change(self, widget, event, **user_data):
+        print 3, 'Rename detection settings where changed. Rechecking suspects.'
+        for suspect in self.suspects:
+            print 4, suspect.path_local
     def gui_parent_add_bytes(self, row_reference, size):
         model = self.projectsTreeStore
         row_path = row_reference.get_path()
@@ -1271,20 +1316,26 @@ class MainThread(threading.Thread):
             # print 4, 'get_iter(%s)' % repr(row_path)
             row_iter = treestore.get_iter(row_path)
             path_id = treestore[row_path][1]
+            try:
+                item = self.buffer[path_id]
+            except KeyError:
+                print 4, 'Item not in buffer: %s' % path_id
+                return
             if action == 'pull':
-                self.buffer[path_id].direction = 'pull'
+                item.direction = 'pull'
             elif action == 'push':
-                self.buffer[path_id].direction = 'push'
+                item.direction = 'push'
             elif action == 'nothing':
-                self.buffer[path_id].direction = 'nothing'
+                item.direction = 'nothing'
             elif action == 'reset':
-                self.buffer[path_id].direction_update()
-            gobject.idle_add(self.buffer[path_id].gui_update)
+                item.direction_update()
+            gobject.idle_add(item.gui_update)
             child_iter = treestore.iter_children(row_iter)
             while child_iter != None:
                 row_path_child = treestore.get_path(child_iter)
                 path_str_child = treestore[row_path_child][1]
-                if not path_str_child == '': self.on_force_action(None, action, row_path_child) # Avoid placeholders
+                if not path_str_child == '':
+                    self.on_force_action(None, action, row_path_child)
                 child_iter = treestore.iter_next(child_iter)
     def on_file_info(self, widget):
         file_infos = []
@@ -1425,26 +1476,102 @@ class MainThread(threading.Thread):
                 attributes['mtime_remote'] = f_time
                 attributes['link_remote'] = f_link_dest
             if not path_id in self.buffer:
-                if path_id.endswith('Exports'):
-                    print 4, 'new Item(%s)' % path_id
                 item = self.buffer[path_id] = Item(path_id, this_parent, self.projectsTreeStore, self.projectsTree, attributes)
             else:
                 item = self.buffer[path_id]
-                if path_id.endswith('Exports'):
-                    print 4, 'New attributes for:', path_id
-                    print 4, repr(attributes)
                 item.set_attributes(attributes)
                 if this_parent != None and not this_parent in item.parents:
-                    if path_id.endswith('Exports'):
-                            print 4, 'New parent for:', path_id, this_parent.path_id
-                    # print 'this_parent:', this_parent.path_id
                     item.add_parent(this_parent)
-            if item.inode_local and item.inode_remote:
+            mismatch = False
+            try:
+                cached_inode_local = self.inodes_remote_to_local[item.inode_remote]
+                if item.inode_local != cached_inode_local:
+                    mismatch = True
+                    for k, v in self.buffer.iteritems():
+                        if v.inode_local == cached_inode_local:
+                            self.rename_match(item, item_local=v)
+                            return
+            except KeyError:
+                cached_inode_local = False
+            try:
+                cached_inode_remote = self.inodes_local_to_remote[item.inode_local]
+                if item.inode_remote != cached_inode_remote:
+                    mismatch = True
+                    for k, v in self.buffer.iteritems():
+                        if v.inode_remote == cached_inode_remote:
+                            self.rename_match(item, item_remote=v)
+                            return
+            except KeyError:
+                cached_inode_remote = False
+            if not mismatch and item.inode_local and item.inode_remote:
                 self.inodes_local_to_remote[item.inode_local] = item.inode_remote
                 self.inodes_remote_to_local[item.inode_remote] = item.inode_local
                 self.queue_buffer.put_nowait([self.buffer_inodes_cache_dump])
 
-
+    def rename_match(self, item, item_local=False, item_remote=False):
+        suspects = self.connection['suspected_renames']
+        if item_local:
+            item_remote = item
+        elif item_remote:
+            item_local = item
+        if not item_local in suspects:
+            suspects.append(item_local)
+        print 2, 'Compare Local: %s Remote: %s' % (item_local.path_local, item_remote.path_remote)
+        if item_local.mtime_local > item_remote.mtime_remote:
+            old_item = item_remote
+            new_item = item_local
+        else:
+            old_item = item_local
+            new_item = item_remote
+        confidence = 0
+        # Size
+        if item_local.size_local == item_remote.size_remote:
+            print 2, 'Size: match'
+            confidence += self.setting_size_match.get_value()
+        else:
+            print 2, 'Size: mismatch'
+            confidence += self.setting_size_mismatch.get_value()
+            if self.setting_size_require.get_active():
+                return
+        # Extension
+        if os.path.splitext(item_local.path_local)[1] == os.path.splitext(item_remote.path_remote)[1]:
+            print 2, 'Extension: match'
+            confidence += self.setting_ext_match.get_value()
+        else:
+            print 2, 'Extension: mismatch'
+            confidence += self.setting_ext_mismatch.get_value()
+            if self.setting_ext_require.get_active():
+                return
+        # Exact folder
+        if self.remap_to_remote(os.path.dirname(item_local.path_local)) == os.path.dirname(item_remote.path_remote):
+            print 2, 'Exact folder: match'
+            confidence += self.setting_folder_match.get_value()
+        else:
+            print 2, 'Exact folder: mismatch'
+            confidence += self.setting_folder_mismatch.get_value()
+            if self.setting_folder_require.get_active():
+                return
+        # Exact folder or subfolder
+        in_subfolder = False
+        if new_item == item_local:
+            if self.remap_to_remote(item_local.path_local).startswith(os.path.dirname(item_remote.path_remote)):
+                in_subfolder = True
+        else:
+            if self.remap_to_local(item_remote.path_remote).startswith(os.path.dirname(item_local.path_local)):
+                in_subfolder = True
+        if in_subfolder:
+            print 2, 'In subfolder: match'
+            confidence += self.setting_folder_match.get_value()
+        else:
+            print 2, 'In subfolder: mismatch'
+            confidence += self.setting_folder_mismatch.get_value()
+            if self.setting_folder_require.get_active():
+                return
+        print 2, 'Match confidence: %i' % confidence
+        if confidence >= self.confidence_requirement.get_value():
+            print 2, 'These are probably the same files'
+        else:
+            print 2, 'These are probably not the same files'
     def buffer_get_parent(self, child_path_id):
         if child_path_id == '/':
             return None
@@ -1984,8 +2111,8 @@ class MainThread(threading.Thread):
         # This blocks intentionally
         print 1, 'Reading inode map cache'
         try:
-            self.inodes_local_to_remote = json.loads(open(self.connection['inodes_map_cache_path']).read())
-            self.inodes_remote_to_local = { y : x for x, y in self.inodes_local_to_remote.iteritems() }
+            self.inodes_local_to_remote = { int(k) : v for k, v in json.loads(open(self.connection['inodes_map_cache_path']).read()).iteritems() }
+            self.inodes_remote_to_local = { v : k for k, v in self.inodes_local_to_remote.iteritems() }
             print 3, 'Loaded inode map cache'
         except IOError as e:
             if e.errno == 2:
@@ -2025,10 +2152,7 @@ class MainThread(threading.Thread):
         self.abort = True
         gobject.idle_add(self.gui_disconnected)
     def remote_connect(self):
-        #gobject.idle_add(self.button_connect.set_image, self.spinner)
-        #selection = self.hostsTree.get_selection()
-        #(model, iter) = selection.get_selected()
-        #self.spinner_remote.set_property('visible', True)
+        self.connection = {}
         gobject.idle_add(self.gui_connection_panel_lock)
         alias = self.connection['alias'] = self.entry_host.get_active_text()
         gobject.idle_add(self.spinner_remote.set_visible, True)
@@ -2347,8 +2471,8 @@ class Item(object):
         self._icon = False
         self.row_references = []
         self.path_id = path
-        self.path_id_local = False
-        self.path_id_remote = False
+        self.path_local = False
+        self.path_remote = False
         self.inode_local = False
         self.inode_remote = False
         self.absolute = path.startswith('/')
