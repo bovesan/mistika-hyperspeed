@@ -318,7 +318,7 @@ class Stack(object):
         except AttributeError:
             list(self.iter_dependencies())
         return self._dependencies
-    def iter_dependencies(self, progress_callback=False, relink=False, remap=False):
+    def iter_dependencies(self, progress_callback=False, relink=False, remap=False, backup=True):
         self._dependencies = []
         self._dependency_paths = []
         try:
@@ -453,7 +453,10 @@ class Stack(object):
                     temp_handle.flush()
                     temp_handle.close()
                     backup_path = os.path.join(os.path.dirname(self.path), '.'+os.path.basename(self.path))
-                    os.rename(self.path, backup_path)
+                    if backup:
+                        os.rename(self.path, backup_path)
+                    else:
+                        os.remove(self.path)
                     os.rename(temp_handle.name, self.path)
                     print 'Wrote changes to file:', self.path
                     os.utime(self.path, (pre_stat.st_atime, pre_stat.st_mtime))
@@ -466,8 +469,8 @@ class Stack(object):
         except IOError as e:
             print 'Could not open ' + self.path
             raise e
-    def relink_dependencies(self, progress_callback=False):
-        for dependency in self.iter_dependencies(progress_callback=progress_callback, relink=True):
+    def relink_dependencies(self, progress_callback=False, backup=True):
+        for dependency in self.iter_dependencies(progress_callback=progress_callback, relink=True, backup=backup):
             if dependency.type == 'font':
                 try:
                     destination = os.path.join(mistika.fonts_folder, os.path.basename(dependency.path))
