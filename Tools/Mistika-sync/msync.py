@@ -98,7 +98,13 @@ class MainThread(threading.Thread):
         window.set_title("Mistika sync")
         window.set_size_request(monitor.width-200, monitor.height-200)
         window.set_border_width(20)
-        window.set_icon_from_file('res/img/msync_icon.png')
+        window.set_icon_list(
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 16, 16),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 32, 32),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 64, 64),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 128, 128),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 256, 256),
+        )
         window.set_position(gtk.WIN_POS_CENTER)
         if 'darwin' in platform.system().lower():
             self.is_mac = True
@@ -121,6 +127,15 @@ class MainThread(threading.Thread):
         vpane.pack1(self.init_log_panel(), resize=False, shrink=False)
         vpane.pack2(self.init_files_panel(), resize=True, shrink=False)
         vbox.pack_start(vpane, expand=True, fill=True, padding=0)
+
+        footer = gtk.HBox(False, 10)
+        quitButton = gtk.Button('Quit')
+        quitButton.set_size_request(70, 30)
+        quitButton.connect("clicked", self.on_quit)
+        footer.pack_end(quitButton, False, False)
+
+        vbox.pack_end(footer, False, False, 10)
+
         window.add(vbox)
 
         window.show_all()
@@ -505,7 +520,7 @@ class MainThread(threading.Thread):
         return expander
     def init_files_panel(self):
         tooltips = self.tooltips
-        vbox = gtk.VBox(False, 10)
+        vbox = self.files_panel = gtk.VBox(False, 10)
         entry = self.entry_filter = hyperspeed.ui.PlaceholderEntry('Filter')
         entry.modify_font(pango.FontDescription('light 16.0'))
         entry.add_events(gtk.gdk.KEY_RELEASE_MASK)
@@ -708,22 +723,16 @@ class MainThread(threading.Thread):
         hbox0.pack_start(hbox, False, False, 0)
 
         vbox.pack_start(hbox0, False, False, 0)
-
-        #menu = ['Sync project', 'Sync media']
-        footer = gtk.HBox(False, 10)
-        quitButton = gtk.Button('Quit')
-        quitButton.set_size_request(70, 30)
-        quitButton.connect("clicked", self.on_quit)
-        footer.pack_end(quitButton, False, False)
-
-        vbox.pack_end(footer, False, False, 10)
+        vbox.show_all()
+        vbox.set_no_show_all(True)
+        vbox.set_visible(False)
         return vbox
     def run(self):
         self.io_hosts_populate(self.hostsTreeStore)
         treeselection = self.projectsTree.get_selection()
         treeselection.set_mode(gtk.SELECTION_MULTIPLE)
     def on_filter(self, widget, event):
-        print 4, 'on_filter()'
+        print 4, 'Refilter'
         self.files_filter.refilter()
     def filter_tree(self, model, iter, user_data, seek_up=True, seek_down=True, filter_string=False):
         widget, tree = user_data
@@ -912,13 +921,9 @@ class MainThread(threading.Thread):
         except (IndexError, AttributeError):
             pass
     def on_host_connect(self, widget):
-        self.daemon_remote_active = True
-        t = threading.Thread(target=self.daemon_remote)
-        self.threads.append(t)
-        t.setDaemon(True)
-        t.start()
+        self.launch_thread(self.remote_connect)
     def on_host_disconnect(self, widget):
-        self.queue_remote.put([self.remote_disconnect])
+        self.remote_disconnect()
     def gui_refresh_progress(self, row_reference, progress_float=0.0):
         model = self.projectsTreeStore
         row_path = row_reference.get_path()
@@ -1357,11 +1362,11 @@ class MainThread(threading.Thread):
         #gobject.idle_add(loader.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
     def io_list_files_remote(self, find_cmd):
         #gobject.idle_add(self.button_load_remote_projects.set_image, loader)
-        gobject.idle_add(self.spinner_remote.set_property, 'visible', True)
+        gobject.idle_add(self.spinner_remote.set_visible, True)
+        gobject.idle_add(self.remote_status_label.set_label, 'Listing remote files')
         cmd = find_cmd.replace('<projects>', self.connection['projects_path']).replace('<absolute>/', self.connection['root'])
         if self.connection['is_mac']:
             cmd = self.aux_fix_mac_printf(cmd)
-        gobject.idle_add(self.remote_status_label.set_label, 'Listing remote files')
         ssh_cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.connection['port']), '%s@%s' % (self.connection['user'], self.connection['address']), cmd]
         print 3, ' '.join(ssh_cmd)
         try:
@@ -1377,8 +1382,8 @@ class MainThread(threading.Thread):
             raise
             gobject.idle_add(self.gui_show_error, stderr)
             return
-        gobject.idle_add(self.spinner_remote.set_property, 'visible', False)
         gobject.idle_add(self.remote_status_label.set_label, '')
+        gobject.idle_add(self.spinner_remote.set_visible, False)
         #self.project_cell.set_property('foreground', '#000000')
         #self.project_cell.set_property('style', 'normal')
         #gobject.idle_add(loader.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
@@ -1959,33 +1964,6 @@ class MainThread(threading.Thread):
                     'sync' : False,
                     'maxdepth' : 0,
                     }])
-    def daemon_remote(self):
-        q = self.queue_remote
-        q.put_nowait([self.remote_connect])
-        self.daemon_remote_active = True
-        while self.daemon_remote_active:
-            try:
-                #print 'daemon_remote.get()'
-                item = q.get(True, 10)
-                #gobject.idle_add(self.button_connect.set_image, self.spinner)
-                gobject.idle_add(self.spinner_remote.set_property, 'visible', True)
-                item_len = len(item)
-                try:
-                    if item_len == 1:
-                        item[0]()
-                    else:
-                        item[0](**item[1])
-                    #gobject.idle_add(self.button_connect.set_image, self.icon_connected)
-                    #gobject.idle_add(self.loader_remote.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
-                    q.task_done()
-                    gobject.idle_add(self.spinner_remote.set_property, 'visible', False)
-                except Exception as e:
-                    gobject.idle_add(self.spinner_remote.set_property, 'visible', False)
-                    print 1, 'Error:', repr(e)
-                    #gobject.idle_add(self.button_connect.set_image, self.icon_stop)
-                    #gobject.idle_add(self.loader_remote.set_from_stock, gtk.STOCK_STOP, gtk.ICON_SIZE_BUTTON)
-            except Queue.Empty:
-                pass
     def daemon_local(self):
         q = self.queue_local
         self.daemon_local_active = True
@@ -2069,17 +2047,21 @@ class MainThread(threading.Thread):
             return '/'
     def remote_disconnect(self):
         self.queue_buffer.put_nowait([self.buffer_clear])
-        self.daemon_remote_active = False
+        self.daemon_buffer_active = False
+        self.daemon_local_active = False
+        self.daemon_push_active = False
+        self.daemon_pull_active = False
+        self.abort = True
         gobject.idle_add(self.gui_disconnected)
-        #self.spinner_remote.set_property('visible', False)
     def remote_connect(self):
         #gobject.idle_add(self.button_connect.set_image, self.spinner)
         #selection = self.hostsTree.get_selection()
         #(model, iter) = selection.get_selected()
         #self.spinner_remote.set_property('visible', True)
-        self.gui_connection_panel_lock()
+        gobject.idle_add(self.gui_connection_panel_lock)
         alias = self.connection['alias'] = self.entry_host.get_active_text()
-        self.remote_status_label.set_markup('Connecting')
+        gobject.idle_add(self.spinner_remote.set_visible, True)
+        gobject.idle_add(self.remote_status_label.set_markup, 'Connecting')
         print 1, 'Connecting to %s' % self.connection['alias']
         address = self.connection['address'] = self.entry_address.get_text()
         user = self.connection['user'] = self.entry_user.get_text()
@@ -2156,17 +2138,16 @@ class MainThread(threading.Thread):
         self.entry_local_media_root_button.set_sensitive(state)
     def gui_connected(self):
         self.remote_status_label.set_markup('')
-        gobject.idle_add(self.button_connect.set_property, 'visible', False)
-        gobject.idle_add(self.button_disconnect.set_property, 'visible', True)
-        # gobject.idle_add(self.label_active_host.set_markup,
-        #     '<span foreground="#888888">Connected to host:</span> %s <span foreground="#888888">(%s)</span>'
-        #     % (self.connection['alias'], self.connection['address']))
+        self.button_connect.set_visible(False)
+        self.button_disconnect.set_visible(True)
+        self.files_panel.set_visible(True)
     def gui_disconnected(self):
         self.gui_connection_panel_lock(False)
         self.button_disconnect.set_property('visible', False)
         self.button_connect.set_property('visible', True)
+        self.files_panel.set_property('visible', False)
         self.spinner_remote.set_property('visible', False)
-        gobject.idle_add(self.projectsTreeStore, clear)
+        self.projectsTreeStore.clear()
     def launch_thread(self, target, args=False):
         if args:
             t = threading.Thread(target=target, args=args)
@@ -2252,23 +2233,21 @@ class MainThread(threading.Thread):
         if len(self.inodes_local_to_remote) == 0:
             self.buffer_inodes_cache_read()
 
+        # Waiting here to limit the time between showing local and remote files
         thread_local.join()
         thread_remote.join()
-        #print 'Adding local files to buffer'
         self.buffer_add(
             lines = self.lines_local,
             host = 'localhost',
             root = mistika.projects_folder,
             parent = parent
         )
-        # print 'Adding remote files to buffer'
         self.buffer_add(
             lines = self.lines_remote,
             host = self.connection['alias'],
             root = self.connection['projects_path'],
             parent = parent
         )
-        #print 'Adding files to GUI'
         for path in paths:
             if type(path) is tuple:
                 path, start, end = path
