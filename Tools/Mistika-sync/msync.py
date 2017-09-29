@@ -626,19 +626,19 @@ class MainThread(threading.Thread):
         
         button = gtk.Button()
         button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_plus))
-        button.connect("clicked", self.on_sync_selected)
+        button.connect("clicked", self.on_sync_selected, 'single')
         tooltips.set_tip(button, 'Sync selected file(s)')
         hbox.pack_start(button, False, False, 0)
         
         button = gtk.Button()
         button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_plus_recursive))
-        button.connect("clicked", self.on_sync_selected)
+        button.connect("clicked", self.on_sync_selected, 'recursive')
         tooltips.set_tip(button, 'Sync selected file(s) and all children')
         hbox.pack_start(button, False, False, 0)
         
         button = gtk.Button()
         button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_plus_children))
-        button.connect("clicked", self.on_sync_selected)
+        button.connect("clicked", self.on_sync_selected, 'children')
         tooltips.set_tip(button, 'Sync all children')
         hbox.pack_start(button, False, False, 0)
 
@@ -689,19 +689,19 @@ class MainThread(threading.Thread):
         
         button = gtk.Button()
         button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_minus))
-        button.connect("clicked", self.on_sync_selected_abort)
+        button.connect("clicked", self.on_sync_selected_abort, 'single')
         tooltips.set_tip(button, 'Remove selected file(s) from sync queue')
         hbox.pack_start(button, False, False, 0)
         
         button = gtk.Button()
         button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_minus_recursive))
-        button.connect("clicked", self.on_sync_selected_abort)
+        button.connect("clicked", self.on_sync_selected_abort, 'recursive')
         tooltips.set_tip(button, 'Remove selected file(s) and all children from sync queue')
         hbox.pack_start(button, False, False, 0)
         
         button = gtk.Button()
         button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_minus_children))
-        button.connect("clicked", self.on_sync_selected_abort)
+        button.connect("clicked", self.on_sync_selected_abort, 'children')
         tooltips.set_tip(button, 'Remove all children from sync queue')
         hbox.pack_start(button, False, False, 0)
 
@@ -1007,38 +1007,75 @@ class MainThread(threading.Thread):
             paths = []
             # print repr(paths)
         return paths
-    def on_sync_selected(self, widget):
+    def on_sync_selected(self, widget, mode='recursive'):
+        # mode = 'single' or 'recursive' or 'children'
         selection = self.projectsTree.get_selection()
         (model, pathlist) = selection.get_selected_rows()
         for row_path in pathlist:
             row_reference = gtk.TreeRowReference(model, row_path)
             path_id = model[row_path][1]
+            item = self.buffer[path_id]
             parent_id = os.path.dirname(path_id)
             print 3, 'on_sync_selected()', path_id
-            if len(self.buffer[path_id].children) > 0 and not self.buffer[path_id].deep_searched and not self.buffer[path_id].virtual:
-                if self.buffer[path_id].direction == 'pull':
-                    continue
-                if self.buffer[path_id].is_stack:
-                    self.queue_buffer.put_nowait([self.io_get_associated, {
-                        'path_id': path_id,
-                        'sync': True
-                    }])
-                else:
-                    self.queue_buffer.put_nowait([self.buffer_list_files, {
-                        'paths': [path_id],
-                        'sync': True,
-                        'maxdepth': False
-                    }])
-                # self.queue_buffer.put_nowait([self.buffer[path_id].fetch_dependencies])
-            else:
-                self.queue_buffer.put_nowait([self.buffer[path_id].enqueue, {
+            if mode == 'single':
+                self.queue_buffer.put_nowait([item.enqueue, {
                     'push_allow' : self.allow_push.get_active(),
                     'pull_allow' : self.allow_pull.get_active(), 
                     'queue_push' : self.queue_push,
                     'queue_pull' : self.queue_pull,
                     'queue_push_size' : self.queue_push_size,
                     'queue_pull_size' : self.queue_pull_size,
+                    'recursive' : False
                     }])
+            elif mode == 'recursive':
+                self.queue_buffer.put_nowait([item.enqueue, {
+                    'push_allow' : self.allow_push.get_active(),
+                    'pull_allow' : self.allow_pull.get_active(), 
+                    'queue_push' : self.queue_push,
+                    'queue_pull' : self.queue_pull,
+                    'queue_push_size' : self.queue_push_size,
+                    'queue_pull_size' : self.queue_pull_size,
+                    'recursive' : False
+                    }])
+                if len(item.children) > 0 and not item.deep_searched and not item.virtual:
+                    if item.direction == 'pull':
+                        continue
+                    if item.is_stack:
+                        self.queue_buffer.put_nowait([self.io_get_associated, {
+                            'path_id': path_id,
+                            'sync': True
+                        }])
+                    else:
+                        self.queue_buffer.put_nowait([self.buffer_list_files, {
+                            'paths': [path_id],
+                            'sync': True,
+                            'maxdepth': False
+                        }])
+            elif mode == 'children':
+                if len(item.children) > 0:
+                    if not item.virtual and not item.deep_searched:
+                        paths = []
+                        for child in item.children:
+                            paths.append(child.path_id)
+                        self.queue_buffer.put_nowait([self.buffer_list_files, {
+                            'paths': paths,
+                            'sync': True,
+                            'maxdepth': False
+                        }])
+                    else:
+                        for child in item.children:
+                            self.queue_buffer.put_nowait([child.enqueue, {
+                                'push_allow' : self.allow_push.get_active(),
+                                'pull_allow' : self.allow_pull.get_active(), 
+                                'queue_push' : self.queue_push,
+                                'queue_pull' : self.queue_pull,
+                                'queue_push_size' : self.queue_push_size,
+                                'queue_pull_size' : self.queue_pull_size,
+                                'recursive' : True
+                            }])
+
+
+
     def gui_parent_add_bytes(self, row_reference, size):
         model = self.projectsTreeStore
         row_path = row_reference.get_path()
@@ -2649,7 +2686,8 @@ class Item(object):
         # We do parents first to allow creation of missing folders/links
         if parents and len(self.parents) > 0:
             for parent in self.parents:
-                parent.enqueue(push_allow, pull_allow, queue_push, queue_pull, queue_push_size, queue_pull_size, recursive=False)
+                if not 'f' in [parent.type_local, parent.type_remote]:
+                    parent.enqueue(push_allow, pull_allow, queue_push, queue_pull, queue_push_size, queue_pull_size, recursive=False)
         if not self.transfer:
             # print 'Enqueing:', self.path_id
             bytes_total_before = self.bytes_total
