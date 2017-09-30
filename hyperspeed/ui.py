@@ -130,3 +130,39 @@ def terminal(exec_args):
     else:
         return subprocess.Popen(exec_args)
     print 'Failed to execute %s' % repr(exec_args)
+
+class PlaceholderEntry(gtk.Entry):
+
+    placeholder = ''
+    _default = True
+
+    def __init__(self, placeholder, *args, **kwds):
+        gtk.Entry.__init__(self, *args, **kwds)
+        self.placeholder = placeholder
+        self.connect('focus-in-event', self._focus_in_event)
+        self.connect('focus-out-event', self._focus_out_event)
+        self.connect("key-release-event", self._key_release_event)
+        gobject.idle_add(self._focus_out_event)
+
+    def _focus_in_event(self, widget=False, event=False):
+        if self._default:
+            self.set_text('')
+            self.modify_text(gtk.STATE_NORMAL, gtk.gdk.color_parse('black'))
+
+    def _focus_out_event(self, widget=False, event=False):
+        if gtk.Entry.get_text(self) == '':
+            self.set_text(self.placeholder)
+            self.modify_text(gtk.STATE_NORMAL, gtk.gdk.color_parse('gray'))
+            self._default = True
+        else:
+            self._default = False
+    def _key_release_event(self, widget=False, event=False):
+        if gtk.Entry.get_text(self) == '':
+            self._default = True
+        else:
+            self._default = False
+    def get_text(self):
+        if self._default:
+            return ''
+        return gtk.Entry.get_text(self)
+        
