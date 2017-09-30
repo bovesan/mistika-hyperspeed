@@ -155,6 +155,7 @@ class MainThread(threading.Thread):
         self.icon_left = gtk.gdk.pixbuf_new_from_file_at_size('res/img/left.png', 16, 16)
         self.icon_right = gtk.gdk.pixbuf_new_from_file_at_size('res/img/right.png', 16, 16)
         self.icon_info = gtk.gdk.pixbuf_new_from_file_at_size('res/img/info.png', 16, 16)
+        self.pixbuf_move = gtk.gdk.pixbuf_new_from_file_at_size('res/img/move.png', 32, 32)
         self.pixbuf_plus = gtk.gdk.pixbuf_new_from_file_at_size('res/img/plus.png', 32, 32)
         self.pixbuf_plus_recursive = gtk.gdk.pixbuf_new_from_file_at_size('res/img/plus_recursive.png', 32, 32)
         self.pixbuf_plus_children = gtk.gdk.pixbuf_new_from_file_at_size('res/img/plus_children.png', 32, 32)
@@ -375,9 +376,9 @@ class MainThread(threading.Thread):
         toggle = self.setting_size_require = gtk.CheckButton()
         tooltips.set_tip(toggle, "The file has the same size as the counterpart.")
         match = self.setting_size_match = gtk.SpinButton(gtk.Adjustment(value=1, lower=0, upper=99, step_incr=1))
-        match.set_value(1)
+        match.set_value(2)
         mismatch = self.setting_size_mismatch = gtk.SpinButton(gtk.Adjustment(value=-1, lower=-99, upper=0, step_incr=1))
-        mismatch.set_value(-1)
+        mismatch.set_value(0)
         toggle.connect('key-release-event', self.on_settings_rename_change)
         toggle.connect('button-release-event', self.on_settings_rename_change)
         match.connect('key-release-event', self.on_settings_rename_change)
@@ -398,7 +399,7 @@ class MainThread(threading.Thread):
         toggle = self.setting_ext_require = gtk.CheckButton()
         tooltips.set_tip(toggle, "The file has the same extension as the counterpart.")
         match = self.setting_ext_match= gtk.SpinButton(gtk.Adjustment(value=1, lower=0, upper=99, step_incr=1))
-        match.set_value(1)
+        match.set_value(0)
         mismatch = self.setting_ext_mismatch = gtk.SpinButton(gtk.Adjustment(value=-1, lower=-99, upper=0, step_incr=1))
         mismatch.set_value(-1)
         toggle.connect('key-release-event', self.on_settings_rename_change)
@@ -423,7 +424,7 @@ class MainThread(threading.Thread):
         match = self.setting_folder_match = gtk.SpinButton(gtk.Adjustment(value=1, lower=0, upper=99, step_incr=1))
         match.set_value(1)
         mismatch = self.setting_folder_mismatch = gtk.SpinButton(gtk.Adjustment(value=-1, lower=-99, upper=0, step_incr=1))
-        mismatch.set_value(-1)
+        mismatch.set_value(0)
         toggle.connect('key-release-event', self.on_settings_rename_change)
         toggle.connect('button-release-event', self.on_settings_rename_change)
         match.connect('key-release-event', self.on_settings_rename_change)
@@ -446,7 +447,7 @@ class MainThread(threading.Thread):
         match = self.setting_subfolder_match = gtk.SpinButton(gtk.Adjustment(value=1, lower=0, upper=99, step_incr=1))
         match.set_value(1)
         mismatch = self.setting_subfolder_mismatch = gtk.SpinButton(gtk.Adjustment(value=-1, lower=-99, upper=0, step_incr=1))
-        mismatch.set_value(-1)
+        mismatch.set_value(0)
         toggle.connect('key-release-event', self.on_settings_rename_change)
         toggle.connect('button-release-event', self.on_settings_rename_change)
         match.connect('key-release-event', self.on_settings_rename_change)
@@ -467,9 +468,9 @@ class MainThread(threading.Thread):
         toggle = self.setting_filename_require = gtk.CheckButton()
         tooltips.set_tip(toggle, "The file itself has the same name as the counterpart.")
         match = self.setting_filename_match = gtk.SpinButton(gtk.Adjustment(value=1, lower=0, upper=99, step_incr=1))
-        match.set_value(1)
+        match.set_value(2)
         mismatch = self.setting_filename_mismatch = gtk.SpinButton(gtk.Adjustment(value=-1, lower=-99, upper=0, step_incr=1))
-        mismatch.set_value(-1)
+        mismatch.set_value(0)
         toggle.connect('key-release-event', self.on_settings_rename_change)
         toggle.connect('button-release-event', self.on_settings_rename_change)
         match.connect('key-release-event', self.on_settings_rename_change)
@@ -679,7 +680,7 @@ class MainThread(threading.Thread):
         column.set_expand(True)
         tree_view.append_column(column)
 
-        tree_view.set_tooltip_column(8)
+        # tree_view.set_tooltip_column(8)
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(tree_view)
@@ -688,6 +689,12 @@ class MainThread(threading.Thread):
         hbox0 = gtk.HBox(False, 0)
         hbox = gtk.HBox(False, 0)
         
+        button = gtk.Button()
+        button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_move))
+        button.connect("clicked", self.on_sync_selected, 'move')
+        tooltips.set_tip(button, 'Sync movements for selected file(s) and all children')
+        hbox.pack_start(button, False, False, 0)
+
         button = gtk.Button()
         button.set_image(gtk.image_new_from_pixbuf(self.pixbuf_plus))
         button.connect("clicked", self.on_sync_selected, 'single')
@@ -783,6 +790,7 @@ class MainThread(threading.Thread):
     def on_filter(self, widget, event):
         print 4, 'Refilter'
         self.files_filter.refilter()
+        # Should expand if only one match
     def filter_tree(self, model, iter, user_data, seek_up=True, seek_down=True, filter_string=False):
         widget, tree = user_data
         # print 6, 'filter_tree() model: %s widget: %s tree: %s' % (model, widget, tree)
@@ -1056,6 +1064,63 @@ class MainThread(threading.Thread):
             paths = []
             # print repr(paths)
         return paths
+    def buffer_move_local(self, item):
+        if not self.allow_pull.get_active():
+            print 1, 'Pull is disabled. Will not move local file.'
+            return
+        if item._moved_to:
+            path_id_new = os.path.normpath(os.path.join(os.path.dirname(item.path_id), item._moved_to))
+            path_local_new = os.path.normpath(os.path.join(os.path.dirname(item.path_local), item._moved_to))
+            item_new = self.buffer[path_id_new]
+            if item_new.path_local:
+                print 3, 'Destination exists already: %s' % item_new.path_local
+                return
+            elif item.inode_local != self.inodes_remote_to_local[item_new.inode_remote]:
+                print 1, 'Inode mismatch: %s %s' % (item.path_id, item_new.path_id)
+                return
+            path_local_new_parent = os.path.dirname(path_local_new)
+            if not os.path.exists(path_local_new_parent):
+                self.pull(self.buffer[self.remap_local_to_id(path_local_new_parent)])
+            try:
+                os.rename(item.path_local, path_local_new)
+            except OSError as e:
+                print 1, 'Rename failed: %s' % e
+                return
+            item_new.path_local = path_local_new
+            item_new.inode_local = item.inode_local
+            item_new.mtime_local = item.mtime_local
+            item_new.ctime_local = item.ctime_local
+            item_new.size_local = item.size_local
+            item_new.type_local = item.type_local
+            pair = (item, item_new)
+            try:
+                self.connection['suspected_renames'].remove(pair)
+            except ValueError:
+                print 3, 'Suspects not found'
+            gobject.idle_add(item_new.gui_update)
+            item.path_local = False
+            item.inode_local = False
+            item.mtime_local = -1
+            item.ctime_local = -1
+            item.size_local = -1
+            item.type_local = ''
+            gobject.idle_add(item.gui_remove)
+    def buffer_move_remote(self, item):
+        # Move remote
+        if not self.allow_push.get_active():
+            print 1, 'Push is disabled. Will not move local file.'
+            return
+        print 'Remote move not implemented yet'
+    def buffer_move(self, item):
+        if item.path_local and not item.path_remote:
+            self.buffer_move_local(item)
+        elif item.path_remote and not item.path_local:
+            self.buffer_move_remote(item)
+        elif len(item.children) > 0:
+            self.buffer_move(child)
+
+
+                
     def on_sync_selected(self, widget, mode='recursive'):
         # mode = 'single' or 'recursive' or 'children'
         selection = self.projectsTree.get_selection()
@@ -1063,9 +1128,23 @@ class MainThread(threading.Thread):
         for row_path in pathlist:
             row_reference = gtk.TreeRowReference(model, row_path)
             path_id = model[row_path][1]
-            item = self.buffer[path_id]
+            try:
+                item = self.buffer[path_id]
+            except KeyError:
+                print 3, 'Item no longer exists: %s' % path_id
+                return
             parent_id = os.path.dirname(path_id)
             print 3, 'on_sync_selected()', path_id
+            if item._moved_to:
+                self.queue_buffer.put_nowait([self.buffer_move,{
+                    'item' : item
+                    }])
+            elif item._moved_from:
+                path_id_old = os.path.normpath(os.path.join(os.path.dirname(item.path_id), item._moved_from))
+                old_item = self.buffer[path_id_old]
+                self.queue_buffer.put_nowait([self.buffer_move,{
+                    'item' : old_item
+                }])
             if mode == 'single':
                 self.queue_buffer.put_nowait([item.enqueue, {
                     'push_allow' : self.allow_push.get_active(),
@@ -1532,7 +1611,13 @@ class MainThread(threading.Thread):
         if not pair in suspects:
             suspects.append(pair)
         print 2, 'Compare Local: %s Remote: %s' % (item_local.path_local, item_remote.path_remote)
-        if item_local.ctime_local > item_remote.ctime_remote:
+        if self.allow_push.get_active() and not self.allow_pull.get_active():
+            old_item = item_remote
+            new_item = item_local
+        elif self.allow_pull.get_active() and not self.allow_push.get_active():
+            old_item = item_local
+            new_item = item_remote
+        elif item_local.ctime_local > item_remote.ctime_remote:
             old_item = item_remote
             new_item = item_local
         else:
@@ -1541,19 +1626,19 @@ class MainThread(threading.Thread):
         confidence = 0
         # Size
         if item_local.size_local == item_remote.size_remote:
-            print 2, 'Size: match'
+            print 2, 'Size:         match'
             confidence += self.setting_size_match.get_value()
         else:
-            print 2, 'Size: mismatch'
+            print 2, 'Size:         -'
             confidence += self.setting_size_mismatch.get_value()
             if self.setting_size_require.get_active():
                 return
         # Extension
         if os.path.splitext(item_local.path_local)[1] == os.path.splitext(item_remote.path_remote)[1]:
-            print 2, 'Extension: match'
+            print 2, 'Extension:    match'
             confidence += self.setting_ext_match.get_value()
         else:
-            print 2, 'Extension: mismatch'
+            print 2, 'Extension:    -'
             confidence += self.setting_ext_mismatch.get_value()
             if self.setting_ext_require.get_active():
                 return
@@ -1562,7 +1647,7 @@ class MainThread(threading.Thread):
             print 2, 'Exact folder: match'
             confidence += self.setting_folder_match.get_value()
         else:
-            print 2, 'Exact folder: mismatch'
+            print 2, 'Exact folder: -'
             confidence += self.setting_folder_mismatch.get_value()
             if self.setting_folder_require.get_active():
                 return
@@ -1578,23 +1663,37 @@ class MainThread(threading.Thread):
             print 2, 'In subfolder: match'
             confidence += self.setting_folder_match.get_value()
         else:
-            print 2, 'In subfolder: mismatch'
+            print 2, 'In subfolder: -'
             confidence += self.setting_folder_mismatch.get_value()
             if self.setting_folder_require.get_active():
                 return
+        # Basename
+        if os.path.basename(item_local.path_local) == os.path.basename(item_remote.path_remote):
+            print 2, 'Filename:     match'
+            confidence += self.setting_filename_match.get_value()
+        else:
+            print 2, 'Filename:     -'
+            confidence += self.setting_filename_mismatch.get_value()
+            if self.setting_filename_require.get_active():
+                return
+        # Sum
         print 2, 'Match confidence: %i' % confidence
         if confidence < self.confidence_requirement.get_value():
             print 2, 'These are probably not the same files'
+            old_item.moved_clear()
+            new_item.moved_clear()
         else:
             print 2, 'These are probably the same files'
-            old_item.set_attributes({
-                'color' : COLOR_DISABLED,
-                'comment' : 'Moved to: %s' % os.path.relpath(new_item.path_id, os.path.dirname(old_item.path_id)),
-            })
-            new_item.set_attributes({
-                'color' : 'green',
-                'comment' : 'Moved from: %s' % os.path.relpath(old_item.path_id, os.path.dirname(new_item.path_id)),
-            })
+            old_item.moved_to(os.path.relpath(new_item.path_id, os.path.dirname(old_item.path_id)))
+            # old_item.set_attributes({
+            #     'color' : COLOR_DISABLED,
+            #     'comment' : 'Moved to: %s' % os.path.relpath(new_item.path_id, os.path.dirname(old_item.path_id)),
+            # })
+            new_item.moved_from(os.path.relpath(old_item.path_id, os.path.dirname(new_item.path_id)))
+            # new_item.set_attributes({
+            #     'color' : 'green',
+            #     'comment' : 'Moved from: %s' % os.path.relpath(old_item.path_id, os.path.dirname(new_item.path_id)),
+            # })
     def buffer_get_parent(self, child_path_id):
         if child_path_id == '/':
             return None
@@ -1730,6 +1829,11 @@ class MainThread(threading.Thread):
                 self.pull_file(items_relative)
                 items_relative = []
                 queue_size_relative = 0
+    def pull(self, item):
+        if item.type_remote == 'l':
+            self.pull_link(item)
+        elif item.type_remote == 'd':
+            self.pull_dir(item)
     def pull_rename(self, item):
         pass
     def pull_link(self, item):
@@ -1937,6 +2041,7 @@ class MainThread(threading.Thread):
                     'paths' : [item.path_id for item in relative_paths_local.values()],
                     'sync' : False,
                     'maxdepth' : 0,
+                    'remote' : False,
                     }])
     def push_old(self, items, absolute=False):
         if len(items) == 0:
@@ -2239,6 +2344,12 @@ class MainThread(threading.Thread):
             else:
                 print 2, 'Mapping local %s to remote %s' % (mapping[0], mapping[1])
                 self.mappings_to_local[map_id] = (mapping[1], mapping[0])
+        self.mappings_local_to_id = {}
+        for map_id, mapping in mappings.iteritems():
+            if map_id == 'projects':
+                self.mappings_local_to_id[map_id] = (mapping[0]+'/', '')
+            elif map_id == 'media':
+                self.mappings_local_to_id[map_id] = (mapping[0], '/')
         gobject.idle_add(self.gui_connected)
         self.queue_buffer.put_nowait([self.buffer_list_files])
         self.start_daemon(self.daemon_buffer)
@@ -2297,7 +2408,17 @@ class MainThread(threading.Thread):
                 # print '>', path
                 break
         return path
-    def buffer_list_files(self, paths=[''], parent=None, sync=False, maxdepth = 2, pre_allocate=False):
+    def remap_local_to_id(self, path):
+        mappings = self.mappings_local_to_id
+        for map_id in ['projects', 'media']:
+            mapping = mappings[map_id]
+            if path.startswith(mapping[0]):
+                # print 'Remap:', path,
+                path = path.replace(mapping[0], mapping[1], 1)
+                # print '>', path
+                break
+        return path
+    def buffer_list_files(self, paths=[''], parent=None, sync=False, maxdepth = 2, pre_allocate=False, local=True, remote=True):
         type_filter = ''
         maxdepth_str = ''
         if paths == ['']:
@@ -2347,28 +2468,34 @@ class MainThread(threading.Thread):
         # print find_cmd_remote
         self.lines_local = []
         self.lines_remote = []
-        thread_local = self.launch_thread(target=self.io_list_files_local, args=[find_cmd_local])
-        thread_remote = self.launch_thread(target=self.io_list_files_remote, args=[find_cmd_remote])
+        if local:
+            thread_local = self.launch_thread(target=self.io_list_files_local, args=[find_cmd_local])
+        if remote:
+            thread_remote = self.launch_thread(target=self.io_list_files_remote, args=[find_cmd_remote])
 
         # Use the wait to load inodes cache
         if len(self.inodes_local_to_remote) == 0:
             self.buffer_inodes_cache_read()
 
         # Waiting here to limit the time between showing local and remote files
-        thread_local.join()
-        thread_remote.join()
-        self.buffer_add(
-            lines = self.lines_local,
-            host = 'localhost',
-            root = mistika.projects_folder,
-            parent = parent
-        )
-        self.buffer_add(
-            lines = self.lines_remote,
-            host = self.connection['alias'],
-            root = self.connection['projects_path'],
-            parent = parent
-        )
+        if local:
+            thread_local.join()
+        if remote:
+            thread_remote.join()
+        if local:
+            self.buffer_add(
+                lines = self.lines_local,
+                host = 'localhost',
+                root = mistika.projects_folder,
+                parent = parent
+            )
+        if remote:
+            self.buffer_add(
+                lines = self.lines_remote,
+                host = self.connection['alias'],
+                root = self.connection['projects_path'],
+                parent = parent
+            )
         for path in paths:
             if type(path) is tuple:
                 path, start, end = path
@@ -2492,6 +2619,8 @@ class MainThread(threading.Thread):
             self.console_buffer.insert(self.console_buffer.get_end_iter(), string)
 
 class Item(object):
+    _moved_to = False
+    _moved_from = False
     def __init__(self, path, parent, treestore, treeview, attributes=False):
         self._parents = []
         self._icon = False
@@ -2675,6 +2804,25 @@ class Item(object):
             return ICON_BIDIR
         else:
             return None
+    def moved_to(self, path):
+        self._moved_to = path
+        self.set_attributes({
+            'color' : COLOR_DISABLED,
+            'comment' : 'Moved to: %s' % path,
+        })
+    def moved_from(self, path):
+        self._moved_from = path
+        self.set_attributes({
+            'color' : 'green',
+            'comment' : 'Moved from: %s' % path,
+        })
+    def moved_clear(self):
+        for comment in self._comments:
+            if comment.startswith('Moved '):
+                self._comments.remove(comment)
+        self.set_attributes({
+            'color' : COLOR_DEFAULT,
+        })
     @property
     def comment(self):
         return ' '.join(self._comments)
