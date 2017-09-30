@@ -578,7 +578,7 @@ class MainThread(threading.Thread):
             int,             #  5 Progress int
             str,             #  6 Progress text
             bool,            #  7 Progress visibility
-            str,             #  8 remote_address
+            str,             #  8 comments/tooltip
             bool,            #  9 no_reload
             gtk.gdk.Pixbuf,  # 10 icon
             str,             # 11 Local size
@@ -620,6 +620,12 @@ class MainThread(threading.Thread):
         tree_view.append_column(column)
 
         column = gtk.TreeViewColumn('File path', gtk.CellRendererText(), text=1, foreground=13)
+        column.set_resizable(True)
+        column.set_expand(True)
+        #column.set_property('visible', False)
+        tree_view.append_column(column)
+
+        column = gtk.TreeViewColumn('Comments', gtk.CellRendererText(), text=8, foreground=13)
         column.set_resizable(True)
         column.set_expand(True)
         #column.set_property('visible', False)
@@ -673,6 +679,7 @@ class MainThread(threading.Thread):
         column.set_expand(True)
         tree_view.append_column(column)
 
+        tree_view.set_tooltip_column(8)
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(tree_view)
@@ -1119,8 +1126,12 @@ class MainThread(threading.Thread):
 
     def on_settings_rename_change(self, widget, event, **user_data):
         print 3, 'Rename detection settings where changed. Rechecking suspects.'
-        for suspect in self.connection['suspected_renames']:
-            print 4, suspect.path_local
+        for item_local, item_remote in self.connection['suspected_renames']:
+            self.queue_buffer.put_nowait([self.rename_match, {
+                'item' : item_local,
+                'item_remote' : item_remote
+            }])
+            # print 4, suspect.path_local
     def gui_parent_add_bytes(self, row_reference, size):
         model = self.projectsTreeStore
         row_path = row_reference.get_path()
@@ -1425,13 +1436,14 @@ class MainThread(threading.Thread):
                 'placeholder': False,
             }
             try:
-                f_inode, f_type, f_size, f_time, full_path = file_line.strip().split(' ', 4)
+                f_inode, f_type, f_size, f_time, f_ctime, full_path = file_line.strip().split(' ', 5)
                 full_path, f_link_dest = full_path.split('->')
             except ValueError:
                 print 1, 'Error line:', file_line
                 continue
             f_inode = int(f_inode)
             f_time = int(f_time.split('.')[0])
+            f_ctime = int(f_ctime.split('.')[0])
             f_type.replace('/', 'd').replace('@', 'l') # Converts mac to linux types
             if f_type == 'd':
                 f_size = 0
@@ -1467,6 +1479,7 @@ class MainThread(threading.Thread):
                 attributes['type_local'] = f_type
                 attributes['size_local'] = f_size
                 attributes['mtime_local'] = f_time
+                attributes['ctime_local'] = f_ctime
                 attributes['link_local'] = f_link_dest
             else:
                 attributes['path_remote'] = full_path
@@ -1474,6 +1487,7 @@ class MainThread(threading.Thread):
                 attributes['type_remote'] = f_type
                 attributes['size_remote'] = f_size
                 attributes['mtime_remote'] = f_time
+                attributes['ctime_remote'] = f_ctime
                 attributes['link_remote'] = f_link_dest
             if not path_id in self.buffer:
                 item = self.buffer[path_id] = Item(path_id, this_parent, self.projectsTreeStore, self.projectsTree, attributes)
@@ -1514,10 +1528,11 @@ class MainThread(threading.Thread):
             item_remote = item
         elif item_remote:
             item_local = item
-        if not item_local in suspects:
-            suspects.append(item_local)
+        pair = (item_local, item_remote)
+        if not pair in suspects:
+            suspects.append(pair)
         print 2, 'Compare Local: %s Remote: %s' % (item_local.path_local, item_remote.path_remote)
-        if item_local.mtime_local > item_remote.mtime_remote:
+        if item_local.ctime_local > item_remote.ctime_remote:
             old_item = item_remote
             new_item = item_local
         else:
@@ -1568,10 +1583,18 @@ class MainThread(threading.Thread):
             if self.setting_folder_require.get_active():
                 return
         print 2, 'Match confidence: %i' % confidence
-        if confidence >= self.confidence_requirement.get_value():
-            print 2, 'These are probably the same files'
-        else:
+        if confidence < self.confidence_requirement.get_value():
             print 2, 'These are probably not the same files'
+        else:
+            print 2, 'These are probably the same files'
+            old_item.set_attributes({
+                'color' : COLOR_DISABLED,
+                'comment' : 'Moved to: %s' % os.path.relpath(new_item.path_id, os.path.dirname(old_item.path_id)),
+            })
+            new_item.set_attributes({
+                'color' : 'green',
+                'comment' : 'Moved from: %s' % os.path.relpath(old_item.path_id, os.path.dirname(new_item.path_id)),
+            })
     def buffer_get_parent(self, child_path_id):
         if child_path_id == '/':
             return None
@@ -2317,8 +2340,9 @@ class MainThread(threading.Thread):
             return
         if type(maxdepth) == int:
             maxdepth_str = ' -maxdepth %i' % maxdepth
-        find_cmd_local  = 'find %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%p->%%l\\\\n"' % (search_paths_local , maxdepth_str, type_filter)
-        find_cmd_remote = 'find %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%p->%%l\\\\n"' % (search_paths_remote, maxdepth_str, type_filter)
+        find_cmd = 'find %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%C@ %%p->%%l\\\\n"'
+        find_cmd_local  = find_cmd % (search_paths_local , maxdepth_str, type_filter)
+        find_cmd_remote = find_cmd % (search_paths_remote, maxdepth_str, type_filter)
         # print find_cmd_local
         # print find_cmd_remote
         self.lines_local = []
@@ -2487,6 +2511,8 @@ class Item(object):
         self._children = []
         self.mtime_remote = -1
         self.mtime_local = -1
+        self.ctime_remote = -1
+        self.ctime_local = -1
         self.size_remote = -1
         self.size_local = -1
         self.type_remote = ''
@@ -2510,6 +2536,7 @@ class Item(object):
         self.placeholder_child = False
         self.placeholder = False
         self.real_parent = None
+        self._comments = []
         if attributes:
             for key, value in attributes.iteritems():
                 key_private = '_'+key
@@ -2576,7 +2603,7 @@ class Item(object):
             int(self.progress_percent), # 5
             self.progress_string, # 6
             self.progress_visibility, # 7
-            '', # 8
+            self.comment, # 8
             self.no_reload, # 9
             self.icon, # 10
             size_local_str, # 11
@@ -2648,6 +2675,13 @@ class Item(object):
             return ICON_BIDIR
         else:
             return None
+    @property
+    def comment(self):
+        return ' '.join(self._comments)
+    @comment.setter
+    def comment(self, string):
+        if not string in self._comments:
+            self._comments.append(string)
     @property
     def parents(self):
         return self._parents
