@@ -9,6 +9,8 @@ import tempfile
 import copy
 import shutil
 
+EXTENSIONS = ['env', 'grp', 'rnd', 'fx', 'lnk', 'auto', 'clp']
+
 def escape_par(string):
     return string.replace('(', '\(').replace(')', '\)')
 class DependencyType(object):
@@ -430,14 +432,15 @@ class Stack(object):
                                     changes = True
                                     line = new_line
                                 # dependency needs to be updated at this point
-                            if not dependency.path in self._dependency_paths:
-                                self._dependencies.append(dependency)
-                                self._dependency_paths.append(dependency.path)
-                                yield dependency
-                                for child_dependency in dependency.dependencies:
-                                    if not child_dependency.name in self._dependency_paths:
-                                        self._dependencies.append(child_dependency)
-                                        yield child_dependency
+                            if os.path.realpath(dependency.path) != os.path.realpath(self.path):
+                                if not dependency.path in self._dependency_paths:
+                                    self._dependencies.append(dependency)
+                                    self._dependency_paths.append(dependency.path)
+                                    yield dependency
+                                    for child_dependency in dependency.dependencies:
+                                        if not child_dependency.name in self._dependency_paths:
+                                            self._dependencies.append(child_dependency)
+                                            yield child_dependency
 
                         char_buffer = ''
                         del level_names[-1]
