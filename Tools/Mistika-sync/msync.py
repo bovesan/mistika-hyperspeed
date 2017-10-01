@@ -1929,6 +1929,7 @@ class MainThread(threading.Thread):
             for item in items:
                 relative_paths_local[item.path_id.strip('/')] = item
                 relative_paths_remote[item.path_id.strip('/')] = item
+        print 5, 'relative_paths_remote:\n%s' % repr(relative_paths_remote)
         item = False
         temp_handle = tempfile.NamedTemporaryFile()
         temp_handle.write('\n'.join(relative_paths_remote) + '\n')
@@ -1940,9 +1941,8 @@ class MainThread(threading.Thread):
             'ssh -p %i' % self.connection['port'],
             '-u',
             '-a',
-            '-v',
-            '-v',
-            '-K',
+            '-vv',
+            '-K', # treat symlinked dir on receiver as dir
             # '-L',
         ] + extra_args + [
             '--no-perms',
@@ -1994,16 +1994,10 @@ class MainThread(threading.Thread):
                 except KeyError:
                     pass
                 item = False
-            # elif 'rsync: recv_generator: mkdir' in output and 'failed: Permission denied (13)' in output:
-            #     folder = output.split('"', 2)[1]
-            #     for rel_path in relative_paths_remote:
-            #         path_id = relative_paths_remote[rel_path.rstrip('/')]
-            #         if path_id.startswith(folder):
-            #             self.buffer[path_id].transfer_fail('Permission denied')
             else:
                 rel_path = output.strip()
                 try:
-                    item = self.buffer[relative_paths_remote[rel_path]]
+                    item = relative_paths_remote[rel_path]
                 except KeyError:
                     pass
             proc.poll()
@@ -2497,6 +2491,7 @@ class MainThread(threading.Thread):
             thread_local.join()
         if remote:
             thread_remote.join()
+        # buffer_add() is really the only thing that needs to be queued
         if local:
             self.buffer_add(
                 lines = self.lines_local,
@@ -2905,7 +2900,7 @@ class Item(object):
     def add_fetcher(self):
         dependency_fetcher_path = '%s dependency fetcher' % self.path_id
         attributes = {
-            'alias': ' <i>Getting dependencies ...</i>',
+            'alias': ' <i>Loading ...</i>',
             'icon' : PIXBUF_SEARCH,
             'placeholder' : True,
             'progress_visibility' : True
