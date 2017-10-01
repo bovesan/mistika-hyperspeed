@@ -865,8 +865,11 @@ class MainThread(threading.Thread):
         return '/'.join(level_names)
     def on_quit(self, widget):
         print 1, 'Closed by: ' + repr(widget)
-        for thread in self.threads:
-            pass
+        for thread in threading.enumerate():
+            print 'Waiting for thread: %s' % thread.name
+        # for thread in self.threads:
+        #     pass
+        self.buffer_inodes_cache_dump(force=True)
         gtk.main_quit()
     #on_<object name>_<signal name>(<signal parameters>);.
     def on_key_press_event(self,widget,event):
@@ -1834,6 +1837,8 @@ class MainThread(threading.Thread):
             self.pull_link(item)
         elif item.type_remote == 'd':
             self.pull_dir(item)
+        elif item.type_remote == 'f':
+            print 'Files should be queued,not pulled one by one.'
     def pull_rename(self, item):
         pass
     def pull_link(self, item):
@@ -2226,7 +2231,13 @@ class MainThread(threading.Thread):
         print 4, 'Inode map cache write time: %s' % human.duration(self.inodes_dump_time)
         self.inodes_dump_frequency = max(self.inodes_dump_frequency, self.inodes_dump_time+10)
         print 4, 'Adjusted inodes_dump_frequency: %s' % self.inodes_dump_frequency
-    def buffer_inodes_cache_dump(self):
+    def buffer_inodes_cache_dump(self, force=False):
+        if self.inodes_local_to_remote == {}:
+            print 4, 'Inode map is empty'
+            return
+        if force:
+            self.local_inodes_cache_write(inodes_local_to_remote_json=json.dumps(self.inodes_local_to_remote))
+            return
         if time.time() - self.inodes_last_dump < self.inodes_dump_frequency:
             return
         # Send to local daemon so we don't have to wait for I/O
@@ -2278,6 +2289,8 @@ class MainThread(threading.Thread):
         self.daemon_push_active = False
         self.daemon_pull_active = False
         self.abort = True
+        self.inodes_local_to_remote = {}
+        del self.connection
         gobject.idle_add(self.gui_disconnected)
     def remote_connect(self):
         self.connection = {
@@ -2379,11 +2392,13 @@ class MainThread(threading.Thread):
         self.files_panel.set_property('visible', False)
         self.spinner_remote.set_property('visible', False)
         self.projectsTreeStore.clear()
-    def launch_thread(self, target, args=False):
-        if args:
-            t = threading.Thread(target=target, args=args)
-        else:
-            t = threading.Thread(target=target)
+    def launch_thread(self, target, name=False, args=(), kwargs={}):
+        arg_strings = ', '.join(args)
+        for k, v in kwargs.iteritems():
+            arg_string.append('%s=%s' % (k, v))
+        if not name:
+            name = '%s(%s)' % (target, ', '.join(args))
+        t = threading.Thread(target=target, name=name, args=args, kwargs=kwargs)
         self.threads.append(t)
         t.setDaemon(True)
         t.start()
