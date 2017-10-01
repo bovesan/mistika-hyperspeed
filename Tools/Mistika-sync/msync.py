@@ -119,13 +119,13 @@ class MainThread(threading.Thread):
         self.init_gfx()
 
         vbox = gtk.VBox()
-        vbox.pack_start(self.init_connection_panel(), expand=False, fill=False, padding=0)
-        vbox.pack_start(self.init_settings_panel(), expand=False, fill=False, padding=0)
+        vbox.pack_start(self.init_connection_panel(), expand=False, fill=False, padding=5)
+        vbox.pack_start(self.init_settings_panel(), expand=False, fill=False, padding=5)
 
         vpane = gtk.VPaned()
         vpane.pack1(self.init_log_panel(), resize=False, shrink=False)
         vpane.pack2(self.init_files_panel(), resize=True, shrink=False)
-        vbox.pack_start(vpane, expand=True, fill=True, padding=0)
+        vbox.pack_start(vpane, expand=True, fill=True, padding=5)
 
         footer = gtk.HBox(False, 10)
         quitButton = gtk.Button('Quit')
