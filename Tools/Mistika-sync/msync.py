@@ -15,6 +15,7 @@ import pprint
 import subprocess
 import tempfile
 import threading
+import multiprocessing
 import time
 import sys
 import Queue
@@ -42,6 +43,17 @@ COLOR_DISABLED = '#888888'
 COLOR_WARNING = '#ff8800'
 COLOR_ALERT = '#cc0000'
 
+
+# f_device, f_inode, f_type, f_size, f_mtime, f_ctime, f_path, f_link
+STAT_FORMAT_LINUX      = "%d %i '%F' %s %Y %Z '%n' %N"
+# 2056 19564119 'regular file' 195 1506332342 1506332342 'config.xml' ‘config.xml’
+STAT_FORMAT_LINUX_FIND = "%D %i '%y' %s %T@ %C@ '%p' '%l'\n"
+# 2056 19564119 'f' 195 1506332342.5589832870 1506332342.5589832870 'config.xml' ''
+STAT_FORMAT_MAC        = "%d %i '%T' %z %m %c '%N' '%Y'"
+
+SHELL_ARGS_LIMIT = 100
+THREAD_LIMIT = multiprocessing.cpu_count()
+
 ICON_CONNECT = gtk.image_new_from_stock(gtk.STOCK_CONNECT,  gtk.ICON_SIZE_BUTTON)
 ICON_DISCONNECT = gtk.image_new_from_stock(gtk.STOCK_DISCONNECT,  gtk.ICON_SIZE_BUTTON)
 ICON_CONNECTED = gtk.image_new_from_stock(gtk.STOCK_APPLY,  gtk.ICON_SIZE_BUTTON)
@@ -63,6 +75,9 @@ PIXBUF_CANCEL = gtk.gdk.pixbuf_new_from_file_at_size('res/img/cancel.png', 16, 1
 PIXBUF_RESET = gtk.gdk.pixbuf_new_from_file_at_size('res/img/reset.png', 16, 16)
 
 class MainThread(threading.Thread):
+    console_pre_buffer = []
+    CONSOLE_FREQUENCY = 1.0
+    console_last_write = 0.0
     def __init__(self):
         super(MainThread, self).__init__()
         self.threads = []
@@ -309,6 +324,7 @@ class MainThread(threading.Thread):
         button = self.button_connect = gtk.Button(stock=gtk.STOCK_CONNECT)
         #button.set_image(self.icon_connect)
         button.connect("clicked", self.on_host_connect)
+        # button.set_size_request(166, 100)
         hbox.pack_start(button, False, False)
 
         button = self.button_disconnect = gtk.Button(stock=gtk.STOCK_DISCONNECT)
@@ -316,27 +332,49 @@ class MainThread(threading.Thread):
         button.set_no_show_all(True)
         hbox.pack_start(button, False, False)
 
+        # Buffer status
+        widget = self.buffer_status = gtk.HBox(False, 10)
+        spinner = gtk.Image()
+        spinner.set_from_file('res/img/spinner01.gif')
+        widget.pack_start(spinner, False, False)
+        label = gtk.Label('File operation')
+        widget.pack_start(label, False, False)
+        widget.show_all()
+        widget.set_no_show_all(True)
+        widget.set_visible(False)
+        hbox.pack_start(widget, False, False)
+
         # Remote status
+        widget = self.remote_status = gtk.HBox(False, 10)
         spinner = self.spinner_remote = gtk.Image()
         spinner.set_from_file('res/img/spinner01.gif')
         #self.spinner_remote = gtk.Spinner()
         #self.spinner_remote.start()
         #self.spinner_remote.set_size_request(20, 20)
         spinner.set_no_show_all(True)
-        hbox.pack_start(spinner, False, False)
+        widget.pack_start(spinner, False, False)
         label = self.remote_status_label = gtk.Label()
-        hbox.pack_start(label, False, False)
+        widget.pack_start(label, False, False)
+        widget.show_all()
+        widget.set_no_show_all(True)
+        widget.set_visible(False)
+        hbox.pack_start(widget, False, False)
 
         # Local status
+        widget = self.local_status = gtk.HBox(False, 10)
         spinner = self.spinner_local = gtk.Image()
         spinner.set_from_file('res/img/spinner01.gif')
         #self.spinner_local = gtk.Spinner()
         #self.spinner_local.start()
         #self.spinner_local.set_size_request(20, 20)
         spinner.set_no_show_all(True)
-        hbox.pack_start(spinner, False, False)
+        widget.pack_start(spinner, False, False)
         label = self.local_status_label = gtk.Label()
-        hbox.pack_start(label, False, False)
+        widget.pack_start(label, False, False)
+        widget.show_all()
+        widget.set_no_show_all(True)
+        widget.set_visible(False)
+        hbox.pack_start(widget, False, False)
 
         #button.set_image(spinner)
         vbox.pack_start(hbox, False, False, 0)
@@ -828,11 +866,6 @@ class MainThread(threading.Thread):
             return False
 
         return True
-    def start_daemon(self, daemon):
-        t = threading.Thread(target=daemon)
-        self.threads.append(t)
-        t.setDaemon(True)
-        t.start()
     def on_log_show(self, expander, size, controls):
         parent = expander.get_parent()
         if not expander.get_expanded():
@@ -890,10 +923,10 @@ class MainThread(threading.Thread):
         # print 'Expanding ' + file_path
         file_item = self.buffer[file_path]
         if file_path.rsplit('.', 1)[-1] in hyperspeed.stack.EXTENSIONS: # Should already be loaded
-            t = threading.Thread(target=self.io_get_associated, args=[file_path])
-            self.threads.append(t)
-            t.setDaemon(True)
-            t.start()
+            self.queue_local.put_nowait([self.io_get_associated, {
+                'path_id' : file_path
+                }])
+            # self.launch_thread(target=self.io_get_associated, args=[file_path])
             return
         if file_item.virtual:
             # print 'Virtual item'
@@ -917,10 +950,7 @@ class MainThread(threading.Thread):
         gobject.idle_add(self.gui_set_value, tree, row_reference, column, new_text)
         #tree[path][column] = new_text
         # print '-> ' + tree[path][column]
-        t = threading.Thread(target=self.io_hosts_store)
-        self.threads.append(t)
-        t.setDaemon(True)
-        t.start()
+        self.launch_thread(target=self.io_hosts_store)
     def on_host_update(self, widget, *user_data):
         print 4, 'on_host_update(%s, %s)' % (widget, user_data)
         #print model[iter][0]
@@ -966,10 +996,7 @@ class MainThread(threading.Thread):
             host_dict['selected'] = selected
             hosts[alias] = host_dict
         # print 'hosts: ' + repr(hosts)
-        t = threading.Thread(target=self.io_hosts_store, args=[hosts])
-        self.threads.append(t)
-        t.setDaemon(True)
-        t.start()
+        self.launch_thread(target=self.io_hosts_store, args=[hosts])
         try:
             if gtk.gdk.keyval_name(user_data[0].keyval) == 'Return':
                 self.on_host_connect(widget)
@@ -1159,15 +1186,6 @@ class MainThread(threading.Thread):
                     'recursive' : False
                     }])
             elif mode == 'recursive':
-                self.queue_buffer.put_nowait([item.enqueue, {
-                    'push_allow' : self.allow_push.get_active(),
-                    'pull_allow' : self.allow_pull.get_active(), 
-                    'queue_push' : self.queue_push,
-                    'queue_pull' : self.queue_pull,
-                    'queue_push_size' : self.queue_push_size,
-                    'queue_pull_size' : self.queue_pull_size,
-                    'recursive' : False
-                    }])
                 if len(item.children) > 0 and not item.deep_searched and not item.virtual:
                     if item.direction == 'pull':
                         continue
@@ -1181,6 +1199,16 @@ class MainThread(threading.Thread):
                             'paths': [path_id],
                             'sync': True,
                             'maxdepth': False
+                        }])
+                else:
+                    self.queue_buffer.put_nowait([item.enqueue, {
+                        'push_allow' : self.allow_push.get_active(),
+                        'pull_allow' : self.allow_pull.get_active(), 
+                        'queue_push' : self.queue_push,
+                        'queue_pull' : self.queue_pull,
+                        'queue_push_size' : self.queue_push_size,
+                        'queue_pull_size' : self.queue_pull_size,
+                        'recursive' : True
                         }])
             elif mode == 'children':
                 if len(item.children) > 0:
@@ -1299,10 +1327,7 @@ class MainThread(threading.Thread):
         (model, iter) = selection.get_selected()
         try:
             model.remove(iter)
-            t = threading.Thread(target=self.io_hosts_store)
-            self.threads.append(t)
-            t.setDaemon(True)
-            t.start()
+            self.launch_thread(target=self.io_hosts_store)
         except:
             raise
     def gui_parent_modified(self, row_iter, direction):
@@ -1452,7 +1477,7 @@ class MainThread(threading.Thread):
                             message_format=None)
         dialog.set_markup('\n'.join(file_infos))
         dialog.run()
-    def io_list_files_local(self, find_cmd, parent_path=False):
+    def io_list_files_local(self, find_cmd, parent=False, paths=[], items=[], maxdepth=2):
         gobject.idle_add(self.spinner_local.set_property, 'visible', True)
         gobject.idle_add(self.local_status_label.set_label, 'Listing local files')
         cmd = find_cmd.replace('<projects>', mistika.projects_folder).replace('<absolute>/', '/')
@@ -1466,37 +1491,78 @@ class MainThread(threading.Thread):
                 loader.set_from_stock(gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
                 gobject.idle_add(self.gui_show_error, stderr)
                 return
-            self.lines_local = output.splitlines()
+            lines = output.splitlines()
         except:
             print 1, stderr
             raise
             gobject.idle_add(self.gui_show_error, stderr)
             return
+        self.queue_buffer.put_nowait([self.buffer_add, {
+                        'lines' : lines,
+                        'host'  : 'localhost',
+                        'root'  : mistika.projects_folder,
+                        'parent': parent
+                    }])
         gobject.idle_add(self.spinner_local.set_property, 'visible', False)
         gobject.idle_add(self.local_status_label.set_label, '')
         #gobject.idle_add(loader.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
-    def io_list_files_remote(self, find_cmd):
+    def io_list_files_remote(self, find_cmd, sync_against_local_thread=False, parent=False, paths=[], items=[], maxdepth=2):
+        print 'io_list_files_remote() paths: %s' % repr(paths)
+        type_filter = ''
+        maxdepth_str = ''
+        if paths == [] == items:
+            paths.append('')
+            type_filter = ' -type d'
+        if type(maxdepth) == int:
+            maxdepth_str = ' -maxdepth %i' % maxdepth
         #gobject.idle_add(self.button_load_remote_projects.set_image, loader)
         gobject.idle_add(self.spinner_remote.set_visible, True)
         gobject.idle_add(self.remote_status_label.set_label, 'Listing remote files')
-        cmd = find_cmd.replace('<projects>', self.connection['projects_path']).replace('<absolute>/', self.connection['root'])
-        if self.connection['is_mac']:
-            cmd = self.aux_fix_mac_printf(cmd)
-        ssh_cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.connection['port']), '%s@%s' % (self.connection['user'], self.connection['address']), cmd]
-        print 3, ' '.join(ssh_cmd)
-        try:
-            p1 = subprocess.Popen(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            output, stderr = p1.communicate()
-            if False and p1.returncode > 0:
+        find_cmd = 'find %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%C@ %%p->%%l\\\\n"'
+        processes = []
+        while len(paths) > 0:
+            chunk = paths[:SHELL_ARGS_LIMIT]
+            del paths[:SHELL_ARGS_LIMIT]
+            paths_quoted = []
+            for path in chunk:
+                paths_quoted.append("'%s'" % path)
+            cmd = find_cmd % (' '.join(paths_quoted) , maxdepth_str, type_filter)
+            if self.connection['is_mac']:
+                cmd = self.aux_fix_mac_printf(cmd)
+            ssh_cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.connection['port']), '%s@%s' % (self.connection['user'], self.connection['address']), cmd]
+            print 3, ' '.join(ssh_cmd)
+            processes.append(subprocess.Popen(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE))
+        for proc in processes:
+            output, stderr = proc.communicate()
+            if False and proc.returncode > 0:
                 loader.set_from_stock(gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
                 gobject.idle_add(self.gui_show_error, stderr)
-                return
-            self.lines_remote = output.splitlines()
-        except KeyError:
-            print 1, stderr
-            raise
-            gobject.idle_add(self.gui_show_error, stderr)
-            return
+                continue
+            lines = output.splitlines()
+            self.queue_buffer.put_nowait([self.buffer_add, {
+                            'lines'  : lines,
+                            'host'   : self.connection['alias'],
+                            'root'   : self.connection['projects_path'],
+                            'parent' : parent
+                        }])
+        if not maxdepth:
+            for item in items:
+                self.queue_buffer.put_nowait([item.set_deep_searched, {
+                                    'attributes' : {
+                                        'deep_searched' : True
+                                    }
+                                }])
+        if sync_against_local_thread:
+            sync_against_local_thread.join()
+            for path in paths:
+                self.queue_buffer.put_nowait([self.buffer[path].enqueue, {
+                                    'push_allow' : self.allow_push.get_active(),
+                                    'pull_allow' : self.allow_pull.get_active(), 
+                                    'queue_push' : self.queue_push,
+                                    'queue_pull' : self.queue_pull,
+                                    'queue_push_size' : self.queue_push_size,
+                                    'queue_pull_size' : self.queue_pull_size
+                                }])
         gobject.idle_add(self.remote_status_label.set_label, '')
         gobject.idle_add(self.spinner_remote.set_visible, False)
         #self.project_cell.set_property('foreground', '#000000')
@@ -1510,7 +1576,7 @@ class MainThread(threading.Thread):
         if not root == '':
             root += '/'
         for file_line in lines:
-            print 5, file_line
+            # print 5, file_line
             attributes = {
                 'real_parent' : parent,
                 # 'virtual' : False,
@@ -1532,6 +1598,10 @@ class MainThread(threading.Thread):
             else:
                 f_size = int(f_size)
             f_basename = full_path.strip('/').split('/')[-1]
+            f_ext = os.path.splitext(f_basename)[1].strip('.')
+            if f_basename.startswith('.') and f_ext in hyperspeed.stack.EXTENSIONS:
+                # Hidden stack
+                return
             if full_path.startswith(root): # Relative path
                 path_id = full_path.replace(root, '', 1).strip('/')
             else: # Absolute path
@@ -1697,7 +1767,7 @@ class MainThread(threading.Thread):
             #     'color' : 'green',
             #     'comment' : 'Moved from: %s' % os.path.relpath(old_item.path_id, os.path.dirname(new_item.path_id)),
             # })
-    def buffer_get_parent(self, child_path_id):
+    def buffer_get_parent(self, child_path_id, real_parent=None):
         if child_path_id == '/':
             return None
         path_id = os.path.dirname(child_path_id)
@@ -1715,20 +1785,13 @@ class MainThread(threading.Thread):
                 'type_remote': 'd',
                 'direction'  : 'unknown',
                 'alias'      : alias ,
+                'real_parent': real_parent
             }
             # real_parent_path = parent_path
             # while not (real_parent_path in self.buffer and not self.buffer[real_parent_path].virtual):
             #     real_parent_path = os.path.dirname(real_parent_path)
-            parent = self.buffer_get_parent(path_id)
-            if path_id.endswith('Exports'):
-                print 4, 'New virtual file:', path_id, parent.path_id
+            parent = self.buffer_get_parent(path_id, real_parent)
             self.buffer[path_id] = Item(path_id, parent, self.projectsTreeStore, self.projectsTree, attributes)
-            # real_path = path_id.replace(real_parent_path, '', 1)
-            # self.queue_buffer.put_nowait([self.buffer_list_files, {
-            #         'paths' : [real_path],
-            #         'parent' : self.buffer[real_parent_path],
-            #         'maxdepth' : 1,
-            #         }])
         return self.buffer[path_id]
     def daemon_buffer(self):
         q = self.queue_buffer
@@ -1736,7 +1799,8 @@ class MainThread(threading.Thread):
         while self.daemon_buffer_active:
             try:
                 #print 'daemon_buffer.get()'
-                item = q.get(True, 5)
+                item = q.get_nowait()
+                gobject.idle_add(self.buffer_status.set_visible, True)
                 item_len = len(item)
                 try:
                     if item_len == 1:
@@ -1749,7 +1813,52 @@ class MainThread(threading.Thread):
                     print 3, 'Error:'
                     print 3, repr(e)
             except Queue.Empty:
-                pass
+                gobject.idle_add(self.buffer_status.set_visible, False)
+                time.sleep(1)
+    def daemon_local(self):
+        q = self.queue_local
+        self.daemon_local_active = True
+        while self.daemon_local_active:
+            try:
+                #print 'daemon_buffer.get()'
+                item = q.get_nowait()
+                gobject.idle_add(self.local_status.set_visible, True)
+                item_len = len(item)
+                try:
+                    if item_len == 1:
+                        item[0]()
+                    else:
+                        item[0](**item[1])
+                    q.task_done()
+                except Exception as e:
+                    raise
+                    print 3, 'Error:'
+                    print 3, repr(e)
+            except Queue.Empty:
+                gobject.idle_add(self.local_status.set_visible, False)
+                time.sleep(1)
+    def daemon_remote(self):
+        q = self.queue_remote
+        self.daemon_remote_active = True
+        while self.daemon_remote_active:
+            try:
+                #print 'daemon_buffer.get()'
+                item = q.get_nowait()
+                gobject.idle_add(self.remote_status.set_visible, True)
+                item_len = len(item)
+                try:
+                    if item_len == 1:
+                        item[0]()
+                    else:
+                        item[0](**item[1])
+                    q.task_done()
+                except Exception as e:
+                    raise
+                    print 3, 'Error:'
+                    print 3, repr(e)
+            except Queue.Empty:
+                gobject.idle_add(self.remote_status.set_visible, False)
+                time.sleep(1)
     def daemon_push(self):
         BATCH_SIZE = 10 * 1000 * 1000
         self.daemon_push_active = True
@@ -1825,11 +1934,11 @@ class MainThread(threading.Thread):
             except Queue.Empty:
                 do_now = True
             if queue_size_absolute > BATCH_SIZE or do_now:
-                self.pull_file(items_absolute, absolute=True)
+                self.pull_files(items_absolute, absolute=True)
                 items_absolute = []
                 queue_size_absolute = 0
             if queue_size_relative > BATCH_SIZE or do_now:
-                self.pull_file(items_relative)
+                self.pull_files(items_relative)
                 items_relative = []
                 queue_size_relative = 0
     def pull(self, item):
@@ -1905,10 +2014,10 @@ class MainThread(threading.Thread):
                 self.queue_pull_size[0] -= item.size_remote
             except OSError as e:
                 print 1, 'Could not create dir:', real_path
-                item.transfer_fail('Could not create dir: '+ link_target_abs)
+                item.transfer_fail('Could not create dir: '+ real_path)
                 self.queue_pull_size[0] -= item.size_remote
                 print 2, e
-    def pull_file(self, items, absolute=False):
+    def pull_files(self, items, absolute=False):
         if len(items) == 0:
             return
         for item in items:
@@ -1929,7 +2038,7 @@ class MainThread(threading.Thread):
             for item in items:
                 relative_paths_local[item.path_id.strip('/')] = item
                 relative_paths_remote[item.path_id.strip('/')] = item
-        print 5, 'relative_paths_remote:\n%s' % repr(relative_paths_remote)
+        # print 5, 'relative_paths_remote:\n%s' % repr(relative_paths_remote)
         item = False
         temp_handle = tempfile.NamedTemporaryFile()
         temp_handle.write('\n'.join(relative_paths_remote) + '\n')
@@ -1974,7 +2083,7 @@ class MainThread(threading.Thread):
                 char = proc.stdout.read(1)
                 output += char
             fields = output.split()
-            print 5, output.strip().ljust(100)
+            # print 5, output.strip().ljust(100)
             if item and len(fields) >= 4 and fields[1].endswith('%'):
                 bytes_done = int(fields[0])
                 bytes_done_delta = bytes_done - item.bytes_done
@@ -2036,8 +2145,9 @@ class MainThread(threading.Thread):
                     'sync': False,
                     'remap': self.mappings_to_local
                 }])
+        # print repr(relative_paths_local)
         self.queue_buffer.put_nowait([self.buffer_list_files, {
-                    'paths' : [item.path_id for item in relative_paths_local.values()],
+                    'items' : relative_paths_local.values(),
                     'sync' : False,
                     'maxdepth' : 0,
                     'remote' : False,
@@ -2189,23 +2299,6 @@ class MainThread(threading.Thread):
                     'sync' : False,
                     'maxdepth' : 0,
                     }])
-    def daemon_local(self):
-        q = self.queue_local
-        self.daemon_local_active = True
-        while self.daemon_local_active:
-            try:
-                item = q.get(True, 1)
-                item_len = len(item)
-                try:
-                    if item_len == 1:
-                        item[0]()
-                    else:
-                        item[0](**item[1])
-                    q.task_done()
-                except Exception as e:
-                    print 1, 'Error:', repr(e)
-            except Queue.Empty:
-                time.sleep(1)
     def local_inodes_cache_write(self, inodes_local_to_remote_json):
         dir_path = os.path.dirname(self.connection['inodes_map_cache_path'])
         if not os.path.isdir(dir_path):
@@ -2357,12 +2450,20 @@ class MainThread(threading.Thread):
                 self.mappings_local_to_id[map_id] = (mapping[0]+'/', '')
             elif map_id == 'media':
                 self.mappings_local_to_id[map_id] = (mapping[0], '/')
+        self.mappings_id_to_remote = {}
+        for map_id, mapping in mappings.iteritems():
+            if map_id == 'projects':
+                self.mappings_id_to_remote[map_id] = ('', mapping[1]+'/')
+            elif map_id == 'media':
+                self.mappings_id_to_remote[map_id] = ('/', mapping[1])
         gobject.idle_add(self.gui_connected)
+        self.queue_buffer.put_nowait([self.buffer_inodes_cache_read])
         self.queue_buffer.put_nowait([self.buffer_list_files])
-        self.start_daemon(self.daemon_buffer)
-        self.start_daemon(self.daemon_local)
-        self.start_daemon(self.daemon_push)
-        self.start_daemon(self.daemon_pull)
+        self.launch_thread(self.daemon_buffer, name='File buffer daemon')
+        self.launch_thread(self.daemon_local, name='Local daemon')
+        self.launch_thread(self.daemon_remote, name='Local daemon')
+        self.launch_thread(self.daemon_push, name='Push daemon')
+        self.launch_thread(self.daemon_pull, name='Pull daemon')
     def buffer_clear(self):
         self.buffer = {}
     def gui_connection_panel_lock(self, lock=True):
@@ -2387,11 +2488,16 @@ class MainThread(threading.Thread):
         self.spinner_remote.set_property('visible', False)
         self.projectsTreeStore.clear()
     def launch_thread(self, target, name=False, args=(), kwargs={}):
-        arg_strings = ', '.join(args)
+        if threading.active_count() >= THREAD_LIMIT:
+            print 'Thread limit reached: %i/%i' % (threading.active_count, THREAD_LIMIT)
+        arg_strings = []
+        for arg in list(args):
+            arg_strings.append(repr(arg))
         for k, v in kwargs.iteritems():
-            arg_string.append('%s=%s' % (k, v))
+            arg_strings.append('%s=%s' % (k, v))
         if not name:
-            name = '%s(%s)' % (target, ', '.join(args))
+            print 4, 'thread args: %s' % repr(arg_strings)
+            name = '%s(%s)' % (target, ', '.join(arg_strings))
         t = threading.Thread(target=target, name=name, args=args, kwargs=kwargs)
         self.threads.append(t)
         t.setDaemon(True)
@@ -2399,6 +2505,19 @@ class MainThread(threading.Thread):
         return t
     def remap_to_remote(self, path):
         mappings = self.mappings
+        for map_id in ['projects', 'media']:
+            mapping = mappings[map_id]
+            if path.startswith(mapping[0]):
+                # print 'Remap:', path,
+                path = path.replace(mapping[0], mapping[1], 1)
+                # print '>', path
+                break
+        return path
+    def remap_id_to_remote(self, path):
+        mappings = self.mappings_id_to_remote
+        if path == '':
+            print 'Blank path_id. Root element: %s' % mappings['projects'][1]
+            return mappings['projects'][1]
         for map_id in ['projects', 'media']:
             mapping = mappings[map_id]
             if path.startswith(mapping[0]):
@@ -2427,104 +2546,105 @@ class MainThread(threading.Thread):
                 # print '>', path
                 break
         return path
-    def buffer_list_files(self, paths=[''], parent=None, sync=False, maxdepth = 2, pre_allocate=False, local=True, remote=True):
+    def io_stat(self, paths):
+        return str.replace('-printf',  '-print0 | xargs -0 stat -f').replace('%T@', '%m').replace('%s', '%z').replace('%y', '%T').replace('%p', '%N').replace('%l', '%Y').replace('\\\\n', '')
+        pass
+    def buffer_list_files(self, paths=[], parent=None, sync=False, maxdepth = 2, pre_allocate=False, local=True, remote=True, items=[]):
+        if len(items) > 0:
+            for item in items:
+                paths.append(item.path_id)
         type_filter = ''
         maxdepth_str = ''
-        if paths == ['']:
+        if paths == [] == items:
+            paths.append('')
             type_filter = ' -type d'
-        search_paths_local  = ''
-        search_paths_remote = ''
-        for path in paths:
-            if type(path) is tuple:
-                f_path, start, end = path
-            else:
-                f_path = path
-            if f_path in self.buffer and self.buffer[f_path].virtual:
-                continue
-            if f_path.startswith('/'):
-                root = '<absolute>'
-                pre_alloc_path = f_path
-            else:
-                root = '<projects>/'
-                pre_alloc_path = f_path
-            f_path_remote = self.remap_to_remote(f_path)
-            if '%' in f_path:
-                search_paths_local  += ' "%s%s"' % (root, string_format_to_wildcard(f_path       , wrapping='"'))
-                search_paths_remote += ' "%s%s"' % (root, string_format_to_wildcard(f_path_remote, wrapping='"'))
-            else:
-                search_paths_local  += ' "%s%s"' % (root, f_path       )
-                search_paths_remote += ' "%s%s"' % (root, f_path_remote)
-            # print 'buffer_list_files()', f_path, 'in buffer:', f_path in self.buffer
-            if pre_allocate and not pre_alloc_path in self.buffer:
-                # print 'pre_allocate', f_path
-                attributes = {
-                    'color':COLOR_WARNING,
-                    'placeholder':True,
-                    'virtual':True,
-                    # 'alias' : f_path+':'+f_path_remote
+        search_paths_local  = []
+        search_paths_remote = []
+        paths_all = paths
+        while len(paths_all) > 0:
+            paths = paths_all[:SHELL_ARGS_LIMIT]
+            del paths_all[:SHELL_ARGS_LIMIT]
+            for path in paths:
+                print 4, 'buffer_list_files() path: %s' % path
+                if type(path) is tuple:
+                    f_path, start, end = path
+                else:
+                    f_path = path
+                if f_path in self.buffer and self.buffer[f_path].virtual:
+                    continue
+                if f_path.startswith('/'):
+                    root = '<absolute>'
+                    pre_alloc_path = f_path
+                else:
+                    root = '<projects>/'
+                    pre_alloc_path = f_path
+                f_path_remote = self.remap_id_to_remote(f_path)
+                if '%' in f_path:
+                    search_paths_local.append('"%s%s"' % (root, string_format_to_wildcard(f_path       , wrapping='"')))
+                    search_paths_remote.append(string_format_to_wildcard(f_path_remote, wrapping=''))
+                else:
+                    search_paths_local.append('"%s%s"' % (root, f_path))
+                    search_paths_remote.append(f_path_remote)
+                # print 'buffer_list_files()', f_path, 'in buffer:', f_path in self.buffer
+                if pre_allocate and not pre_alloc_path in self.buffer:
+                    # print 'pre_allocate', f_path
+                    attributes = {
+                        'color':COLOR_WARNING,
+                        'placeholder':True,
+                        'virtual':True,
+                        # 'alias' : f_path+':'+f_path_remote
+                    }
+                    self.buffer[pre_alloc_path] = Item(pre_alloc_path, self.buffer_get_parent(parent.path_id+'/'+pre_alloc_path, real_parent=parent), self.projectsTreeStore, self.projectsTree, attributes)
+                    # gobject.idle_add(self.gui_expand, parent)
+            if search_paths_local == []:
+                print 3, 'buffer_list_files(): no search paths'
+                return
+            if type(maxdepth) == int:
+                maxdepth_str = ' -maxdepth %i' % maxdepth
+            find_cmd = 'find %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%C@ %%p->%%l\\\\n"'
+            find_cmd_local  = find_cmd % (' '.join(search_paths_local) , maxdepth_str, type_filter)
+            find_cmd_remote = find_cmd % (' '.join(search_paths_remote), maxdepth_str, type_filter)
+            # print find_cmd_local
+            # print find_cmd_remote
+            self.lines_local = []
+            self.lines_remote = []
+            if local:
+                kwargs_local = {
+                    'find_cmd' : find_cmd_local,
+                    'parent' : parent,
+                    'paths' : search_paths_local,
+                    'maxdepth' : maxdepth
                 }
-                self.buffer[pre_alloc_path] = Item(pre_alloc_path, self.buffer_get_parent(parent.path_id+'/'+pre_alloc_path), self.projectsTreeStore, self.projectsTree, attributes)
-                # gobject.idle_add(self.gui_expand, parent)
-        if search_paths_local == '':
-            print 3, 'buffer_list_files(): no search paths'
-            return
-        if type(maxdepth) == int:
-            maxdepth_str = ' -maxdepth %i' % maxdepth
-        find_cmd = 'find %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%C@ %%p->%%l\\\\n"'
-        find_cmd_local  = find_cmd % (search_paths_local , maxdepth_str, type_filter)
-        find_cmd_remote = find_cmd % (search_paths_remote, maxdepth_str, type_filter)
-        # print find_cmd_local
-        # print find_cmd_remote
-        self.lines_local = []
-        self.lines_remote = []
-        if local:
-            thread_local = self.launch_thread(target=self.io_list_files_local, args=[find_cmd_local])
-        if remote:
-            thread_remote = self.launch_thread(target=self.io_list_files_remote, args=[find_cmd_remote])
+                thread_local = self.queue_local.put_nowait([self.io_list_files_local, kwargs_local])
+            if remote:
+                kwargs_remote = {
+                    'find_cmd' : find_cmd_remote,
+                    'parent' : parent,
+                    'paths' : search_paths_remote,
+                    'maxdepth' : maxdepth
+                }
+                if sync:
+                    kwargs_remote['sync_against_local_thread'] = thread_local
+                thread_remote = self.queue_remote.put_nowait([self.io_list_files_remote, kwargs_remote])
 
-        # Use the wait to load inodes cache
-        if len(self.inodes_local_to_remote) == 0:
-            self.buffer_inodes_cache_read()
 
-        # Waiting here to limit the time between showing local and remote files
-        if local:
-            thread_local.join()
-        if remote:
-            thread_remote.join()
-        # buffer_add() is really the only thing that needs to be queued
-        if local:
-            self.buffer_add(
-                lines = self.lines_local,
-                host = 'localhost',
-                root = mistika.projects_folder,
-                parent = parent
-            )
-        if remote:
-            self.buffer_add(
-                lines = self.lines_remote,
-                host = self.connection['alias'],
-                root = self.connection['projects_path'],
-                parent = parent
-            )
-        for path in paths:
-            if type(path) is tuple:
-                path, start, end = path
-                path = path.split('%', 1)[0]
-            for f_path in sorted(self.buffer):
-                #print 'f_path: ' + f_path + ' path: ' + path
-                if f_path.startswith(path):
-                    if not maxdepth:
-                        self.buffer[f_path].deep_searched = True
-                    #gobject.idle_add(self.gui_refresh_path, f_path)
-            if sync:
-                self.buffer[path].enqueue(
-                    push_allow = self.allow_push.get_active(),
-                    pull_allow = self.allow_pull.get_active(), 
-                    queue_push = self.queue_push,
-                    queue_pull = self.queue_pull,
-                    queue_push_size = self.queue_push_size,
-                    queue_pull_size = self.queue_pull_size
-                )
+            # # Waiting here to limit the time between showing local and remote files
+            # if local:
+            #     thread_local.join()
+            # if remote:
+            #     thread_remote.join()
+            # # buffer_add() is really the only thing that needs to be queued
+            # if remote:
+            # for path in paths:
+            #     if type(path) is tuple:
+            #         path, start, end = path
+            #         path = path.split('%', 1)[0]
+            #     for f_path in sorted(self.buffer):
+            #         #print 'f_path: ' + f_path + ' path: ' + path
+            #         if f_path.startswith(path):
+            #             if not maxdepth:
+            #                 self.buffer[f_path].deep_searched = True
+            #             #gobject.idle_add(self.gui_refresh_path, f_path)
     def io_hosts_populate(self, tree):
         try:
             hosts = json.loads(open(CFG_HOSTS_PATH).read())
@@ -2552,6 +2672,7 @@ class MainThread(threading.Thread):
         except:
             raise
     def gui_periodical_updates(self):
+        print 'Threads: %i' %  threading.active_count()
         try:
             self.gui_periodical_updates_history
         except AttributeError:
@@ -2619,14 +2740,18 @@ class MainThread(threading.Thread):
             tag = self.tags['lvl4']
         elif self.line_log_level == 5:
             tag = self.tags['lvl5']
-        gobject.idle_add(self.gui_log_append, markup % string, tag)
+        self.console_pre_buffer.append((markup % string, tag))
+        if time.time() - self.console_last_write > self.CONSOLE_FREQUENCY:
+            gobject.idle_add(self.gui_log_append)
     def flush(self, **args):
-        pass
-    def gui_log_append(self, string, tag):
-        if tag:
-            self.console_buffer.insert_with_tags(self.console_buffer.get_end_iter(), string, tag)
-        else:
-            self.console_buffer.insert(self.console_buffer.get_end_iter(), string)
+        gobject.idle_add(self.gui_log_append)
+    def gui_log_append(self):
+        while len(self.console_pre_buffer) > 0:
+            string, tag = self.console_pre_buffer.pop()
+            if tag:
+                self.console_buffer.insert_with_tags(self.console_buffer.get_end_iter(), string, tag)
+            else:
+                self.console_buffer.insert(self.console_buffer.get_end_iter(), string)
 
 class Item(object):
     _moved_to = False
@@ -3025,6 +3150,6 @@ os.environ['LC_ALL'] = 'en_US.utf8'
 gobject.threads_init()
 t = MainThread()
 t.start()
-sys.stdout = t
+# sys.stdout = t
 gtk.main()
 t.quit = True
