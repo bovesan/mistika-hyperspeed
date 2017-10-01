@@ -440,6 +440,7 @@ class Stack(object):
                                     for child_dependency in dependency.dependencies:
                                         if not child_dependency.name in self._dependency_paths:
                                             self._dependencies.append(child_dependency)
+                                            self._dependency_paths.append(child_dependency.name)
                                             yield child_dependency
 
                         char_buffer = ''
