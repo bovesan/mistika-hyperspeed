@@ -911,7 +911,7 @@ class MainThread(threading.Thread):
         state = event.state
         ctrl = (state & gtk.gdk.CONTROL_MASK)
         command = (state & gtk.gdk.MOD1_MASK)
-        if ctrl or command and keyval_name == 'q':
+        if (ctrl or command) and keyval_name == 'q':
             self.on_quit(widget)
         else:
             return False
@@ -1003,7 +1003,8 @@ class MainThread(threading.Thread):
         except (IndexError, AttributeError):
             pass
     def on_host_connect(self, widget):
-        self.launch_thread(self.remote_connect)
+        self.queue_remote.put_nowait([self.remote_connect])
+        self.launch_thread(self.daemon_remote, name='Remote daemon')
     def on_host_disconnect(self, widget):
         self.remote_disconnect()
     def gui_refresh_progress(self, row_reference, progress_float=0.0):
@@ -1034,12 +1035,12 @@ class MainThread(threading.Thread):
         progress_callback(progress_float=0.0)
         for dependency in stack.iter_dependencies(progress_callback=progress_callback, remap=remap):
             search_path = dependency.path
-            if search_path.startswith(mistika.projects_folder):
-                search_path = search_path.replace(mistika.projects_folder+'/', '', 1)
+            # if search_path.startswith(mistika.projects_folder):
+            #     search_path = search_path.replace(mistika.projects_folder+'/', '', 1)
             # elif search_path.startswith(self.connection['projects_path']):
             #     search_path = search_path.replace(self.connection['projects_path']+'/', '', 1)
             # print 'search_path:', search_path
-            files_chunk.append(search_path)
+            files_chunk.append(self.remap_local_to_id(search_path))
             if len(files_chunk) >= files_chunk_max_size:
                 self.queue_buffer.put_nowait([self.buffer_list_files, {
                     'paths' : files_chunk,
@@ -1477,7 +1478,7 @@ class MainThread(threading.Thread):
                             message_format=None)
         dialog.set_markup('\n'.join(file_infos))
         dialog.run()
-    def io_list_files_local(self, find_cmd, parent=False, paths=[], items=[], maxdepth=2):
+    def io_list_files_local(self, find_cmd, thread_link, parent=False, paths=[], items=[], maxdepth=2):
         gobject.idle_add(self.spinner_local.set_property, 'visible', True)
         gobject.idle_add(self.local_status_label.set_label, 'Listing local files')
         cmd = find_cmd.replace('<projects>', mistika.projects_folder).replace('<absolute>/', '/')
@@ -1503,30 +1504,33 @@ class MainThread(threading.Thread):
                         'root'  : mistika.projects_folder,
                         'parent': parent
                     }])
+        thread_link.release()
         gobject.idle_add(self.spinner_local.set_property, 'visible', False)
         gobject.idle_add(self.local_status_label.set_label, '')
         #gobject.idle_add(loader.set_from_stock, gtk.STOCK_APPLY, gtk.ICON_SIZE_BUTTON)
-    def io_list_files_remote(self, find_cmd, sync_against_local_thread=False, parent=False, paths=[], items=[], maxdepth=2):
+    def io_list_files_remote(self, find_cmd, sync_against_local_thread=False, parent=False, paths=[], items=[], maxdepth=2, type_filter='', dereference=False):
         print 'io_list_files_remote() paths: %s' % repr(paths)
-        type_filter = ''
         maxdepth_str = ''
         if paths == [] == items:
-            paths.append('')
-            type_filter = ' -type d'
+            print 'io_list_files_remote(): No paths or items requested'
         if type(maxdepth) == int:
             maxdepth_str = ' -maxdepth %i' % maxdepth
+        if dereference:
+            dereference_str = '-L'
+        else:
+            dereference_str = ''
         #gobject.idle_add(self.button_load_remote_projects.set_image, loader)
         gobject.idle_add(self.spinner_remote.set_visible, True)
         gobject.idle_add(self.remote_status_label.set_label, 'Listing remote files')
-        find_cmd = 'find %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%C@ %%p->%%l\\\\n"'
+        find_cmd = 'find %s %s -name PRIVATE -prune -o %s %s -printf "%%i %%y %%s %%T@ %%C@ %%p->%%l\\\\n"'
         processes = []
         while len(paths) > 0:
             chunk = paths[:SHELL_ARGS_LIMIT]
             del paths[:SHELL_ARGS_LIMIT]
             paths_quoted = []
             for path in chunk:
-                paths_quoted.append("'%s'" % path)
-            cmd = find_cmd % (' '.join(paths_quoted) , maxdepth_str, type_filter)
+                paths_quoted.append('"%s"' % path)
+            cmd = find_cmd % (dereference_str, ' '.join(paths_quoted), maxdepth_str, type_filter)
             if self.connection['is_mac']:
                 cmd = self.aux_fix_mac_printf(cmd)
             ssh_cmd = ['ssh', '-oBatchMode=yes', '-p', str(self.connection['port']), '%s@%s' % (self.connection['user'], self.connection['address']), cmd]
@@ -1553,7 +1557,12 @@ class MainThread(threading.Thread):
                                     }
                                 }])
         if sync_against_local_thread:
-            sync_against_local_thread.join()
+            while self.daemon_buffer_active:
+                if thread_link.acquire():
+                    break
+                else:
+                    print 4, 'Waiting for local thread'
+                    time.sleep(1)
             for path in paths:
                 self.queue_buffer.put_nowait([self.buffer[path].enqueue, {
                                     'push_allow' : self.allow_push.get_active(),
@@ -2450,18 +2459,11 @@ class MainThread(threading.Thread):
                 self.mappings_local_to_id[map_id] = (mapping[0]+'/', '')
             elif map_id == 'media':
                 self.mappings_local_to_id[map_id] = (mapping[0], '/')
-        self.mappings_id_to_remote = {}
-        for map_id, mapping in mappings.iteritems():
-            if map_id == 'projects':
-                self.mappings_id_to_remote[map_id] = ('', mapping[1]+'/')
-            elif map_id == 'media':
-                self.mappings_id_to_remote[map_id] = ('/', mapping[1])
         gobject.idle_add(self.gui_connected)
         self.queue_buffer.put_nowait([self.buffer_inodes_cache_read])
         self.queue_buffer.put_nowait([self.buffer_list_files])
         self.launch_thread(self.daemon_buffer, name='File buffer daemon')
         self.launch_thread(self.daemon_local, name='Local daemon')
-        self.launch_thread(self.daemon_remote, name='Local daemon')
         self.launch_thread(self.daemon_push, name='Push daemon')
         self.launch_thread(self.daemon_pull, name='Pull daemon')
     def buffer_clear(self):
@@ -2512,19 +2514,24 @@ class MainThread(threading.Thread):
                 path = path.replace(mapping[0], mapping[1], 1)
                 # print '>', path
                 break
+        while '//' in path:
+            path = path.replace('//', '')
+        return path
+    def remap_id_to_local(self, path):
+        if path.startswith('/'):
+            path = self.connection['local_media_root']+'/'+path
+        else:
+            path = mistika.projects_folder+'/'+path
+        while '//' in path:
+            path = path.replace('//', '')
         return path
     def remap_id_to_remote(self, path):
-        mappings = self.mappings_id_to_remote
-        if path == '':
-            print 'Blank path_id. Root element: %s' % mappings['projects'][1]
-            return mappings['projects'][1]
-        for map_id in ['projects', 'media']:
-            mapping = mappings[map_id]
-            if path.startswith(mapping[0]):
-                # print 'Remap:', path,
-                path = path.replace(mapping[0], mapping[1], 1)
-                # print '>', path
-                break
+        if path.startswith('/'):
+            path = self.connection['root']+'/'+path
+        else:
+            path = self.connection['projects_path']+'/'+path
+        while '//' in path:
+            path = path.replace('//', '')
         return path
     def remap_to_local(self, path):
         mappings = self.mappings_to_local
@@ -2535,6 +2542,8 @@ class MainThread(threading.Thread):
                 path = path.replace(mapping[0], mapping[1], 1)
                 # print '>', path
                 break
+        while '//' in path:
+            path = path.replace('//', '')
         return path
     def remap_local_to_id(self, path):
         mappings = self.mappings_local_to_id
@@ -2549,7 +2558,7 @@ class MainThread(threading.Thread):
     def io_stat(self, paths):
         return str.replace('-printf',  '-print0 | xargs -0 stat -f').replace('%T@', '%m').replace('%s', '%z').replace('%y', '%T').replace('%p', '%N').replace('%l', '%Y').replace('\\\\n', '')
         pass
-    def buffer_list_files(self, paths=[], parent=None, sync=False, maxdepth = 2, pre_allocate=False, local=True, remote=True, items=[]):
+    def buffer_list_files(self, paths=[], parent=None, sync=False, maxdepth = 2, pre_allocate=False, local=True, remote=True, items=[], dereference=False):
         if len(items) > 0:
             for item in items:
                 paths.append(item.path_id)
@@ -2574,14 +2583,15 @@ class MainThread(threading.Thread):
                     continue
                 if f_path.startswith('/'):
                     root = '<absolute>'
-                    pre_alloc_path = f_path
+                    pre_alloc_path = self.remap_id_to_local(f_path)
                 else:
                     root = '<projects>/'
                     pre_alloc_path = f_path
+                    dereference = True
                 f_path_remote = self.remap_id_to_remote(f_path)
                 if '%' in f_path:
                     search_paths_local.append('"%s%s"' % (root, string_format_to_wildcard(f_path       , wrapping='"')))
-                    search_paths_remote.append(string_format_to_wildcard(f_path_remote, wrapping=''))
+                    search_paths_remote.append(string_format_to_wildcard(f_path_remote, wrapping='"'))
                 else:
                     search_paths_local.append('"%s%s"' % (root, f_path))
                     search_paths_remote.append(f_path_remote)
@@ -2608,24 +2618,29 @@ class MainThread(threading.Thread):
             # print find_cmd_remote
             self.lines_local = []
             self.lines_remote = []
+            thread_link = threading.Lock()
+            thread_link.acquire()
             if local:
                 kwargs_local = {
                     'find_cmd' : find_cmd_local,
                     'parent' : parent,
                     'paths' : search_paths_local,
-                    'maxdepth' : maxdepth
+                    'maxdepth' : maxdepth,
+                    'thread_link' : thread_link
                 }
-                thread_local = self.queue_local.put_nowait([self.io_list_files_local, kwargs_local])
+                self.queue_local.put_nowait([self.io_list_files_local, kwargs_local])
             if remote:
                 kwargs_remote = {
                     'find_cmd' : find_cmd_remote,
                     'parent' : parent,
                     'paths' : search_paths_remote,
-                    'maxdepth' : maxdepth
+                    'maxdepth' : maxdepth,
+                    'type_filter' : type_filter,
+                    'dereference' : dereference
                 }
                 if sync:
-                    kwargs_remote['sync_against_local_thread'] = thread_local
-                thread_remote = self.queue_remote.put_nowait([self.io_list_files_remote, kwargs_remote])
+                    kwargs_remote['sync_against_local_thread'] = thread_link
+                self.queue_remote.put_nowait([self.io_list_files_remote, kwargs_remote])
 
 
             # # Waiting here to limit the time between showing local and remote files
