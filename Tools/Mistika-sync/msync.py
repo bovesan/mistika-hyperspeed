@@ -20,12 +20,8 @@ import time
 import sys
 import Queue
 
-workdir = cwd = os.path.dirname(os.path.abspath(sys.argv[0]))
-while not 'hyperspeed' in os.listdir(workdir) and not workdir == '/':
-    workdir = os.path.dirname(workdir)
-os.chdir(workdir)
 try:
-    sys.path.append('.')
+    import hyperspeed
     import hyperspeed.stack
     import hyperspeed.ui
     from hyperspeed import mistika
@@ -34,6 +30,9 @@ except ImportError as e:
     print 'Could not load hyperspeed modules'
     print e
     sys.exit(1)
+
+cwd = os.path.dirname(os.path.realpath(__file__))
+os.chdir(hyperspeed.folder)
 
 CFG_DIR = os.path.expanduser('~/.mistika-hyperspeed/msync/')
 CFG_HOSTS_PATH = os.path.join(CFG_DIR, 'hosts.json')
@@ -112,12 +111,13 @@ class MainThread(threading.Thread):
         window.set_title("Mistika sync")
         window.set_size_request(monitor.width-200, monitor.height-200)
         window.set_border_width(20)
+        icon_path = os.path.join(cwd, 'icon.png')
         window.set_icon_list(
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 16, 16),
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 32, 32),
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 64, 64),
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 128, 128),
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 256, 256),
+            gtk.gdk.pixbuf_new_from_file_at_size(icon_path, 16, 16),
+            gtk.gdk.pixbuf_new_from_file_at_size(icon_path, 32, 32),
+            gtk.gdk.pixbuf_new_from_file_at_size(icon_path, 64, 64),
+            gtk.gdk.pixbuf_new_from_file_at_size(icon_path, 128, 128),
+            gtk.gdk.pixbuf_new_from_file_at_size(icon_path, 256, 256),
         )
         window.set_position(gtk.WIN_POS_CENTER)
         if 'darwin' in platform.system().lower():

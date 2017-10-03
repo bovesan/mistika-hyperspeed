@@ -162,11 +162,11 @@ class PyApp(gtk.Window):
             self.set_resizable(False) # Because resizing crashes the app on Mac
         self.connect("key-press-event",self.on_key_press_event)
         self.set_icon_list(
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 16, 16),
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 32, 32),
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 64, 64),
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 128, 128),
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 256, 256),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/hyperspeed_1024px.png', 16, 16),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/hyperspeed_1024px.png', 32, 32),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/hyperspeed_1024px.png', 64, 64),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/hyperspeed_1024px.png', 128, 128),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/hyperspeed_1024px.png', 256, 256),
         )
         gtkrc = '''
         style "theme-fixes" {
