@@ -44,7 +44,6 @@ def get_desktop_links():
                     tools.append(os.path.realpath(executable))
         else:
             tools.append(os.path.realpath(abs_path))
-    print repr(tools)
     return tools
 def get_mistika_links():
     tools = []

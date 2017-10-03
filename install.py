@@ -3,6 +3,7 @@
 import os
 import site
 import sys
+import subprocess
 
 try:
     import gtk
@@ -89,7 +90,7 @@ if install:
 
 import hyperspeed.tools
 
-hyperspeed_dashboard_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hyperspeed-dashboard.py')
+hyperspeed_dashboard_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'Tools/Hyperspeed-dashboard/hyperspeed-dashboard.py')
 desktop_link = confirm('Hyperspeed Dashboard on desktop? ')
 hyperspeed.tools.desktop_link(
         alias='Hyperspeed Dashboard',
@@ -102,3 +103,5 @@ hyperspeed.tools.mistika_link(
         activated=mistika_link,
         file_path=hyperspeed_dashboard_path
     )
+
+subprocess.call([hyperspeed_dashboard_path])

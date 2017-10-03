@@ -49,7 +49,7 @@ AUTORUN_TIMES = {
 }
 
 CONFIG_FOLDER = os.path.expanduser(CONFIG_FOLDER)
-os.chdir(os.path.dirname(os.path.realpath(__file__)))
+os.chdir(hyperspeed.folder)
 
 
 def config_value_decode(value, parent_folder = False):
@@ -161,7 +161,13 @@ class PyApp(gtk.Window):
         if 'darwin' in platform.system().lower():
             self.set_resizable(False) # Because resizing crashes the app on Mac
         self.connect("key-press-event",self.on_key_press_event)
-        self.set_icon_from_file("res/img/hyperspeed_1024px.png")
+        self.set_icon_list(
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 16, 16),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 32, 32),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 64, 64),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 128, 128),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 256, 256),
+        )
         gtkrc = '''
         style "theme-fixes" {
             font_name = "sans normal 12"
