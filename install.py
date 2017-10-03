@@ -91,13 +91,13 @@ import hyperspeed.tool
 
 hyperspeed_dashboard_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hyperspeed-dashboard.py')
 desktop_link = confirm('Hyperspeed Dashboard on desktop? ')
-hyperspeed.tool.desktop_link(
+hyperspeed.tools.desktop_link(
         alias='Hyperspeed Dashboard',
         activated=desktop_link,
         file_path=hyperspeed_dashboard_path
     )
 mistika_link = confirm("Hyperspeed Dashboard in Mistika Extras panel? ")
-hyperspeed.tool.mistika_link(
+hyperspeed.tools.mistika_link(
         alias='Hyperspeed Dashboard',
         activated=mistika_link,
         file_path=hyperspeed_dashboard_path

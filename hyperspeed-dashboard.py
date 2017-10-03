@@ -24,7 +24,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 import hyperspeed
-import hyperspeed.tool
+import hyperspeed.tools
 import hyperspeed.manage
 import hyperspeed.utils
 from hyperspeed import stack
@@ -541,23 +541,8 @@ class PyApp(gtk.Window):
         if not file_type in self.files:
             self.files[file_type] = {}
         files = self.files[file_type]
-        # Installed tools
-        tools_installed = []
-        if hyperspeed.mistika.product == 'Mistika':
-            for line in open(mistika.tools_path):
-                line_alias, line_path = line.strip().split(' ', 1)
-                tools_installed.append(line_path)
-        # Tools on desktop        
-        tools_on_desktop = []
-        desktop_folder_path = os.path.expanduser('~/Desktop/')
-        for basename in os.listdir(desktop_folder_path):
-            if platform.system() == 'Darwin':
-                try:
-                    tools_on_desktop.append(os.path.realpath(os.path.join(desktop_folder_path, basename, 'Contents/MacOS', os.path.splitext(basename)[0])))
-                except OSError:
-                    pass
-            else:
-                tools_on_desktop.append(os.path.realpath(os.path.join(desktop_folder_path, basename)))
+        tools_installed = hyperspeed.tools.get_mistika_links()
+        tools_on_desktop = hyperspeed.tools.get_desktop_links()
         # Crontab
         crontab = get_crontab_lines()
         for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
@@ -584,7 +569,7 @@ class PyApp(gtk.Window):
                 continue
             for key, value in file_type_defaults.iteritems():
                 files[path].setdefault(key, value)
-            if path in tools_installed:
+            if real_path in tools_installed:
                 files[path]['Show in Mistika'] = True
             if real_path in tools_on_desktop:
                 files[path]['Show on desktop'] = True
@@ -1167,7 +1152,7 @@ class PyApp(gtk.Window):
         alias = alias.replace(' ', '_')
         activated = not treestore[path][1]
         file_path = treestore[path][4]
-        hyperspeed.tool.mistika_link(
+        hyperspeed.tools.mistika_link(
             alias=alias,
             activated=activated,
             file_path=file_path
@@ -1182,7 +1167,7 @@ class PyApp(gtk.Window):
         alias = treestore[path][0]
         activated = not treestore[path][6]
         file_path = treestore[path][4]
-        hyperspeed.tool.desktop_link(
+        hyperspeed.tools.desktop_link(
             alias=alias,
             activated=activated,
             file_path=file_path
