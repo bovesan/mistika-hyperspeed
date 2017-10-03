@@ -22,7 +22,15 @@ import warnings
 import webbrowser
 import xml.etree.ElementTree as ET
 import zipfile
-from distutils.spawn import find_executable
+
+import hyperspeed
+import hyperspeed.tools
+import hyperspeed.manage
+import hyperspeed.utils
+from hyperspeed import stack
+from hyperspeed import mistika
+from hyperspeed import video
+from hyperspeed import human
 
 VERSION_STRING = ''
 
@@ -41,14 +49,8 @@ AUTORUN_TIMES = {
 }
 
 CONFIG_FOLDER = os.path.expanduser(CONFIG_FOLDER)
-os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])))
+os.chdir(hyperspeed.folder)
 
-import hyperspeed.manage
-import hyperspeed.utils
-from hyperspeed import stack
-from hyperspeed import mistika
-from hyperspeed import video
-from hyperspeed import human
 
 def config_value_decode(value, parent_folder = False):
     try:
@@ -159,7 +161,13 @@ class PyApp(gtk.Window):
         if 'darwin' in platform.system().lower():
             self.set_resizable(False) # Because resizing crashes the app on Mac
         self.connect("key-press-event",self.on_key_press_event)
-        self.set_icon_from_file("res/img/hyperspeed_1024px.png")
+        self.set_icon_list(
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 16, 16),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 32, 32),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 64, 64),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 128, 128),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 256, 256),
+        )
         gtkrc = '''
         style "theme-fixes" {
             font_name = "sans normal 12"
@@ -539,23 +547,8 @@ class PyApp(gtk.Window):
         if not file_type in self.files:
             self.files[file_type] = {}
         files = self.files[file_type]
-        # Installed tools
-        tools_installed = []
-        if hyperspeed.mistika.product == 'Mistika':
-            for line in open(mistika.tools_path):
-                line_alias, line_path = line.strip().split(' ', 1)
-                tools_installed.append(line_path)
-        # Tools on desktop        
-        tools_on_desktop = []
-        desktop_folder_path = os.path.expanduser('~/Desktop/')
-        for basename in os.listdir(desktop_folder_path):
-            if platform.system() == 'Darwin':
-                try:
-                    tools_on_desktop.append(os.path.realpath(os.path.join(desktop_folder_path, basename, 'Contents/MacOS', os.path.splitext(basename)[0])))
-                except OSError:
-                    pass
-            else:
-                tools_on_desktop.append(os.path.realpath(os.path.join(desktop_folder_path, basename)))
+        tools_installed = hyperspeed.tools.get_mistika_links()
+        tools_on_desktop = hyperspeed.tools.get_desktop_links()
         # Crontab
         crontab = get_crontab_lines()
         for root, dirs, filenames in os.walk(os.path.join(self.config['app_folder'], file_type)):
@@ -582,7 +575,7 @@ class PyApp(gtk.Window):
                 continue
             for key, value in file_type_defaults.iteritems():
                 files[path].setdefault(key, value)
-            if path in tools_installed:
+            if real_path in tools_installed:
                 files[path]['Show in Mistika'] = True
             if real_path in tools_on_desktop:
                 files[path]['Show on desktop'] = True
@@ -1161,33 +1154,15 @@ class PyApp(gtk.Window):
             treestore = treestore.get_model()
         except AttributeError:
             pass
-        new_config = ''
         alias = treestore[path][0]
         alias = alias.replace(' ', '_')
         activated = not treestore[path][1]
         file_path = treestore[path][4]
-        stored = False
-        for line in open(mistika.tools_path):
-            print repr(line)
-            line_alias, line_path = line.strip().split()[:2]
-            print repr(line_alias)
-            print repr(line_path)
-            if file_path == line_path:
-                if activated:
-                    new_config += '%s %s\n' % (alias, file_path)
-                    stored = True
-                else:
-                    continue
-            else:
-                line_path = find_executable(line_path)
-                if line_path == None or not os.path.exists(line_path):
-                    continue
-            new_config += line
-        if activated and not stored:
-            new_config += '%s %s\n' % (alias, file_path)
-        print '\nNew config:'
-        print new_config
-        open(mistika.tools_path, 'w').write(new_config)
+        hyperspeed.tools.mistika_link(
+            alias=alias,
+            activated=activated,
+            file_path=file_path
+        )
         self.launch_thread(self.io_populate_tools)
     def on_tools_desktop_toggle(self, cellrenderertoggle, path, treeview, *ignore):
         treestore = treeview.get_model()
@@ -1195,52 +1170,14 @@ class PyApp(gtk.Window):
             treestore = treestore.get_model()
         except AttributeError:
             pass
-        new_config = ''
         alias = treestore[path][0]
         activated = not treestore[path][6]
         file_path = treestore[path][4]
-        stored = False
-        desktop_folder_path = os.path.expanduser('~/Desktop/')
-        for basename in os.listdir(desktop_folder_path):
-            abs_path = os.path.join(desktop_folder_path, basename)
-            real_path = os.path.realpath(abs_path)
-            if platform.system() == 'Darwin':
-                darwin_executable_path = os.path.join(abs_path, 'Contents/MacOS', os.path.splitext(basename)[0])
-                if os.path.isfile(darwin_executable_path) and os.path.realpath(darwin_executable_path) == file_path:
-                    if activated:
-                        stored = True
-                        break
-                    else:
-                        print 'Removing app:', abs_path
-                        try:
-                            shutil.rmtree(abs_path)
-                        except shutil.Error as e:
-                            print 'Could not remove app:', e
-            else:
-                if os.path.islink(abs_path) and real_path == os.path.realpath(file_path):
-                    if activated:
-                        stored = True
-                        break
-                    else:
-                        print 'Removing link:', abs_path
-                        os.remove(abs_path)
-        if activated and not stored:
-            print 'Creating link:', abs_path
-            abs_path = os.path.join(desktop_folder_path, alias)
-            if platform.system() == 'Darwin':
-                hyperspeed.utils.mac_app_link(file_path, abs_path, icon_path=os.path.abspath("res/img/hyperspeed_1024px.png"))
-                # abs_path += '.app'
-                # darwin_executable_path = os.path.join(abs_path, 'Contents/MacOS', alias)
-                # try:
-                #     os.makedirs(os.path.join(abs_path, 'Contents/MacOS'))
-                #     os.symlink(file_path, darwin_executable_path)
-                # except OSError as e:
-                #     print 'Could not create shortcut:', e
-            else:
-                try:
-                    os.symlink(file_path, abs_path)
-                except OSError as e:
-                    print e
+        hyperspeed.tools.desktop_link(
+            alias=alias,
+            activated=activated,
+            file_path=file_path
+        )
         self.launch_thread(self.io_populate_tools)
     def on_autorun_set(self, widget, path, text):
         temp_config_path = '/tmp/mistika-hyperspeed-crontab'
