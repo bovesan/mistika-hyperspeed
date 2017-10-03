@@ -87,7 +87,7 @@ if install:
         msg('Hyperspeed module was installed successfully, but gtk is missing.\n\
             Graphical user interfaces will not be available.')
 
-import hyperspeed.tool
+import hyperspeed.tools
 
 hyperspeed_dashboard_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hyperspeed-dashboard.py')
 desktop_link = confirm('Hyperspeed Dashboard on desktop? ')
