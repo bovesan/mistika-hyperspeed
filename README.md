@@ -10,7 +10,7 @@ They are divided into the following categories:
   * [hyperspeed.mistika](#hyperspeedmistika)
   * [hyperspeed.stack](#hyperspeedstack)
 
-To get started, run **./hyperspeed-dashboard.py**
+To get started, run **./install.py**
 ## Tools
 ![Screenshot](http://bovesan.com/wp-content/uploads/2017/09/Screen-Shot-2017-09-10-at-20.02.54.png)
 Scripts or programs which can be run manually or at specific intervals to perform any task. You can also show these in the Extras panel in Mistika.

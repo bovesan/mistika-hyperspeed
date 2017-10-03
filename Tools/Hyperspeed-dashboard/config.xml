@@ -2,5 +2,5 @@
 <tool>
 <alias>Hyperspeed Dashboard</alias>
 <description>This program.</description>
-<executable>../../hyperspeed-dashboard.py</executable>
+<executable>hyperspeed-dashboard.py</executable>
 </tool>
