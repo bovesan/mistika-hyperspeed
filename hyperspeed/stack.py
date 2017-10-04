@@ -9,6 +9,8 @@ import tempfile
 import copy
 import shutil
 
+RENAME_MAGIC_WORDS = ['auto', 'rename']
+
 def escape_par(string):
     return string.replace('(', '\(').replace(')', '\)')
 class DependencyType(object):
@@ -153,6 +155,24 @@ class Dependency(object):
                         self._size = None
                         self._complete = False
             return self._size
+    def remove(self):
+        if '%' in self.path:
+            for frame_number in range(self.start, self.end):
+                frame_path = self.path % frame_number
+                try:
+                    os.remove(frame_path)
+                except OSError:
+                    print 'Could not remove %s' % frame_path
+            dirname = os.path.dirname(self.path)
+            try:
+                os.rmdir(dirname)
+            except OSError:
+                print 'Could not remove %s' % dirname
+        else:
+            try:
+                os.remove(self.path)
+            except OSError:
+                print 'Could not remove %s' % self.path
 
 class Stack(object):
     def __init__(self, path):
@@ -486,18 +506,27 @@ class Stack(object):
         return (line, dependency)
 
 class Render(Stack):
+
+    output_video = None
+    output_proxy = None
+    output_audio = None
+    output_paths = []
+
     def __init__(self, path):
         super(Render, self).__init__(path)
         self.clp_path = 'clp'.join(self.path.rsplit('rnd', 1))
         self.output_stack = Stack(self.clp_path)
-        self.output_video = None
-        self.output_proxy = None
-        self.output_audio = None
         for dependency in self.output_stack.dependencies:
             if dependency.type == 'highres':
                 self.output_video = dependency
+                self.output_paths.append(dependency.path)
             elif dependency.type == 'lowres':
                 self.output_proxy = dependency
+                self.output_paths.append(dependency.path)
             elif dependency.type == 'audio':
                 self.output_audio = dependency
-        
+                self.output_paths.append(dependency.path)
+    def remove_output(self):
+        for dependency in self.output_stack.dependencies:
+            if dependency.type in ['highres', 'lowres', 'audio']:
+                dependency.remove()

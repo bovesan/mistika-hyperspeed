@@ -11,10 +11,13 @@ def reveal_file(path):
         paths = path
     folders = {}
     for path in paths:
-        folder = os.path.dirname(path)
+        if os.path.isdir(path):
+            folder = path
+        else:
+            folder = os.path.dirname(path)
         folders[folder] = path
     for folder, path in folders.iteritems():
-        print 'Reveal: ', folder
+        print 'Reveal folder:"%s" path: "%s"' % (folder, path)
         if platform.system() == "Windows":
             subprocess.Popen(["explorer", "/select,", path])
         elif platform.system() == "Darwin":
@@ -30,10 +33,13 @@ def reveal_file(path):
             except KeyError:
                 pass
             try:
-                if os.path.isdir(path):
+                if not os.path.exists(path):
+                    subprocess.Popen(["dolphin", folder], env=dolphinEnv)
+                elif os.path.isdir(path):
                     subprocess.Popen(["dolphin", path], env=dolphinEnv)
                 else:
-                    subprocess.Popen(["dolphin", '--select', path], env=dolphinEnv)
+                    # subprocess.Popen(["dolphin", '--select', path], env=dolphinEnv) # Not supported in Dolphin 1.3
+                    subprocess.Popen(["dolphin", folder], env=dolphinEnv)
             except OSError:
                 subprocess.Popen(["xdg-open", folder])
                 

@@ -5,6 +5,7 @@ import gobject
 import sys
 import os
 import pango
+import subprocess
 
 class TerminalReplacement(gtk.Window):
     def __init__(self, method, inputs=False, default_folder=False):
@@ -87,3 +88,4 @@ class TerminalReplacement(gtk.Window):
         else:
             return False
         return True
+
