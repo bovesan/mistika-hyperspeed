@@ -9,6 +9,8 @@ import tempfile
 import copy
 import shutil
 
+import hyperspeed.utils
+
 def escape_par(string):
     return string.replace('(', '\(').replace(')', '\)')
 class DependencyType(object):
@@ -91,6 +93,22 @@ class Dependency(object):
             i += 1
         if parent in self.parents:
             self.parents.remove(parent)
+    @property
+    def codec(self):
+        try:
+            self._codec
+        except AttributeError:
+            self._codec = self.get_codec()
+        return self._codec
+    def get_codec(self):
+        if '%%' in self.path:
+            path = self.path % self.start
+        else:
+            path = self.path
+        try:
+            return hyperspeed.utils.get_stream_info(path)[0]['codec']
+        except:
+            return 'codec_unknown'
     @property
     def path(self):
         if not self._path:
@@ -518,6 +536,7 @@ class Render(Stack):
 
     def __init__(self, path):
         super(Render, self).__init__(path)
+        self.name = os.path.splitext(os.path.basename(self.path))[0]
         if self.exists:
             self.clp_path = 'clp'.join(self.path.rsplit('rnd', 1))
             self.output_stack = Stack(self.clp_path)

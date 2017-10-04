@@ -27,7 +27,7 @@ import hyperspeed
 import hyperspeed.tools
 import hyperspeed.manage
 import hyperspeed.utils
-from hyperspeed import stack
+import hyperspeed.stack
 from hyperspeed import mistika
 from hyperspeed import video
 from hyperspeed import human
@@ -659,7 +659,7 @@ class PyApp(gtk.Window):
                 continue
             if files[path]['isdir']:
                 continue
-            stack = hyperspeed.Stack(path)
+            stack = hyperspeed.stack.Stack(path)
             for dependency in stack.dependencies:
                 if not dependency.complete:
                     stack.relink_dependencies()
@@ -1285,7 +1285,7 @@ class PyApp(gtk.Window):
         state = not tree[treepath][1]
         path = tree[treepath][3]
         if state:
-            stack.Stack(path).relink_dependencies()
+            hyperspeed.stack.Stack(path).relink_dependencies()
         self.launch_thread(self.io_populate_stacks)
     def on_configs_toggle(self, cellrenderertoggle, treepath, *ignore):
         tree = self.configs_treestore

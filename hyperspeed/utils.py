@@ -43,6 +43,25 @@ def reveal_file(path):
             except OSError:
                 subprocess.Popen(["xdg-open", folder])
                 
+def get_stream_info(path):
+    cmd = ['ffprobe', path]
+    streams = []
+    for line in subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate()[0].splitlines():
+        line = line.strip()
+        if line.startswith('Stream'):
+            try:
+                s_head, s_id, s_type, s_codec, s_rest = line.split(' ', 4)
+            except ValueError:
+                print 'Could not read stream properties'
+                continue
+            stream = {
+                'id' : s_id.rstrip(':'),
+                'type' : s_type.rstrip(':'),
+                'codec' : s_codec.rstrip(','),
+            }
+            streams.append(stream)
+    print repr(streams)
+    return streams
 
 def mac_app_link(executable_path, app_path, icon_path=False):
     info_plist_template = '''<?xml version="1.0" encoding="UTF-8"?>

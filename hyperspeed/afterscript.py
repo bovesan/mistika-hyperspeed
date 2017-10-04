@@ -11,9 +11,11 @@ import re
 import subprocess
 import shlex
 import threading
+import time
 
 import hyperspeed
 import hyperspeed.utils
+import hyperspeed.stack
 from hyperspeed import mistika
 
 SETTINGS_DEFAULT = {
@@ -41,8 +43,8 @@ class Afterscript(object):
         self.output_pattern = output_pattern
         self.init_settings()
         if len(sys.argv) >= 3 and sys.argv[1] == 'ok':
-            self.render_name = sys.argv[2]
-            render_path = self.render_path = mistika.get_rnd_path(self.render_name)
+            render_name = sys.argv[2]
+            render_path = self.render_path = mistika.get_rnd_path(render_name)
             self.load_render(render_path)
             gobject.idle_add(self.on_run)
     def init_settings(self):
@@ -56,6 +58,7 @@ class Afterscript(object):
             pass
     def load_render(self, render_path):
         render = self.render = hyperspeed.stack.Render(render_path)
+        self.render_name = render.name
         if render.exists:
             self.init_output_path()
         else:
@@ -64,23 +67,23 @@ class Afterscript(object):
     def init_output_path(self):
         variables = {
             '<project>' : mistika.project,
-            '<render_name>' : self.render_name
+            '<render_name>' : self.render_name,
+            '<codec>' : self.render.primary_output.get_codec
         }
         rename = False
         for magic_word in RENAME_MAGIC_WORDS:
             if magic_word in self.render_name:
-                variables['<render_name>'] = self.render.groupname
+                variables['<render_name>'] = self.render.title
                 rename = True
                 break
-        if rename:
-            output_path = os.path.join(self.render.primary_output.path, self.output_pattern)
-            for k, v in variables.iteritems():
+        output_path = os.path.normpath(os.path.join(os.path.dirname(self.render.primary_output.path), self.output_pattern))
+        for k, v in variables.iteritems():
+            if callable(v):
+                output_path = output_path.replace(k, v())
+            else:
                 output_path = output_path.replace(k, v)
-        else:
-            path_wo_extension = os.path.splitext(self.render.primary_output.path)[0]
-            # Strip _%05d or .%06d from sequences:
-            path_wo_extension = re.sub('\.*_*%\d+d$', '',  path_wo_extension)
-            output_path = path_wo_extension+os.path.splitext(self.output_pattern)[1]
+        # Strip _%05d or .%06d from sequences:
+        output_path = re.sub('\.*_*%\d+d$', '',  output_path)
         self.output_path = output_path
 
 class AfterscriptFfmpeg(Afterscript):
@@ -264,7 +267,6 @@ class AfterscriptFfmpeg(Afterscript):
                 args_quoted.append(arg)
         self.cmd_entry.set_text(' '.join(args_quoted))
         self.args = args_quoted
-
     def gui_yesno_dialog(self, question, confirm_object=False, confirm_lock=False):
         dialog = gtk.MessageDialog(
             parent = self.window,
@@ -303,7 +305,9 @@ class AfterscriptFfmpeg(Afterscript):
         hyperspeed.utils.reveal_file(self.output_path)
     def on_run(self, widget=False):
         self.update_output_path()
+        self.output_marker = self.output_path+'.incomplete'
         force_overwrite = False
+        render_to_input_folder = False
         if os.path.exists(self.output_path):
             if self.settings['overwrite']:
                 overwrite = True
@@ -313,6 +317,28 @@ class AfterscriptFfmpeg(Afterscript):
                 force_overwrite = True
             else:
                 return
+        elif not os.path.exists(os.path.dirname(self.output_path)):
+            try:
+                os.makedirs(os.path.dirname(self.output_path))
+            except OSError:
+                render_to_input_folder = True
+        elif os.path.dirname(self.render.primary_output.path) != os.path.dirname(self.output_path):
+            try:
+                open(self.output_marker, 'w').write(str(time.time()))
+            except IOError:
+                render_to_input_folder = True
+        else:
+            try:
+                open(self.output_marker, 'w').write(str(time.time()))
+            except IOError:
+                error = 'Cannot write to neither input nor output folder'
+                self.write(error+'\n')
+                gobject.idle_add(self.gui_info_dialog, error)
+                return
+        if render_to_input_folder:
+            self.update_output_path(os.path.join(os.path.dirname(self.render.primary_output.path), os.path.basename(self.output_path)))
+            self.on_run()
+            return
         t = threading.Thread(target=self.run, name='ffmpeg', kwargs={'overwrite' : force_overwrite})
         t.setDaemon(True)
         t.start()
@@ -367,6 +393,10 @@ class AfterscriptFfmpeg(Afterscript):
                 gobject.idle_add(self.progressbar.set_fraction, progress_float)
                 gobject.idle_add(self.progressbar.set_text, progress_string)
             proc.poll()
+        try:
+            os.remove(self.output_marker)
+        except OSError:
+            print 'Could not remote incomplete marker: %s' % self.output_marker
         print 'Process ended'
         if proc.returncode > 0:
             gobject.idle_add(self.gui_info_dialog, output_prev)
@@ -392,3 +422,7 @@ class AfterscriptFfmpeg(Afterscript):
         gobject.idle_add(self.gui_write, string)
     def gui_write(self, string):
         self.console_buffer.insert(self.console_buffer.get_end_iter(), string)
+
+# if len(sys.argv) > 1 and sys.argv[1] == 'AfterscriptFfmpeg':
+#     AfterscriptFfmpeg(sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
+#     gtk.main()
