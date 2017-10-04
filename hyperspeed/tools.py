@@ -18,7 +18,7 @@ MimeType=
 Name=%s
 Path=%s
 StartupNotify=true
-Terminal=true
+Terminal=%s
 TerminalOptions=
 Type=Application
 Version=1.0
@@ -86,9 +86,12 @@ def desktop_link(alias, file_path, activated=True, icon_path='res/img/hyperspeed
                     if line.lower().startswith('exec='):
                         executable = line.split('=', 1)[1].split('%')[0].strip()
                         if os.path.realpath(executable) == os.path.realpath(file_path):
-                            stored = True
-                            break
-
+                            if activated:
+                                stored = True
+                                break
+                            else:
+                                print 'Removing desktop entry:', abs_path
+                                os.remove(abs_path)
     if activated and not stored:
         desktop_file_path = os.path.join(desktop_folder_path, alias)
         if platform.system() == 'Darwin':
@@ -101,7 +104,8 @@ def desktop_link(alias, file_path, activated=True, icon_path='res/img/hyperspeed
         else:
             desktop_file_path += '.desktop'
             print 'Creating desktop entry:', desktop_file_path
-            desktop_file = desktop_template % (file_path, icon_path, alias, os.path.dirname(file_path))
+            terminal = False
+            desktop_file = desktop_template % (file_path, icon_path, alias, os.path.dirname(file_path), terminal)
             try:
                 open(desktop_file_path, 'w').write(desktop_file)
             except IOError as e:
