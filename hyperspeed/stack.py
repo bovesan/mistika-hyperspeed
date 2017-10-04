@@ -9,8 +9,6 @@ import tempfile
 import copy
 import shutil
 
-RENAME_MAGIC_WORDS = ['auto', 'rename']
-
 def escape_par(string):
     return string.replace('(', '\(').replace(')', '\)')
 class DependencyType(object):
@@ -175,17 +173,23 @@ class Dependency(object):
                 print 'Could not remove %s' % self.path
 
 class Stack(object):
+    exists = False
+    dependencies_size = None
+    project = None
+    resX = None
+    resY = None
+    fps = None
+    frames = None
     def __init__(self, path):
         self.path = path
-        self.size = os.path.getsize(self.path)
-        self.dependencies_size = None
-        self.ctime = os.path.getctime(self.path)
-        self.project = None
-        self.resX = None
-        self.resY = None
-        self.fps = None
-        self.frames = None
-        self.read_header()
+        try:
+            self.size = os.path.getsize(self.path)
+            self.ctime = os.path.getctime(self.path)
+            self.exists = True
+            self.read_header()
+        except (TypeError, OSError) as e:
+            print e
+            pass
     def read_header(self):
         try:
             level_names = []
@@ -514,18 +518,29 @@ class Render(Stack):
 
     def __init__(self, path):
         super(Render, self).__init__(path)
-        self.clp_path = 'clp'.join(self.path.rsplit('rnd', 1))
-        self.output_stack = Stack(self.clp_path)
-        for dependency in self.output_stack.dependencies:
-            if dependency.type == 'highres':
-                self.output_video = dependency
-                self.output_paths.append(dependency.path)
-            elif dependency.type == 'lowres':
-                self.output_proxy = dependency
-                self.output_paths.append(dependency.path)
-            elif dependency.type == 'audio':
-                self.output_audio = dependency
-                self.output_paths.append(dependency.path)
+        if self.exists:
+            self.clp_path = 'clp'.join(self.path.rsplit('rnd', 1))
+            self.output_stack = Stack(self.clp_path)
+            for dependency in self.output_stack.dependencies:
+                if dependency.type == 'highres':
+                    self.output_video = dependency
+                    self.output_paths.append(dependency.path)
+                elif dependency.type == 'lowres':
+                    self.output_proxy = dependency
+                    self.output_paths.append(dependency.path)
+                elif dependency.type == 'audio':
+                    self.output_audio = dependency
+                    self.output_paths.append(dependency.path)
+    @property
+    def primary_output(self):
+        if self.output_video != None:
+            return self.output_video
+        elif self.output_proxy != None:
+            return self.output_proxy
+        elif self.output_audio != None:
+            return self.output_audio
+        else:
+            return None
     def remove_output(self):
         for dependency in self.output_stack.dependencies:
             if dependency.type in ['highres', 'lowres', 'audio']:
