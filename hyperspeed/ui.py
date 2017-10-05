@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 
-import gtk
-import gobject
 import sys
 import os
-import pango
 import subprocess
+try:
+    import gtk
+    import gobject
+    import pango
+except ImportError:
+    gtk = False
 
 class TerminalReplacement(gtk.Window):
     def __init__(self, method, inputs=False, default_folder=False):

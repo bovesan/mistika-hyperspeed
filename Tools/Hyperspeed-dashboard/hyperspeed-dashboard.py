@@ -28,6 +28,7 @@ import hyperspeed.tools
 import hyperspeed.manage
 import hyperspeed.utils
 import hyperspeed.stack
+import hyperspeed.sockets
 from hyperspeed import mistika
 from hyperspeed import video
 from hyperspeed import human
@@ -51,6 +52,31 @@ AUTORUN_TIMES = {
 CONFIG_FOLDER = os.path.expanduser(CONFIG_FOLDER)
 os.chdir(hyperspeed.folder)
 
+try:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(5.0)
+    s.connect(hyperspeed.sockets.path)
+    message = b'ping'
+    s.send(message)
+    data = s.recv(1024*1024)
+    s.close()
+    if data == message:
+        print('Another instance is already running')
+        sys.exit(0)
+except socket.error as e:
+    print e
+
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+try:
+    os.remove(hyperspeed.sockets.path)
+except OSError as e:
+    print e
+try:
+    print 'Binding socket'
+    s.bind(hyperspeed.sockets.path)
+    print 'Socket bound'
+except socket.error as e:
+    print e
 
 def config_value_decode(value, parent_folder = False):
     try:
@@ -144,6 +170,8 @@ class RenderItem(hyperspeed.stack.Stack):
         logfile_h.flush()
 
 class PyApp(gtk.Window):
+    quit = False
+    subprocesses = []
     def __init__(self):
         super(PyApp, self).__init__()
         self.config_rw()
@@ -162,11 +190,11 @@ class PyApp(gtk.Window):
             self.set_resizable(False) # Because resizing crashes the app on Mac
         self.connect("key-press-event",self.on_key_press_event)
         self.set_icon_list(
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 16, 16),
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 32, 32),
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 64, 64),
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 128, 128),
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 256, 256),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/hyperspeed_1024px.png', 16, 16),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/hyperspeed_1024px.png', 32, 32),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/hyperspeed_1024px.png', 64, 64),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/hyperspeed_1024px.png', 128, 128),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/hyperspeed_1024px.png', 256, 256),
         )
         gtkrc = '''
         style "theme-fixes" {
@@ -215,6 +243,7 @@ class PyApp(gtk.Window):
         self.comboEditable = None
         gobject.idle_add(self.bring_to_front)
         self.launch_thread(self.io_get_release_status)
+        self.launch_thread(self.socket_listen)
     def bring_to_front(self):
         self.present()
     def init_toolbar(self):
@@ -536,6 +565,27 @@ class PyApp(gtk.Window):
         self.launch_thread(self.io_populate_render_queue)
         vbox.pack_start(afterscriptsBox, True, True, 5)
         return vbox
+    def socket_listen(self):
+        s.listen(1)
+        while s and not self.quit:
+            conn, addr = s.accept()
+            # data = conn.recv(1024*1024)
+            try:
+                data = conn.recv(1024)
+            except IOError as e:
+                print e
+                continue
+            if not data: break
+            # conn.send(data)
+            try:
+                for k, v in json.loads(data).iteritems():
+                    if k == 'launch':
+                        print 'Launch: %s' % ' '.join(v)
+                        self.subprocesses.append(subprocess.Popen(v))
+            except ValueError as e:
+                gobject.idle_add(self.bring_to_front)
+            conn.send(data)
+        conn.close()
     def io_populate_tools(self):
         file_type = 'Tools'
         file_type_defaults = {
@@ -1063,12 +1113,17 @@ class PyApp(gtk.Window):
                 self.config[config_item] = config_force[config_item]
                 self.config_rw(write=True)
     def on_quit(self, widget):
+        self.quit = True
         if type(widget) is gtk.Button:
             widget_name = widget.get_label() + ' button'
         else:
             widget_name = str(widget)
         print 'Closed by: ' + widget_name
         gtk.main_quit()
+        # try:
+        #     os.remove(PID_FILE)
+        # except OSError as e:
+        #     pass
     def on_filter(self, widget, event):
         #print widget.get_text()
         self.tools_filter.refilter();
