@@ -19,10 +19,9 @@ import hyperspeed.stack
 from hyperspeed import mistika
 
 SETTINGS_DEFAULT = {
-    'autostart' : False, 
+    'autostart' : True, 
     'remove-input' : False,
-    'overwrite' : False, 
-    'reveal-output' : True
+    'overwrite' : False,
 }
 SETTINGS_FILENAME = 'settings.cfg'
 RENAME_MAGIC_WORDS = ['auto', 'rename']
@@ -34,14 +33,14 @@ class Afterscript(object):
     output_path = ''
     render_path = RENDER_DEFAULT_PATH
     render_name = ''
-    def __init__(self, script_path, cmd, output_pattern, title='Afterscript'):
+    def __init__(self, script_path, cmd, default_output, title='Afterscript'):
         self.script_path = script_path
         if type(cmd) == list:
             self.cmd = cmd
         elif type(cmd) == str:
             self.cmd = [cmd]
-        self.output_pattern = output_pattern
         self.init_settings()
+        self.settings['output-pattern'] = default_output
         if len(sys.argv) >= 3 and sys.argv[1] == 'ok':
             render_name = sys.argv[2]
             render_path = self.render_path = mistika.get_rnd_path(render_name)
@@ -76,7 +75,8 @@ class Afterscript(object):
                 variables['<render_name>'] = self.render.title
                 rename = True
                 break
-        output_path = os.path.normpath(os.path.join(os.path.dirname(self.render.primary_output.path), self.output_pattern))
+        output_path = os.path.normpath(os.path.join(os.path.dirname(self.render.primary_output.path),
+            self.settings['output-pattern']))
         for k, v in variables.iteritems():
             if callable(v):
                 output_path = output_path.replace(k, v())
@@ -92,8 +92,8 @@ class AfterscriptFfmpeg(Afterscript):
     input_args = []
     cmd_string = ''
     args = []
-    def __init__(self, script_path, cmd, output_path, title='Afterscript', executable='ffmpeg'):
-        super(AfterscriptFfmpeg, self).__init__(script_path, cmd, output_path, title)
+    def __init__(self, script_path, cmd, default_output, title='Afterscript', executable='ffmpeg'):
+        super(AfterscriptFfmpeg, self).__init__(script_path, cmd, default_output, title)
         self.executable = executable
         self.init_input_args()
         gobject.threads_init()
@@ -106,47 +106,75 @@ class AfterscriptFfmpeg(Afterscript):
         window.set_border_width(20)
         window.set_position(gtk.WIN_POS_CENTER)
         vbox = gtk.VBox()
+        expander = gtk.Expander('Settings')
+        vbox2 = gtk.VBox()
+        checkbox = self.checkbox_overwrite = gtk.CheckButton('Start automatically')
+        checkbox.set_active(self.settings['autostart'])
+        checkbox.connect('toggled', self.on_settings_change, 'autostart')
+        vbox2.pack_start(checkbox, False, False, 5)
+        checkbox = self.checkbox_overwrite = gtk.CheckButton('Overwrite existing output without asking')
+        checkbox.set_active(self.settings['overwrite'])
+        checkbox.connect('toggled', self.on_settings_change, 'overwrite')
+        vbox2.pack_start(checkbox, False, False, 5)
+        checkbox = self.checkbox_remove_input = gtk.CheckButton('Remove input after encoding')
+        checkbox.set_active(self.settings['remove-input'])
+        checkbox.connect('toggled', self.on_settings_change, 'remove-input')
+        vbox2.pack_start(checkbox, False, False, 5)
+        hbox = gtk.HBox()
+        label =  gtk.Label('Output pattern:')
+        hbox.pack_start(label, False, False, 5)
+        entry = self.output_pattern_entry = gtk.Entry()
+        entry.set_text(self.settings['output-pattern'])
+        entry.connect('activate', self.on_settings_change, 'output-pattern')
+        entry.connect('key-release-event', self.on_settings_change, 'output-pattern')
+        hbox.pack_start(entry)
+        vbox2.pack_start(hbox, False, False, 5)
+        hbox = gtk.HBox()
+        variables = {
+            'project' : 'Project name',
+            'render_name' : 'Render name, or name of group if "rename" in render name',
+            'codec' : 'Codec of primary output',
+        }
+        for k, v in variables.iteritems():
+            button = gtk.Button('<%s>' % k)
+            hbox.pack_start(button, False, False, 0)
+        vbox2.pack_start(hbox, False, False, 5)
+        vbox2.pack_start(gtk.HSeparator(), False, False, 10)
+        expander.add(vbox2)
+        vbox.pack_start(expander)
         hbox = gtk.HBox()
         label =  gtk.Label('Render:')
-        hbox.pack_start(label, False, False, 10)
+        hbox.pack_start(label, False, False, 5)
         entry = self.render_path_entry = gtk.Entry()
         entry.set_text(self.render_path)
         entry.set_sensitive(False)
         hbox.pack_start(entry)
         button = self.output_pick_button = gtk.Button('...')
         button.connect("clicked", self.on_render_pick)
-        hbox.pack_start(button, False, False, 10)
-        vbox.pack_start(hbox, False, False, 10)
+        hbox.pack_start(button, False, False, 5)
+        vbox.pack_start(hbox, False, False, 5)
         hbox = gtk.HBox()
         label =  gtk.Label('Command:')
-        hbox.pack_start(label, False, False, 10)
+        hbox.pack_start(label, False, False, 5)
         entry = self.cmd_entry = gtk.Entry()
         entry.set_text(self.cmd_string)
         hbox.pack_start(entry)
-        vbox.pack_start(hbox, False, False, 10)
+        vbox.pack_start(hbox, False, False, 5)
         button = self.output_pick_button = gtk.Button('...')
         button.connect("clicked", self.on_output_pick)
-        hbox.pack_start(button, False, False, 10)
-        checkbox = self.checkbox_overwrite = gtk.CheckButton('Overwrite existing output without asking')
-        checkbox.set_active(self.settings['overwrite'])
-        checkbox.connect('toggled', self.on_settings_change, 'overwrite')
-        vbox.pack_start(checkbox, False, False, 10)
-        checkbox = self.checkbox_remove_input = gtk.CheckButton('Remove input after encoding')
-        checkbox.set_active(self.settings['remove-input'])
-        checkbox.connect('toggled', self.on_settings_change, 'overwrite')
-        vbox.pack_start(checkbox, False, False, 10)
+        hbox.pack_start(button, False, False, 5)
         button = gtk.Button('Go')
         button.connect("clicked", self.on_run)
-        vbox.pack_start(button, False, False, 10)
-        vbox.pack_start(self.log_widget(), True, True, 10)
+        vbox.pack_start(button, False, False, 5)
+        vbox.pack_start(self.log_widget(), True, True, 5)
         progressbar = self.progressbar = gtk.ProgressBar()
         progressbar.set_no_show_all(True)
-        vbox.pack_start(progressbar, False, False, 10)
+        vbox.pack_start(progressbar, False, False, 5)
         button = self.reveal_output_button = gtk.Button('Reveal output')
         button.connect("clicked", self.on_reveal_output)
         button.set_no_show_all(True)
-        vbox.pack_start(button, False, False, 10)
-        footer = gtk.HBox(False, 10)
+        vbox.pack_start(button, False, False, 5)
+        footer = gtk.HBox(False, 5)
         quitButton = gtk.Button('Quit')
         quitButton.set_size_request(70, 30)
         quitButton.connect("clicked", self.on_quit)
@@ -315,6 +343,13 @@ class AfterscriptFfmpeg(Afterscript):
                 overwrite = self.gui_yesno_dialog("File '%s' already exists. Overwrite?" % self.output_path)
             if overwrite:
                 force_overwrite = True
+                try:
+                    open(self.output_marker, 'w').write(str(time.time()))
+                except IOError:
+                    error = 'Cannot write to output folder'
+                    self.write(error+'\n')
+                    gobject.idle_add(self.gui_info_dialog, error)
+                    return
             else:
                 return
         elif not os.path.exists(os.path.dirname(self.output_path)):
@@ -395,8 +430,9 @@ class AfterscriptFfmpeg(Afterscript):
             proc.poll()
         try:
             os.remove(self.output_marker)
-        except OSError:
-            print 'Could not remote incomplete marker: %s' % self.output_marker
+        except OSError as e:
+            print 'Could not remove incomplete marker: %s' % self.output_marker
+            print e
         print 'Process ended'
         if proc.returncode > 0:
             gobject.idle_add(self.gui_info_dialog, output_prev)
