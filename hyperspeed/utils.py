@@ -60,7 +60,6 @@ def get_stream_info(path):
                 'codec' : s_codec.rstrip(','),
             }
             streams.append(stream)
-    print repr(streams)
     return streams
 
 def mac_app_link(executable_path, app_path, icon_path=False):

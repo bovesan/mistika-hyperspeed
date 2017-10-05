@@ -24,7 +24,7 @@ except ImportError:
     gtk = False
 
 SETTINGS_DEFAULT = {
-    'autostart' : True, 
+    'autostart' : False, 
     'remove-input' : False,
     'overwrite' : False,
 }
@@ -38,7 +38,10 @@ class Afterscript(object):
     output_path = ''
     render_path = RENDER_DEFAULT_PATH
     render_name = ''
-    def __init__(self, script_path, cmd, default_output, title='Afterscript'):
+    def __init__(self, script_path, cmd, default_output, title=None):
+        if not title:
+            title = os.path.splitext(os.path.basename(__file__))
+        self.title = title
         self.script_path = script_path
         if type(cmd) == list:
             self.cmd = cmd
@@ -53,12 +56,18 @@ class Afterscript(object):
     def init_settings(self):
         self.settings = SETTINGS_DEFAULT
         script_folder = os.path.dirname(self.script_path)
-        script_settings_path = os.path.join(script_folder, SETTINGS_FILENAME)
+        # self.script_settings_path = os.path.join(script_folder, SETTINGS_FILENAME)
+        self.script_settings_path = os.path.join(hyperspeed.config_folder, self.title+'.cfg')
         try:
-            self.settings.update(json.loads(open(script_settings_path).read()))
+            self.settings.update(json.loads(open(self.script_settings_path).read()))
         except IOError:
             # No settings found
             pass
+    def settings_store(self):
+        try:
+            open(self.script_settings_path, 'w').write(json.dumps(self.settings, sort_keys=True, indent=4))
+        except IOError as e:
+            print 'Could not store settings. %s' % e
     def load_render(self, render_path):
         render = self.render = hyperspeed.stack.Render(render_path)
         self.render_name = render.name
@@ -67,28 +76,42 @@ class Afterscript(object):
         else:
             print 'Could not load render: %s' % render_path
             
-    def init_output_path(self):
+    def init_output_path(self, callback=None):
         variables = {
-            '<project>' : mistika.project,
-            '<render_name>' : self.render_name,
-            '<codec>' : self.render.primary_output.get_codec
+            'project' : mistika.project,
+            'rendername' : self.render_name,
+            'codec' : self.render.primary_output.get_codec
         }
         rename = False
         for magic_word in RENAME_MAGIC_WORDS:
             if magic_word in self.render_name:
-                variables['<render_name>'] = self.render.title
+                variables['rendername'] = self.render.title
                 rename = True
                 break
         output_path = os.path.normpath(os.path.join(os.path.dirname(self.render.primary_output.path),
             self.settings['output-pattern']))
         for k, v in variables.iteritems():
-            if callable(v):
-                output_path = output_path.replace(k, v())
-            else:
-                output_path = output_path.replace(k, v)
+            regex_pattern = '\[[^\[\]]*%s[^\[\]]*\]' % k
+            if len(re.findall(regex_pattern, output_path)) > 0:
+                if callable(v):
+                    v = v()
+                if v == None:
+                    output_path = re.sub(regex_pattern, '', output_path)
+                else:
+                    while re.search(regex_pattern, output_path):
+                        output_path = re.sub(
+                            regex_pattern,
+                            re.search(
+                                regex_pattern,
+                                output_path
+                            ).group(0).replace(k, v).strip('[]'),
+                            output_path
+                        )
         # Strip _%05d or .%06d from sequences:
         output_path = re.sub('\.*_*%\d+d$', '',  output_path)
         self.output_path = output_path
+        if callback:
+            callback(output_path)
 
 class AfterscriptFfmpeg(Afterscript):
     processes = []
@@ -117,9 +140,11 @@ class AfterscriptFfmpeg(Afterscript):
             gobject.idle_add(self.on_run)
     def init_window(self):
         window = self.window = gtk.Window()
-        screen = window.get_screen()
-        window.set_size_request(screen.get_width()/2-200, -1)
-        window.set_border_width(20)
+        screen = self.window.get_screen()
+        monitor = screen.get_monitor_geometry(0)
+        window.set_title(self.title)
+        window.set_size_request(monitor.width-200, -1)
+        window.set_border_width(10)
         window.set_position(gtk.WIN_POS_CENTER)
         vbox = gtk.VBox()
         expander = gtk.Expander('Settings')
@@ -137,22 +162,22 @@ class AfterscriptFfmpeg(Afterscript):
         checkbox.connect('toggled', self.on_settings_change, 'remove-input')
         vbox2.pack_start(checkbox, False, False, 5)
         hbox = gtk.HBox()
-        label =  gtk.Label('Output pattern:')
+        label =  gtk.Label('Default output:')
         hbox.pack_start(label, False, False, 5)
         entry = self.output_pattern_entry = gtk.Entry()
         entry.set_text(self.settings['output-pattern'])
-        entry.connect('activate', self.on_settings_change, 'output-pattern')
-        entry.connect('key-release-event', self.on_settings_change, 'output-pattern')
+        entry.connect('changed', self.on_settings_change, 'output-pattern')
         hbox.pack_start(entry)
         vbox2.pack_start(hbox, False, False, 5)
         hbox = gtk.HBox()
         variables = {
             'project' : 'Project name',
-            'render_name' : 'Render name, or name of group if "rename" in render name',
+            'rendername' : 'Render name, or name of group if "rename" in render name',
             'codec' : 'Codec of primary output',
         }
         for k, v in variables.iteritems():
-            button = gtk.Button('<%s>' % k)
+            button = gtk.Button('[%s]' % k)
+            button.connect("clicked", self.on_tag_clicked, k)
             hbox.pack_start(button, False, False, 0)
         vbox2.pack_start(hbox, False, False, 5)
         vbox2.pack_start(gtk.HSeparator(), False, False, 10)
@@ -199,9 +224,28 @@ class AfterscriptFfmpeg(Afterscript):
         window.connect("destroy", self.on_quit)
         window.add(vbox)
         window.show_all()
+    def on_tag_clicked(self, widget, tag):
+        entry = self.output_pattern_entry
+        entry_buffer = entry.get_buffer()
+        tag = '[%s]' % tag
+        # entry.get_buffer().connect("inserted-text", on_insert_cb)
+        entry_buffer.insert_text(entry.get_property('cursor_position'), tag, -1)
     def on_settings_change(self, widget, setting_key):
-        value = widget.get_active()
+        if setting_key == 'output-pattern':
+            value = widget.get_text()
+            if self.render:
+                gobject.idle_add(self.init_output_path, self.update_output_path)
+        else:
+            try:
+                value = widget.get_active()
+            except AttributeError:
+                print 'Could not get value "%s" from %s. Event: %s' % (setting_key, widget, event)
+                return
+        # print '%s: %s' % (setting_key, value)
         self.settings[setting_key] = value
+        t = threading.Thread(target=self.settings_store, name='Store settings')
+        t.setDaemon(True)
+        t.start()
     def cmd_update(self):
         full_cmd = [self.executable] + self.input_args + self.cmd + [self.output_path]
         cmd_string = self.cmd_string = ' '.join(full_cmd)
@@ -213,7 +257,7 @@ class AfterscriptFfmpeg(Afterscript):
     def init_input_args(self):
         render = self.render
         input_args = []
-        if render != None:
+        if render:
             if render.output_video != None:
                 input_args.append('-i')
                 if '%' in render.output_video.path:
@@ -288,7 +332,7 @@ class AfterscriptFfmpeg(Afterscript):
         response = dialog.run()
         if response == gtk.RESPONSE_OK:
             chosen_path = dialog.get_filename()
-            self.update_output_path.set_text(chosen_path)
+            self.update_output_path(chosen_path)
             dialog.destroy()
             return chosen_path
         elif response == gtk.RESPONSE_CANCEL:
