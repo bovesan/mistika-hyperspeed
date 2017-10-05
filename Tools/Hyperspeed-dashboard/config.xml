@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<tool>
+<alias>Hyperspeed Dashboard</alias>
+<description>This program.</description>
+<executable>hyperspeed-dashboard.py</executable>
+</tool>

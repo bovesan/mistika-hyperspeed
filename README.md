@@ -1,5 +1,5 @@
 # mistika-hyperspeed
-This project provides a framework for extending or tweaking a SGO Mistika or Mamba system, and also includes several such extensions.
+This project provides a framework for extending or tweaking a SGO Mistika or Mamba system, and also includes several such extensions. The screenshots might not show all current extensions.
 They are divided into the following categories:
 * [Tools](#tools)
 * [Afterscripts](#afterscripts)
@@ -10,8 +10,9 @@ They are divided into the following categories:
   * [hyperspeed.mistika](#hyperspeedmistika)
   * [hyperspeed.stack](#hyperspeedstack)
 
-To get started, run **./hyperspeed-dashboard.py**
+To get started, run **./install.py**
 ## Tools
+![Screenshot](http://bovesan.com/wp-content/uploads/2017/09/Screen-Shot-2017-09-10-at-20.02.54.png)
 Scripts or programs which can be run manually or at specific intervals to perform any task. You can also show these in the Extras panel in Mistika.
 Each tool must have its own folder under the Tools directory, and must include a **config.xml**:
 ### Tools config.xml structure
@@ -21,6 +22,7 @@ Each tool must have its own folder under the Tools directory, and must include a
     * executable: The name of the file to run
 
 ## Afterscripts
+![Screenshot](http://bovesan.com/wp-content/uploads/2017/09/Screen-Shot-2017-09-10-at-20.04.04.png)
 Scripts or programs which can be run automatically after a successful render, or launch manually on a previously rendered stack (typically an .rnd).
 Each afterscript must have its own folder under the Afterscripts directory, and must include a **config.xml**:
 ### Afterscripts config.xml structure
@@ -30,9 +32,11 @@ Each afterscript must have its own folder under the Afterscripts directory, and 
     * executable: The name of the file to run
 
 ## Stacks
+![Screenshot](http://bovesan.com/wp-content/uploads/2017/09/Screen-Shot-2017-09-10-at-20.04.11.png)
 Effect presets made from standard Mistika effects and/or custom footage, fonts, LUTs or even GLSL shaders.
 If the stack has *dependencies*, these must be included in the same folder. hyperspeed-dashboard.py will let you *install* a stack by relinking any dependencies.
 ## Configs
+![Screenshot](http://bovesan.com/wp-content/uploads/2017/09/Screen-Shot-2017-09-10-at-20.04.18.png)
 Various tweaks that can be enabled or disabled from the dashboard.
 Each config must have its own folder under the Configs directory, and must include a **config.xml**:
 ### Configs config.xml structure

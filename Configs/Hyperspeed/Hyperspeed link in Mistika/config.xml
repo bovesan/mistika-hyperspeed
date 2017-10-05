@@ -1,6 +1,0 @@
-<?xml version="1.0"?>
-<config>
-    <alias>Hyperspeed link in Mistika</alias>
-    <description>Place a link to the Hyperspeed dashboard in Mistika's Extras panel.</description>
-    <manage>true</manage>
-</config>

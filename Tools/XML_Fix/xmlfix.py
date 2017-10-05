@@ -7,14 +7,8 @@ import time
 import gtk
 import platform
 
-try:
-    cwd = os.getcwd()
-    os.chdir(os.path.dirname(sys.argv[0]))
-    sys.path.append("../..")
-    from hyperspeed import mistika
-    from hyperspeed import human
-except ImportError:
-    mistika = False
+from hyperspeed import mistika
+from hyperspeed import human
     
 USAGE = '''Attempts to fix certain problems with mixed framerate projects from Adobe Premiere.
 Writes the new sequence to a separate file.
@@ -40,9 +34,10 @@ def frames2tc(frames, Framerate):
 
 class xmlfix:
     def __init__(self, file_path, verbose=False):
+        print file_path
         self.tree = ET.parse(file_path)
         root = self.tree.getroot()
-        for clip in root.iter('clipitem'):
+        for clip in root.getiterator('clipitem'):
             try:
                 clip_file_name = clip.find('file/name').text
                 clip_duration = clip.find('duration').text
