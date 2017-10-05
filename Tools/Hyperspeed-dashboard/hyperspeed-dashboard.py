@@ -22,6 +22,8 @@ import warnings
 import webbrowser
 import xml.etree.ElementTree as ET
 import zipfile
+import fcntl
+import socket
 
 import hyperspeed
 import hyperspeed.tools
@@ -50,7 +52,29 @@ AUTORUN_TIMES = {
 
 CONFIG_FOLDER = os.path.expanduser(CONFIG_FOLDER)
 os.chdir(hyperspeed.folder)
+SOCKET_PATH = os.path.join(CONFIG_FOLDER, 'hyperspeed-dashboard.socket')
 
+try:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.connect(SOCKET_PATH)
+    message = b'ping'
+    s.send(message)
+    data = s.recv(1024)
+    s.close()
+    if data == message:
+        print('Another instance is already running')
+        sys.exit(0)
+except socket.error as e:
+    print e
+
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+try:
+    os.remove(SOCKET_PATH)
+    s.bind(SOCKET_PATH)
+    s.listen(1)
+    conn, addr = s.accept()
+except OSError:
+    pass
 
 def config_value_decode(value, parent_folder = False):
     try:
@@ -144,6 +168,7 @@ class RenderItem(hyperspeed.stack.Stack):
         logfile_h.flush()
 
 class PyApp(gtk.Window):
+    quit = False
     def __init__(self):
         super(PyApp, self).__init__()
         self.config_rw()
@@ -215,6 +240,7 @@ class PyApp(gtk.Window):
         self.comboEditable = None
         gobject.idle_add(self.bring_to_front)
         self.launch_thread(self.io_get_release_status)
+        self.launch_thread(self.socket_listen)
     def bring_to_front(self):
         self.present()
     def init_toolbar(self):
@@ -536,6 +562,14 @@ class PyApp(gtk.Window):
         self.launch_thread(self.io_populate_render_queue)
         vbox.pack_start(afterscriptsBox, True, True, 5)
         return vbox
+    def socket_listen(self):
+        while conn and not self.quit:
+            data = conn.recv(1024)
+            if not data: break
+            conn.send(data)
+            if data == 'bring to front':
+                gobject.idle_add(self.bring_to_front)
+        conn.close()
     def io_populate_tools(self):
         file_type = 'Tools'
         file_type_defaults = {
@@ -1063,12 +1097,17 @@ class PyApp(gtk.Window):
                 self.config[config_item] = config_force[config_item]
                 self.config_rw(write=True)
     def on_quit(self, widget):
+        self.quit = True
         if type(widget) is gtk.Button:
             widget_name = widget.get_label() + ' button'
         else:
             widget_name = str(widget)
         print 'Closed by: ' + widget_name
         gtk.main_quit()
+        # try:
+        #     os.remove(PID_FILE)
+        # except OSError as e:
+        #     pass
     def on_filter(self, widget, event):
         #print widget.get_text()
         self.tools_filter.refilter();
