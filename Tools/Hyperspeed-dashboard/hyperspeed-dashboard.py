@@ -22,14 +22,13 @@ import warnings
 import webbrowser
 import xml.etree.ElementTree as ET
 import zipfile
-import fcntl
-import socket
 
 import hyperspeed
 import hyperspeed.tools
 import hyperspeed.manage
 import hyperspeed.utils
 import hyperspeed.stack
+import hyperspeed.sockets
 from hyperspeed import mistika
 from hyperspeed import video
 from hyperspeed import human
@@ -52,14 +51,14 @@ AUTORUN_TIMES = {
 
 CONFIG_FOLDER = os.path.expanduser(CONFIG_FOLDER)
 os.chdir(hyperspeed.folder)
-SOCKET_PATH = os.path.join(CONFIG_FOLDER, 'hyperspeed-dashboard.socket')
 
 try:
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    s.connect(SOCKET_PATH)
+    s.settimeout(5.0)
+    s.connect(hyperspeed.sockets.path)
     message = b'ping'
     s.send(message)
-    data = s.recv(1024)
+    data = s.recv(1024*1024)
     s.close()
     if data == message:
         print('Another instance is already running')
@@ -69,12 +68,15 @@ except socket.error as e:
 
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 try:
-    os.remove(SOCKET_PATH)
-    s.bind(SOCKET_PATH)
-    s.listen(1)
-    conn, addr = s.accept()
-except OSError:
-    pass
+    os.remove(hyperspeed.sockets.path)
+except OSError as e:
+    print e
+try:
+    print 'Binding socket'
+    s.bind(hyperspeed.sockets.path)
+    print 'Socket bound'
+except socket.error as e:
+    print e
 
 def config_value_decode(value, parent_folder = False):
     try:
@@ -169,6 +171,7 @@ class RenderItem(hyperspeed.stack.Stack):
 
 class PyApp(gtk.Window):
     quit = False
+    subprocesses = []
     def __init__(self):
         super(PyApp, self).__init__()
         self.config_rw()
@@ -563,12 +566,25 @@ class PyApp(gtk.Window):
         vbox.pack_start(afterscriptsBox, True, True, 5)
         return vbox
     def socket_listen(self):
-        while conn and not self.quit:
-            data = conn.recv(1024)
+        s.listen(1)
+        while s and not self.quit:
+            conn, addr = s.accept()
+            # data = conn.recv(1024*1024)
+            try:
+                data = conn.recv(1024)
+            except IOError as e:
+                print e
+                continue
             if not data: break
-            conn.send(data)
-            if data == 'bring to front':
+            # conn.send(data)
+            try:
+                for k, v in json.loads(data).iteritems():
+                    if k == 'launch':
+                        print 'Launch: %s' % ' '.join(v)
+                        self.subprocesses.append(subprocess.Popen(v))
+            except ValueError as e:
                 gobject.idle_add(self.bring_to_front)
+            conn.send(data)
         conn.close()
     def io_populate_tools(self):
         file_type = 'Tools'

@@ -3,6 +3,7 @@
 import os
 
 folder = os.path.realpath(os.path.join(os.path.dirname(__file__), '..'))
+config_folder = os.path.expanduser('~/.mistika-hyperspeed/')
 
 # unwanted_env_vars = ['LIBQUICKTIME_PLUGIN_DIR', "LD_LIBRARY_PATH"]
 # for unwanted_env_var in unwanted_env_vars:

@@ -4,9 +4,6 @@ import csv
 import json
 import sys
 import os
-import gtk
-import gobject
-import pango
 import re
 import subprocess
 import shlex
@@ -16,7 +13,15 @@ import time
 import hyperspeed
 import hyperspeed.utils
 import hyperspeed.stack
+import hyperspeed.sockets
 from hyperspeed import mistika
+
+try:
+    import gtk
+    import gobject
+    import pango
+except ImportError:
+    gtk = False
 
 SETTINGS_DEFAULT = {
     'autostart' : False, 
@@ -46,7 +51,6 @@ class Afterscript(object):
             render_name = sys.argv[2]
             render_path = self.render_path = mistika.get_rnd_path(render_name)
             self.load_render(render_path)
-            gobject.idle_add(self.on_run)
     def init_settings(self):
         self.settings = SETTINGS_DEFAULT
         script_folder = os.path.dirname(self.script_path)
@@ -94,11 +98,23 @@ class AfterscriptFfmpeg(Afterscript):
     args = []
     def __init__(self, script_path, cmd, output_path, title='Afterscript', executable='ffmpeg'):
         super(AfterscriptFfmpeg, self).__init__(script_path, cmd, output_path, title)
+        if not gtk or '--force-socket' in sys.argv:
+            try:
+                args = sys.argv
+                args[0] = os.path.abspath(args[0])
+                hyperspeed.sockets.launch(args)
+                sys.exit(0)
+            except IOError as e:
+                print e
+                print 'Could not launch afterscript'
+                sys.exit(1)
         self.executable = executable
         self.init_input_args()
         gobject.threads_init()
         self.init_window()
         self.cmd_update()
+        if self.render != None and self.settings['autostart']:
+            gobject.idle_add(self.on_run)
     def init_window(self):
         window = self.window = gtk.Window()
         screen = window.get_screen()
