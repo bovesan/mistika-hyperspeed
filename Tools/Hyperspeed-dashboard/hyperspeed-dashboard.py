@@ -1405,8 +1405,8 @@ class PyApp(gtk.Window):
             return
         print 'Failed to execute %s' % repr(exec_args)
     def on_tools_run(self, treeview, path, view_column, *ignore):
-        file_path = self.tools_treestore[path][4]
-        self.launch_subprocess([file_path])
+        file_path = treeview.get_model()[path][4]
+        self.launch_subprocess([file_path], terminal=False)
     def on_afterscripts_run(self, treeview, path, view_column, treeview_obj, cmd_column):
         model = treeview.get_model()
         print 'Not yet implemented'
