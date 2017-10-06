@@ -1,10 +1,38 @@
 #!/usr/bin/env python
 
-import gtk
-import gobject
 import sys
 import os
-import pango
+import subprocess
+try:
+    import gtk
+    import gobject
+    import pango
+except ImportError as e:
+    print e
+    gtk = False
+    # import ctypes
+    # try:
+    #     # ctypes.CDLL("/home/mistika/MISTIKA-ENV/bin/lib/libX11.so.6", mode = ctypes.RTLD_GLOBAL)
+    #     # ctypes.CDLL(hyperspeed.folder+"/res/lib/libxcb-xlib.so.0", mode = ctypes.RTLD_GLOBAL)
+    #     ctypes.CDLL(hyperspeed.folder+"/res/lib/ld-linux-x86-64.so.2", mode = ctypes.RTLD_GLOBAL)
+    #     ctypes.CDLL(hyperspeed.folder+"/res/lib/libc.so.6", mode = ctypes.RTLD_GLOBAL)
+    #     # OSError: /home/mistika/mistika-hyperspeed/res/lib/libc.so.6: symbol _dl_starting_up, version GLIBC_PRIVATE not defined in file ld-linux-x86-64.so.2 with link time reference
+    #     sys.path.insert(1, os.path.join(hyperspeed.folder, 'res/lib/gtk-2.0'))
+    #     import gtk
+    #     import gobject
+    #     import pango
+    # except ImportError as e:
+    #     print e
+    # import hyperspeed.sockets
+    # try:
+    #     args = sys.argv
+    #     args[0] = os.path.abspath(args[0])
+    #     hyperspeed.sockets.launch(args)
+    #     sys.exit(0)
+    # except IOError as e:
+    #     print e
+    #     print 'Could not launch %s' % __file__
+    #     sys.exit(1)
 
 class TerminalReplacement(gtk.Window):
     def __init__(self, method, inputs=False, default_folder=False):
@@ -87,3 +115,4 @@ class TerminalReplacement(gtk.Window):
         else:
             return False
         return True
+

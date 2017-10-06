@@ -9,6 +9,8 @@ import tempfile
 import copy
 import shutil
 
+import hyperspeed.utils
+
 def escape_par(string):
     return string.replace('(', '\(').replace(')', '\)')
 class DependencyType(object):
@@ -92,6 +94,22 @@ class Dependency(object):
         if parent in self.parents:
             self.parents.remove(parent)
     @property
+    def codec(self):
+        try:
+            self._codec
+        except AttributeError:
+            self._codec = self.get_codec()
+        return self._codec
+    def get_codec(self):
+        if '%%' in self.path:
+            path = self.path % self.start
+        else:
+            path = self.path
+        try:
+            return hyperspeed.utils.get_stream_info(path)[0]['codec']
+        except:
+            return 'codec_unknown'
+    @property
     def path(self):
         if not self._path:
             if self.name.startswith('/'):
@@ -153,19 +171,43 @@ class Dependency(object):
                         self._size = None
                         self._complete = False
             return self._size
+    def remove(self):
+        if '%' in self.path:
+            for frame_number in range(self.start, self.end):
+                frame_path = self.path % frame_number
+                try:
+                    os.remove(frame_path)
+                except OSError:
+                    print 'Could not remove %s' % frame_path
+            dirname = os.path.dirname(self.path)
+            try:
+                os.rmdir(dirname)
+            except OSError:
+                print 'Could not remove %s' % dirname
+        else:
+            try:
+                os.remove(self.path)
+            except OSError:
+                print 'Could not remove %s' % self.path
 
 class Stack(object):
+    exists = False
+    dependencies_size = None
+    project = None
+    resX = None
+    resY = None
+    fps = None
+    frames = None
     def __init__(self, path):
         self.path = path
-        self.size = os.path.getsize(self.path)
-        self.dependencies_size = None
-        self.ctime = os.path.getctime(self.path)
-        self.project = None
-        self.resX = None
-        self.resY = None
-        self.fps = None
-        self.frames = None
-        self.read_header()
+        try:
+            self.size = os.path.getsize(self.path)
+            self.ctime = os.path.getctime(self.path)
+            self.exists = True
+            self.read_header()
+        except (TypeError, OSError) as e:
+            print e
+            pass
     def read_header(self):
         try:
             level_names = []
@@ -486,18 +528,39 @@ class Stack(object):
         return (line, dependency)
 
 class Render(Stack):
+
+    output_video = None
+    output_proxy = None
+    output_audio = None
+    output_paths = []
+
     def __init__(self, path):
         super(Render, self).__init__(path)
-        self.clp_path = 'clp'.join(self.path.rsplit('rnd', 1))
-        self.output_stack = Stack(self.clp_path)
-        self.output_video = None
-        self.output_proxy = None
-        self.output_audio = None
+        self.name = os.path.splitext(os.path.basename(self.path))[0]
+        if self.exists:
+            self.clp_path = 'clp'.join(self.path.rsplit('rnd', 1))
+            self.output_stack = Stack(self.clp_path)
+            for dependency in self.output_stack.dependencies:
+                if dependency.type == 'highres':
+                    self.output_video = dependency
+                    self.output_paths.append(dependency.path)
+                elif dependency.type == 'lowres':
+                    self.output_proxy = dependency
+                    self.output_paths.append(dependency.path)
+                elif dependency.type == 'audio':
+                    self.output_audio = dependency
+                    self.output_paths.append(dependency.path)
+    @property
+    def primary_output(self):
+        if self.output_video != None:
+            return self.output_video
+        elif self.output_proxy != None:
+            return self.output_proxy
+        elif self.output_audio != None:
+            return self.output_audio
+        else:
+            return None
+    def remove_output(self):
         for dependency in self.output_stack.dependencies:
-            if dependency.type == 'highres':
-                self.output_video = dependency
-            elif dependency.type == 'lowres':
-                self.output_proxy = dependency
-            elif dependency.type == 'audio':
-                self.output_audio = dependency
-        
+            if dependency.type in ['highres', 'lowres', 'audio']:
+                dependency.remove()

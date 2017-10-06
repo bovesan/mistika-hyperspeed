@@ -63,9 +63,11 @@ def reload():
         fonts_folder = 'C:/Windows/Fonts/'
     shared_folder = os.path.join(env_folder, 'shared')
     try:
-        version = LooseVersion('.'.join(re.findall(r'\d+',subprocess.Popen([product.lower(), '-V'], stdout=subprocess.PIPE).communicate()[0].splitlines()[0])))
+        version = LooseVersion('.'.join(re.findall(r'\d+',
+            subprocess.Popen([product.lower(), '-V'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0].splitlines()[0])))
     except OSError:
-        version = LooseVersion('.'.join(re.findall(r'\d+',subprocess.Popen(['/Applications/SGOMambaFX.app/Contents/MacOS/mamba', '-V'], stdout=subprocess.PIPE).communicate()[0].splitlines()[0])))
+        version = LooseVersion('.'.join(re.findall(r'\d+',
+            subprocess.Popen(['/Applications/SGOMambaFX.app/Contents/MacOS/mamba', '-V'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0].splitlines()[0])))
     try:
         version.vstring
     except AttributeError:
