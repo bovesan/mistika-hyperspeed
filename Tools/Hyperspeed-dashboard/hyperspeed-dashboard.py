@@ -27,7 +27,8 @@ import hyperspeed
 import hyperspeed.tools
 import hyperspeed.manage
 import hyperspeed.utils
-from hyperspeed import stack
+import hyperspeed.stack
+import hyperspeed.sockets
 from hyperspeed import mistika
 from hyperspeed import video
 from hyperspeed import human
@@ -51,6 +52,31 @@ AUTORUN_TIMES = {
 CONFIG_FOLDER = os.path.expanduser(CONFIG_FOLDER)
 os.chdir(hyperspeed.folder)
 
+try:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(5.0)
+    s.connect(hyperspeed.sockets.path)
+    message = b'ping'
+    s.send(message)
+    data = s.recv(1024*1024)
+    s.close()
+    if data == message:
+        print('Another instance is already running')
+        sys.exit(0)
+except socket.error as e:
+    print e
+
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+try:
+    os.remove(hyperspeed.sockets.path)
+except OSError as e:
+    print e
+try:
+    print 'Binding socket'
+    s.bind(hyperspeed.sockets.path)
+    print 'Socket bound'
+except socket.error as e:
+    print e
 
 def config_value_decode(value, parent_folder = False):
     try:
@@ -144,6 +170,8 @@ class RenderItem(hyperspeed.stack.Stack):
         logfile_h.flush()
 
 class PyApp(gtk.Window):
+    quit = False
+    subprocesses = []
     def __init__(self):
         super(PyApp, self).__init__()
         self.config_rw()
@@ -154,19 +182,20 @@ class PyApp(gtk.Window):
         self.version = None
         self.change_log = []
         screen = self.get_screen()
+        monitor = screen.get_monitor_geometry(0)
         self.set_title("Hyperspeed")
-        self.set_size_request(screen.get_width()/2, screen.get_height()/2)
+        self.set_default_size(monitor.width-200, monitor.height-200)
         self.set_border_width(20)
         self.set_position(gtk.WIN_POS_CENTER)
         if 'darwin' in platform.system().lower():
             self.set_resizable(False) # Because resizing crashes the app on Mac
         self.connect("key-press-event",self.on_key_press_event)
         self.set_icon_list(
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 16, 16),
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 32, 32),
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 64, 64),
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 128, 128),
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/msync_icon.png', 256, 256),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/hyperspeed_1024px.png', 16, 16),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/hyperspeed_1024px.png', 32, 32),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/hyperspeed_1024px.png', 64, 64),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/hyperspeed_1024px.png', 128, 128),
+            gtk.gdk.pixbuf_new_from_file_at_size('res/img/hyperspeed_1024px.png', 256, 256),
         )
         gtkrc = '''
         style "theme-fixes" {
@@ -215,6 +244,7 @@ class PyApp(gtk.Window):
         self.comboEditable = None
         gobject.idle_add(self.bring_to_front)
         self.launch_thread(self.io_get_release_status)
+        self.launch_thread(self.socket_listen)
     def bring_to_front(self):
         self.present()
     def init_toolbar(self):
@@ -307,7 +337,13 @@ class PyApp(gtk.Window):
         return scrolled_window
     def init_afterscripts_window(self):
         tree        = self.afterscripts_tree      = gtk.TreeView()
-        treestore   = self.afterscripts_treestore = gtk.TreeStore(str, bool, bool, str, str) # Name, show in Mistika, is folder, file path, description
+        treestore   = self.afterscripts_treestore = gtk.TreeStore(
+            str, # 00 Name
+            bool,# 01 Show in Mistika
+            bool,# 02 Is Folder
+            str, # 03 File path
+            str  # 04 Description
+        )
         tree.set_tooltip_column(4)
         tree_filter = self.afterscripts_filter    = treestore.filter_new();
         cell = gtk.CellRendererText()
@@ -326,7 +362,7 @@ class PyApp(gtk.Window):
         tree.set_model(tree_filter)
         tree.expand_all()
         tree.set_rules_hint(True)
-        tree.connect('row-activated', self.on_afterscripts_run, tree)
+        tree.connect('row-activated', self.on_afterscripts_run, tree, 3)
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(tree)
@@ -536,6 +572,27 @@ class PyApp(gtk.Window):
         self.launch_thread(self.io_populate_render_queue)
         vbox.pack_start(afterscriptsBox, True, True, 5)
         return vbox
+    def socket_listen(self):
+        s.listen(1)
+        while s and not self.quit:
+            conn, addr = s.accept()
+            # data = conn.recv(1024*1024)
+            try:
+                data = conn.recv(1024)
+            except IOError as e:
+                print e
+                continue
+            if not data: break
+            # conn.send(data)
+            try:
+                for k, v in json.loads(data).iteritems():
+                    if k == 'launch':
+                        print 'Launch: %s' % ' '.join(v)
+                        self.subprocesses.append(subprocess.Popen(v))
+            except ValueError as e:
+                gobject.idle_add(self.bring_to_front)
+            conn.send(data)
+        conn.close()
     def io_populate_tools(self):
         file_type = 'Tools'
         file_type_defaults = {
@@ -659,7 +716,7 @@ class PyApp(gtk.Window):
                 continue
             if files[path]['isdir']:
                 continue
-            stack = hyperspeed.Stack(path)
+            stack = hyperspeed.stack.Stack(path)
             for dependency in stack.dependencies:
                 if not dependency.complete:
                     stack.relink_dependencies()
@@ -1063,12 +1120,17 @@ class PyApp(gtk.Window):
                 self.config[config_item] = config_force[config_item]
                 self.config_rw(write=True)
     def on_quit(self, widget):
+        self.quit = True
         if type(widget) is gtk.Button:
             widget_name = widget.get_label() + ' button'
         else:
             widget_name = str(widget)
         print 'Closed by: ' + widget_name
         gtk.main_quit()
+        # try:
+        #     os.remove(PID_FILE)
+        # except OSError as e:
+        #     pass
     def on_filter(self, widget, event):
         #print widget.get_text()
         self.tools_filter.refilter();
@@ -1285,7 +1347,7 @@ class PyApp(gtk.Window):
         state = not tree[treepath][1]
         path = tree[treepath][3]
         if state:
-            stack.Stack(path).relink_dependencies()
+            hyperspeed.stack.Stack(path).relink_dependencies()
         self.launch_thread(self.io_populate_stacks)
     def on_configs_toggle(self, cellrenderertoggle, treepath, *ignore):
         tree = self.configs_treestore
@@ -1309,34 +1371,47 @@ class PyApp(gtk.Window):
                 for link_target, link, link_copy in links:
                     hyperspeed.manage.remove(link_target, link, link_copy)
         self.launch_thread(self.io_populate_configs)
-    def launch_in_terminal(self, exec_args):
+    def launch_subprocess(self, exec_args, terminal=False):
         print repr(exec_args)
-        if platform.system() == 'Linux':
-            try:
-                subprocess.Popen(['konsole', '-e', os.path.join(self.config['app_folder'], 'res/scripts/bash_wrapper.sh')] + exec_args)
-                return
-            except OSError as e:
+        if terminal:
+            if platform.system() == 'Linux':
                 try:
-                    subprocess.Popen(['xterm', '-e', os.path.join(self.config['app_folder'], 'res/scripts/bash_wrapper.sh')] + exec_args)
+                    self.subprocesses.append(subprocess.Popen([
+                        'konsole',
+                        '-e',
+                        os.path.join(self.config['app_folder'], 'res/scripts/bash_wrapper.sh')
+                        ] + exec_args))
                     return
                 except OSError as e:
                     try:
-                        subprocess.Popen([exec_args])
+                        self.subprocesses.append(subprocess.Popen([
+                            'xterm',
+                            '-e',
+                            os.path.join(self.config['app_folder'], 'res/scripts/bash_wrapper.sh')
+                            ] + exec_args))
                         return
-                    except:
-                        pass
-        elif platform.system() == 'Darwin':
-            subprocess.Popen(['open', '-a', 'Terminal.app'] + exec_args)
-            return
+                    except OSError as e:
+                        try:
+                            self.subprocesses.append(subprocess.Popen([exec_args]))
+                            return
+                        except:
+                            pass
+            elif platform.system() == 'Darwin':
+                # Mac terminal will allways remain open when process quits.
+                subprocess.Popen(['open', '-a', 'Terminal.app'] + exec_args)
+                return
         else:
-            subprocess.Popen(exec_args)
+            self.subprocesses.append(subprocess.Popen(exec_args))
             return
         print 'Failed to execute %s' % repr(exec_args)
     def on_tools_run(self, treeview, path, view_column, *ignore):
         file_path = self.tools_treestore[path][4]
-        self.launch_in_terminal([file_path])
-    def on_afterscripts_run(self, treeview, path, view_column, *ignore):
+        self.launch_subprocess([file_path])
+    def on_afterscripts_run(self, treeview, path, view_column, treeview_obj, cmd_column):
+        model = treeview.get_model()
         print 'Not yet implemented'
+        file_path = model[path][cmd_column]
+        self.launch_subprocess([file_path], terminal=False)
     def on_links_run(self, treeview, path, view_column, *ignore):
         treestore = treeview.get_model()
         try: # If there is a filter in the middle
@@ -1483,7 +1558,7 @@ class PyApp(gtk.Window):
         git = os.path.isdir('.git')
         if git:
             print 'git pull'
-            self.launch_in_terminal([os.path.join(self.config['app_folder'], 'res/scripts/gitpull.sh')])
+            self.launch_subprocess([os.path.join(self.config['app_folder'], 'res/scripts/gitpull.sh')])
         else:
             print 'Downloading latest version ...'
             archive = 'https://github.com/bovesan/mistika-hyperspeed/archive/master.zip'

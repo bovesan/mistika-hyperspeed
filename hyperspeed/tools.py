@@ -53,9 +53,15 @@ def get_mistika_links():
         tools.append(line_path)
     return tools
 
-def desktop_link(alias, file_path, activated=True, icon_path='res/img/hyperspeed_1024px.png'):
-    icon_path = os.path.abspath(icon_path)
+def desktop_link(alias, file_path, activated=True, icon_path=False):
     file_path = os.path.normpath(file_path)
+    file_folder = os.path.dirname(file_path)
+    if not icon_path:
+        if 'icon.png' in os.listdir(file_folder):
+            icon_path = os.path.join(file_folder, 'icon.png')
+        else:
+            icon_path = 'res/img/hyperspeed_1024px.png'
+    icon_path = os.path.abspath(icon_path)
     stored = False
     desktop_folder_path = os.path.expanduser('~/Desktop/')
     for basename in os.listdir(desktop_folder_path):

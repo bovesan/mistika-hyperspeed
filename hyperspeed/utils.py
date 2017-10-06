@@ -11,10 +11,13 @@ def reveal_file(path):
         paths = path
     folders = {}
     for path in paths:
-        folder = os.path.dirname(path)
+        if os.path.isdir(path):
+            folder = path
+        else:
+            folder = os.path.dirname(path)
         folders[folder] = path
     for folder, path in folders.iteritems():
-        print 'Reveal: ', folder
+        print 'Reveal folder:"%s" path: "%s"' % (folder, path)
         if platform.system() == "Windows":
             subprocess.Popen(["explorer", "/select,", path])
         elif platform.system() == "Darwin":
@@ -30,13 +33,34 @@ def reveal_file(path):
             except KeyError:
                 pass
             try:
-                if os.path.isdir(path):
+                if not os.path.exists(path):
+                    subprocess.Popen(["dolphin", folder], env=dolphinEnv)
+                elif os.path.isdir(path):
                     subprocess.Popen(["dolphin", path], env=dolphinEnv)
                 else:
-                    subprocess.Popen(["dolphin", '--select', path], env=dolphinEnv)
+                    # subprocess.Popen(["dolphin", '--select', path], env=dolphinEnv) # Not supported in Dolphin 1.3
+                    subprocess.Popen(["dolphin", folder], env=dolphinEnv)
             except OSError:
                 subprocess.Popen(["xdg-open", folder])
                 
+def get_stream_info(path):
+    cmd = ['ffprobe', path]
+    streams = []
+    for line in subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).communicate()[0].splitlines():
+        line = line.strip()
+        if line.startswith('Stream'):
+            try:
+                s_head, s_id, s_type, s_codec, s_rest = line.split(' ', 4)
+            except ValueError:
+                print 'Could not read stream properties'
+                continue
+            stream = {
+                'id' : s_id.rstrip(':'),
+                'type' : s_type.rstrip(':'),
+                'codec' : s_codec.rstrip(','),
+            }
+            streams.append(stream)
+    return streams
 
 def mac_app_link(executable_path, app_path, icon_path=False):
     info_plist_template = '''<?xml version="1.0" encoding="UTF-8"?>
