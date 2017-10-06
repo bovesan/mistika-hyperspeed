@@ -182,8 +182,9 @@ class PyApp(gtk.Window):
         self.version = None
         self.change_log = []
         screen = self.get_screen()
+        monitor = screen.get_monitor_geometry(0)
         self.set_title("Hyperspeed")
-        self.set_size_request(screen.get_width()/2, screen.get_height()/2)
+        self.set_default_size(monitor.width-200, monitor.height-200)
         self.set_border_width(20)
         self.set_position(gtk.WIN_POS_CENTER)
         if 'darwin' in platform.system().lower():

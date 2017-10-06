@@ -11,17 +11,22 @@ import threading
 import time
 
 import hyperspeed
+import hyperspeed.ui
 import hyperspeed.utils
 import hyperspeed.stack
 import hyperspeed.sockets
 from hyperspeed import mistika
 
-try:
-    import gtk
-    import gobject
-    import pango
-except ImportError:
-    gtk = False
+gtk = hyperspeed.ui.gtk
+gobject = hyperspeed.ui.gobject
+pango = hyperspeed.ui.pango
+
+# try:
+#     import gtk
+#     import gobject
+#     import pango
+# except ImportError:
+#     gtk = False
 
 SETTINGS_DEFAULT = {
     'autostart' : False, 
@@ -121,16 +126,6 @@ class AfterscriptFfmpeg(Afterscript):
     args = []
     def __init__(self, script_path, cmd, default_output, title='Afterscript', executable='ffmpeg'):
         super(AfterscriptFfmpeg, self).__init__(script_path, cmd, default_output, title)
-        if not gtk or '--force-socket' in sys.argv:
-            try:
-                args = sys.argv
-                args[0] = os.path.abspath(args[0])
-                hyperspeed.sockets.launch(args)
-                sys.exit(0)
-            except IOError as e:
-                print e
-                print 'Could not launch afterscript'
-                sys.exit(1)
         self.executable = executable
         self.init_input_args()
         gobject.threads_init()
@@ -143,7 +138,7 @@ class AfterscriptFfmpeg(Afterscript):
         screen = self.window.get_screen()
         monitor = screen.get_monitor_geometry(0)
         window.set_title(self.title)
-        window.set_size_request(monitor.width-200, -1)
+        window.set_default_size(monitor.width-200, -1)
         window.set_border_width(10)
         window.set_position(gtk.WIN_POS_CENTER)
         vbox = gtk.VBox()
