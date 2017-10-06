@@ -55,6 +55,7 @@ class Afterscript(object):
         self.init_settings()
         self.settings['output-pattern'] = default_output
         if len(sys.argv) >= 3 and sys.argv[1] == 'ok':
+            hyperspeed.sockets.launch(sys.argv)
             render_name = sys.argv[2]
             render_path = self.render_path = mistika.get_rnd_path(render_name)
             self.load_render(render_path)

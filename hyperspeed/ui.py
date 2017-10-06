@@ -2,8 +2,6 @@
 
 import sys
 import os
-import hyperspeed.sockets
-hyperspeed.sockets.launch(sys.argv)
 import subprocess
 try:
     import gtk
