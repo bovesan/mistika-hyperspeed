@@ -337,7 +337,13 @@ class PyApp(gtk.Window):
         return scrolled_window
     def init_afterscripts_window(self):
         tree        = self.afterscripts_tree      = gtk.TreeView()
-        treestore   = self.afterscripts_treestore = gtk.TreeStore(str, bool, bool, str, str) # Name, show in Mistika, is folder, file path, description
+        treestore   = self.afterscripts_treestore = gtk.TreeStore(
+            str, # 00 Name
+            bool,# 01 Show in Mistika
+            bool,# 02 Is Folder
+            str, # 03 File path
+            str  # 04 Description
+        )
         tree.set_tooltip_column(4)
         tree_filter = self.afterscripts_filter    = treestore.filter_new();
         cell = gtk.CellRendererText()
@@ -356,7 +362,7 @@ class PyApp(gtk.Window):
         tree.set_model(tree_filter)
         tree.expand_all()
         tree.set_rules_hint(True)
-        tree.connect('row-activated', self.on_afterscripts_run, tree)
+        tree.connect('row-activated', self.on_afterscripts_run, tree, 3)
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(tree)
@@ -1365,34 +1371,47 @@ class PyApp(gtk.Window):
                 for link_target, link, link_copy in links:
                     hyperspeed.manage.remove(link_target, link, link_copy)
         self.launch_thread(self.io_populate_configs)
-    def launch_in_terminal(self, exec_args):
+    def launch_subprocess(self, exec_args, terminal=False):
         print repr(exec_args)
-        if platform.system() == 'Linux':
-            try:
-                subprocess.Popen(['konsole', '-e', os.path.join(self.config['app_folder'], 'res/scripts/bash_wrapper.sh')] + exec_args)
-                return
-            except OSError as e:
+        if terminal:
+            if platform.system() == 'Linux':
                 try:
-                    subprocess.Popen(['xterm', '-e', os.path.join(self.config['app_folder'], 'res/scripts/bash_wrapper.sh')] + exec_args)
+                    self.subprocesses.append(subprocess.Popen([
+                        'konsole',
+                        '-e',
+                        os.path.join(self.config['app_folder'], 'res/scripts/bash_wrapper.sh')
+                        ] + exec_args))
                     return
                 except OSError as e:
                     try:
-                        subprocess.Popen([exec_args])
+                        self.subprocesses.append(subprocess.Popen([
+                            'xterm',
+                            '-e',
+                            os.path.join(self.config['app_folder'], 'res/scripts/bash_wrapper.sh')
+                            ] + exec_args))
                         return
-                    except:
-                        pass
-        elif platform.system() == 'Darwin':
-            subprocess.Popen(['open', '-a', 'Terminal.app'] + exec_args)
-            return
+                    except OSError as e:
+                        try:
+                            self.subprocesses.append(subprocess.Popen([exec_args]))
+                            return
+                        except:
+                            pass
+            elif platform.system() == 'Darwin':
+                # Mac terminal will allways remain open when process quits.
+                subprocess.Popen(['open', '-a', 'Terminal.app'] + exec_args)
+                return
         else:
-            subprocess.Popen(exec_args)
+            self.subprocesses.append(subprocess.Popen(exec_args))
             return
         print 'Failed to execute %s' % repr(exec_args)
     def on_tools_run(self, treeview, path, view_column, *ignore):
         file_path = self.tools_treestore[path][4]
-        self.launch_in_terminal([file_path])
-    def on_afterscripts_run(self, treeview, path, view_column, *ignore):
+        self.launch_subprocess([file_path])
+    def on_afterscripts_run(self, treeview, path, view_column, treeview_obj, cmd_column):
+        model = treeview.get_model()
         print 'Not yet implemented'
+        file_path = model[path][cmd_column]
+        self.launch_subprocess([file_path], terminal=False)
     def on_links_run(self, treeview, path, view_column, *ignore):
         treestore = treeview.get_model()
         try: # If there is a filter in the middle
@@ -1539,7 +1558,7 @@ class PyApp(gtk.Window):
         git = os.path.isdir('.git')
         if git:
             print 'git pull'
-            self.launch_in_terminal([os.path.join(self.config['app_folder'], 'res/scripts/gitpull.sh')])
+            self.launch_subprocess([os.path.join(self.config['app_folder'], 'res/scripts/gitpull.sh')])
         else:
             print 'Downloading latest version ...'
             archive = 'https://github.com/bovesan/mistika-hyperspeed/archive/master.zip'
