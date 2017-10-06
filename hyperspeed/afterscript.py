@@ -515,6 +515,10 @@ class AfterscriptFfmpeg(Afterscript):
     def gui_write(self, string):
         self.console_buffer.insert(self.console_buffer.get_end_iter(), string)
 
-# if len(sys.argv) > 1 and sys.argv[1] == 'AfterscriptFfmpeg':
-#     AfterscriptFfmpeg(sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
-#     gtk.main()
+def list():
+    afterscripts = []
+    for line in open(mistika.afterscripts_path):
+        alias = line.strip()
+        link_path = os.path.join(mistika.scripts_folder, alias)
+        afterscripts.append(alias)
+    return afterscripts

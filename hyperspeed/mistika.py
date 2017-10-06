@@ -16,8 +16,8 @@ def get_rnd_path(rnd_name):
             
 def get_mistikarc_path(env_folder):
     mistikarc_paths = [
-    env_folder + '/.mistikarc',
     env_folder + '/mistikarc.cfg',
+    env_folder + '/.mistikarc',
     env_folder + '/.mambarc',
     ]
     while len(mistikarc_paths) > 0 and not os.path.exists(mistikarc_paths[0]):

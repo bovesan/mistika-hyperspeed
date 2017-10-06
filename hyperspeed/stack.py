@@ -533,7 +533,8 @@ class Render(Stack):
     output_proxy = None
     output_audio = None
     output_paths = []
-
+    afterscript = None
+    
     def __init__(self, path):
         super(Render, self).__init__(path)
         self.name = os.path.splitext(os.path.basename(self.path))[0]

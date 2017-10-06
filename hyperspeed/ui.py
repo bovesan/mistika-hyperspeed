@@ -3,6 +3,7 @@
 import sys
 import os
 import subprocess
+import platform
 try:
     import gtk
     import gobject
@@ -116,3 +117,51 @@ class TerminalReplacement(gtk.Window):
             return False
         return True
 
+class Window(gtk.Window):
+    quit = False
+    def __init__(self, title, icon_path=None):
+        super(Window, self).__init__()
+        screen = self.get_screen()
+        monitor = screen.get_monitor_geometry(0)
+        self.set_title(title)
+        self.set_default_size(monitor.width-200, monitor.height-200)
+        self.set_border_width(20)
+        self.set_position(gtk.WIN_POS_CENTER)
+        if 'darwin' in platform.system().lower():
+            self.set_resizable(False) # Because resizing crashes the app on Mac
+        self.connect("key-press-event",self.on_key_press_event)
+        if not icon_path:
+            icon_path = 'res/img/hyperspeed_1024px.png'
+        self.set_icon_list(
+            gtk.gdk.pixbuf_new_from_file_at_size(icon_path, 16, 16),
+            gtk.gdk.pixbuf_new_from_file_at_size(icon_path, 32, 32),
+            gtk.gdk.pixbuf_new_from_file_at_size(icon_path, 64, 64),
+            gtk.gdk.pixbuf_new_from_file_at_size(icon_path, 128, 128),
+            gtk.gdk.pixbuf_new_from_file_at_size(icon_path, 256, 256),
+        )
+        self.connect("destroy", self.on_quit)
+        # gtkrc = '''
+        # style "theme-fixes" {
+        #     font_name = "sans normal 12"
+        # }
+        # class "*" style "theme-fixes"'''
+        # gtk.rc_parse_string(gtkrc)
+    def on_key_press_event(self,widget,event):
+        keyval = event.keyval
+        keyval_name = gtk.gdk.keyval_name(keyval)
+        state = event.state
+        ctrl = (state & gtk.gdk.CONTROL_MASK)
+        command = (state & gtk.gdk.MOD1_MASK)
+        if (ctrl or command) and keyval_name == 'q':
+            self.on_quit('Keyboard shortcut')
+        else:
+            return False
+        return True
+    def on_quit(self, widget):
+        self.quit = True
+        if type(widget) is gtk.Button:
+            widget_name = widget.get_label() + ' button'
+        else:
+            widget_name = str(widget)
+        print 'Closed by: ' + widget_name
+        gtk.main_quit()
