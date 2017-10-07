@@ -540,17 +540,20 @@ class Render(Stack):
         self.name = os.path.splitext(os.path.basename(self.path))[0]
         if self.exists:
             self.clp_path = 'clp'.join(self.path.rsplit('rnd', 1))
-            self.output_stack = Stack(self.clp_path)
-            for dependency in self.output_stack.dependencies:
-                if dependency.type == 'highres':
-                    self.output_video = dependency
-                    self.output_paths.append(dependency.path)
-                elif dependency.type == 'lowres':
-                    self.output_proxy = dependency
-                    self.output_paths.append(dependency.path)
-                elif dependency.type == 'audio':
-                    self.output_audio = dependency
-                    self.output_paths.append(dependency.path)
+            try:
+                self.output_stack = Stack(self.clp_path)
+                for dependency in self.output_stack.dependencies:
+                    if dependency.type == 'highres':
+                        self.output_video = dependency
+                        self.output_paths.append(dependency.path)
+                    elif dependency.type == 'lowres':
+                        self.output_proxy = dependency
+                        self.output_paths.append(dependency.path)
+                    elif dependency.type == 'audio':
+                        self.output_audio = dependency
+                        self.output_paths.append(dependency.path)
+            except IOError:
+                self.output_stack = None
     @property
     def primary_output(self):
         if self.output_video != None:
