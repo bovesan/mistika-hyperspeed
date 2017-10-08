@@ -32,6 +32,7 @@ OTHER_HOSTS_ALIAS = 'Others'
 THREAD_LIMIT = multiprocessing.cpu_count()
 HOSTNAME = socket.gethostname()
 UPDATE_RATE = 1.0
+COLOR_DEFAULT = '#111111'
 
 class RenderItem(hyperspeed.stack.Render):
     treeview = None
@@ -39,19 +40,25 @@ class RenderItem(hyperspeed.stack.Render):
     row_reference = None
     afterscript_progress = 0.0
     owner = 'Unknown'
-    description = None
     def __init__(self, path, uid):
         super(RenderItem, self).__init__(path)
+        self.duration = hyperspeed.video.frames2tc(self.frames, self.fps)
+        description = 'Resolution: %sx%s\n' % (self.resX, self.resY)
+        description += '\nFps: %s' % self.fps
+        description += '\nDuration: %s (%s frames)' % (self.duration, self.frames)
         self.settings = {
+            'description' : description,
+            'color' : COLOR_DEFAULT,
+            'priority' : self.ctime,
+            'submit_host' : HOSTNAME,
             'stage': 'render',
+            'render_host' : None,
+            'render_frames' : 0,
             'afterscript' : None,
             'status' : 'Not started',
-            'frames_rendered' : 0,
             'afterscript_progress' : 0.0,
         }
         self.uid = uid
-        self.settings['priority'] = self.ctime
-        self.duration = hyperspeed.video.frames2tc(self.frames, self.fps)
     def do_render(self):
         cmd = ['mistika', '-r', self.path]
         log_path = self.path + '.log'
@@ -59,7 +66,8 @@ class RenderItem(hyperspeed.stack.Render):
         # self.process = subprocess.Popen(cmd, stdout=logfile_h, stderr=subprocess.STDOUT)
         # total time: 4.298 sec, 0.029 sec per frame, 34.665 frames per sec
         self.set_settings({
-            'rendered_start_time' : time.time()
+            'render_host' : HOSTNAME,
+            'render_start_time' : time.time(),
         })
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         with open(log_path, 'w') as log:
@@ -68,11 +76,11 @@ class RenderItem(hyperspeed.stack.Render):
                 log.write(line)
                 if line.startswith('Done:'):
                     self.set_settings({
-                        'frames_rendered' : int(line.split(' ')[1].strip(','))
+                        'render_frames' : int(line.split(' ')[1].strip(','))
                     })
                 elif line.startswith('total time:'):
                     self.set_settings({
-                        'frames_rendered' : int(self.frames),
+                        'render_frames' : int(self.frames),
                         'render_end_time' : time.time(),
                         'render_elapsed_time' : float(line.split()[2]),
                         'status' : 'Render complete',
@@ -93,7 +101,7 @@ class RenderItem(hyperspeed.stack.Render):
     @property
     def render_progress(self):
         try:
-            return float(self.settings['frames_rendered']) / float(self.frames)
+            return float(self.settings['render_frames']) / float(self.frames)
         except (KeyError, ZeroDivisionError) as e:
             return 0.0
     @property
@@ -108,10 +116,14 @@ class RenderItem(hyperspeed.stack.Render):
                 self.settings['status'], # Status
                 self.settings['afterscript'], # Afterscript
                 self.ctime, # Added time
-                self.description, # Description
+                self.settings['description'], # Description
                 hyperspeed.human.time(self.ctime), # Human time
-                self.render_progress > 0, # Progress visible
+                1 > self.render_progress > 0, # 10 Progress visible
                 self.settings['priority'],
+                self.settings['submit_host'],
+                self.settings['render_host'],
+                self.settings['color'],
+                not 1 > self.render_progress > 0, # Status visible
             ]
         else:
             return [
@@ -123,12 +135,13 @@ class RenderItem(hyperspeed.stack.Render):
                 self.status, # Status
                 self.settings['afterscript'], # Afterscript
                 self.ctime, # Added time
-                self.description, # Description
+                self.settings['description'], # Description
                 hyperspeed.human.time(self.ctime), # Human time
                 self.afterscript_progress > 0, # Progress visible
                 self.settings['priority'],
+                self.settings['submit_host'],
+                self.settings['render_host'],
             ]
-
 
 class RenderQueue(object):
     queue = Queue.Queue()
@@ -145,7 +158,6 @@ class RenderQueue(object):
     def _remove(self, item):
         gobject.idle_add(self._remove_from_views, item.path)
         del self.items[item.path]
-
 
 class RenderManagerWindow(hyperspeed.ui.Window):
     renders = {}
@@ -241,6 +253,10 @@ class RenderManagerWindow(hyperspeed.ui.Window):
             str,  # 09 Human time
             bool, # 10 Progress visible
             float,# 11 Priority
+            str,  # 12 Submit host
+            str,  # 13 Render host
+            str,  # 14 Color
+            bool, # 15 Status visible
         )
         treestore.set_sort_column_id(11, gtk.SORT_ASCENDING)
         tree_filter    = self.render_queue_filter    = treestore.filter_new();
@@ -277,15 +293,27 @@ class RenderManagerWindow(hyperspeed.ui.Window):
         treeview.append_column(column)
         column = gtk.TreeViewColumn('Name', gtk.CellRendererText(), text=2)
         column.set_resizable(True)
-        column.set_expand(False)
+        column.set_expand(True)
         treeview.append_column(column)
-        cell = gtk.CellRendererProgress()
-        column = gtk.TreeViewColumn('Progress', cell, value=3, text=4)
-        column.add_attribute(cell, 'visible', 10)
+        column = gtk.TreeViewColumn('Submit time', gtk.CellRendererText(), text=9)
         column.set_resizable(True)
         column.set_expand(False)
         treeview.append_column(column)
-        column = gtk.TreeViewColumn('Status', gtk.CellRendererText(), text=5)
+        column = gtk.TreeViewColumn('Submit node', gtk.CellRendererText(), text=12)
+        column.set_resizable(True)
+        column.set_expand(False)
+        treeview.append_column(column)
+        column = gtk.TreeViewColumn('Render node', gtk.CellRendererText(), text=13)
+        column.set_resizable(True)
+        column.set_expand(False)
+        treeview.append_column(column)
+        cell = gtk.CellRendererText()
+        column = gtk.TreeViewColumn('Status')
+        column.pack_start(cell, False)
+        column.set_attributes(cell, text=5, foreground=14, visible=15)
+        cell = gtk.CellRendererProgress()
+        column.pack_start(cell, True)
+        column.set_attributes(cell, value=3, text=4, visible=10)
         column.set_resizable(True)
         column.set_expand(True)
         treeview.append_column(column)
@@ -300,11 +328,7 @@ class RenderManagerWindow(hyperspeed.ui.Window):
         cell.connect("edited", self.on_render_settings_change, 'afterscript', treestore)
         column = gtk.TreeViewColumn("Afterscript", cell, text=6)
         column.set_resizable(True)
-        column.set_expand(False)
-        treeview.append_column(column)
-        column = gtk.TreeViewColumn('Added time', gtk.CellRendererText(), text=9)
-        column.set_resizable(True)
-        column.set_expand(False)
+        column.set_expand(True)
         treeview.append_column(column)
         treeview.set_tooltip_column(8)
         treeview.set_rules_hint(True)
@@ -529,12 +553,6 @@ class RenderManagerWindow(hyperspeed.ui.Window):
                     if file_ext == '.rnd':
                         if not file_uid in renders:
                             render = renders[file_uid] = RenderItem(file_path, file_uid)
-                            description = ''
-                            description += 'Resolution: %sx%s\n' % (render.resX, render.resY)
-                            description += 'Fps: %s\n' % render.fps
-                            description += 'Duration: %s (%s frames)\n' % (render.duration, render.frames)
-                            description = description.strip('\n')
-                            render.description = description
                         else:
                             render = renders[file_uid]
                         render.private = queue_name.startswith(hostname)
