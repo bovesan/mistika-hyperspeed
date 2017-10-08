@@ -15,7 +15,9 @@ import gobject
 import time
 import warnings
 import json
+import shutil
 from datetime import datetime
+import glob
 
 import hyperspeed
 import hyperspeed.ui
@@ -27,12 +29,13 @@ import hyperspeed.stack
 import hyperspeed.video
 from hyperspeed import mistika
 
-THIS_HOST_ALIAS = 'This machine'
-OTHER_HOSTS_ALIAS = 'Others'
+THIS_HOST_ALIAS = 'Submitted by this machine'
+OTHER_HOSTS_ALIAS = 'Submitted by others'
 THREAD_LIMIT = multiprocessing.cpu_count()
 HOSTNAME = socket.gethostname()
 UPDATE_RATE = 1.0
 COLOR_DEFAULT = '#111111'
+TEMPORARY_RENDERS_FOLDER = '/Volumes/SAN3/Limbo'
 
 class RenderItem(hyperspeed.stack.Render):
     treeview = None
@@ -43,7 +46,7 @@ class RenderItem(hyperspeed.stack.Render):
     def __init__(self, path, uid):
         super(RenderItem, self).__init__(path)
         self.duration = hyperspeed.video.frames2tc(self.frames, self.fps)
-        description = 'Resolution: %sx%s\n' % (self.resX, self.resY)
+        description = 'Resolution: %sx%s' % (self.resX, self.resY)
         description += '\nFps: %s' % self.fps
         description += '\nDuration: %s (%s frames)' % (self.duration, self.frames)
         self.settings = {
@@ -124,6 +127,9 @@ class RenderItem(hyperspeed.stack.Render):
                 self.settings['render_host'],
                 self.settings['color'],
                 not 1 > self.render_progress > 0, # Status visible
+                self.duration, # 16
+                self.private, 
+                self.settings['submit_host'] == HOSTNAME,
             ]
         else:
             return [
@@ -141,6 +147,8 @@ class RenderItem(hyperspeed.stack.Render):
                 self.settings['priority'],
                 self.settings['submit_host'],
                 self.settings['render_host'],
+                self.private,
+                self.settings['submit_host'] == HOSTNAME,
             ]
 
 class RenderQueue(object):
@@ -160,13 +168,16 @@ class RenderQueue(object):
         del self.items[item.path]
 
 class RenderManagerWindow(hyperspeed.ui.Window):
-    renders = {}
-    threads = []
-    queue_io = Queue.Queue()
     def __init__(self):
         super(RenderManagerWindow, self).__init__(
-            title='Hyperspeed render manager'
+            title='Hyperspeed render manager',
+            settings_default = {
+                'shared_queues_folder' : ''
+            }
         )
+        self.renders = {}
+        self.threads = []
+        self.queue_io = Queue.Queue()
         self.config_rw()
         vbox = gtk.VBox(False, 10)
         # vbox.pack_start(self.init_toolbar(), False, False, 10)
@@ -194,14 +205,72 @@ class RenderManagerWindow(hyperspeed.ui.Window):
         self.comboEditable = None
         gobject.idle_add(self.bring_to_front)
         gobject.timeout_add(1000, self.gui_periodical_updates)
+        gobject.idle_add(self.gui_batch_folders_setup)
+    def gui_batch_folders_setup(self):
+        batchpath_fstype = subprocess.Popen(['df', '--output=fstype', mistika.settings['BATCHPATH']],
+            stdout=subprocess.PIPE).communicate()[0].splitlines()[-1]
+        if batchpath_fstype in ['nfs', 'cifs', 'cvfs']:
+            private_queue_folder = os.path.expanduser('~/BATCH_QUEUES')
+            setup = hyperspeed.ui.dialog_yesno(
+                parent=self,
+                question=
+'''It looks like the Mistika batch queue folder is on a shared file system.
+To separate private and public jobs, the batch queue folder must be unique for each computer.
+Any public jobs will be moved to a shared location.
+
+Change local batch queue folder to %s?''' % private_queue_folder)
+            if not setup:
+                return
+            if self.settings['shared_queues_folder'] == '':
+                self.settings['shared_queues_folder'] = mistika.settings['BATCHPATH']
+                self.shared_queue_entry.set_text(mistika.settings['BATCHPATH'])
+            if self.set_mistika_batchpath(private_queue_folder):
+                self.batch_queue_entry.set_text(private_queue_folder)
+    def set_mistika_batchpath(self, batchpath):
+        cache_queue_folder = os.path.join(batchpath, 'Cache')
+        default_queues = [
+            os.path.join(batchpath, 'Private'),
+            os.path.join(batchpath, 'Public'),
+            cache_queue_folder,
+        ]
+        for queue_folder in default_queues:
+            if not os.path.isdir(queue_folder):
+                try:
+                    os.makedirs(queue_folder)
+                except OSError as e:
+                    hyperspeed.ui.dialog_error(self,
+                        'Could not create folder: %s\n%s' % (batchpath, e))
+        if not os.path.isdir(batchpath):
+            return
+        hyperspeed.mistika.set_settings({
+            'BATCHPATH' : batchpath,
+            'CACHE_BATCH_PATH' : cache_queue_folder
+        })
+        return True
+
+
+    def on_batchpath_change(self, widget=None):
+        self.set_mistika_batchpath(widget.get_text())
     def settings_panel(self):
         expander = gtk.Expander('Settings')
         vbox = gtk.VBox()
         hbox = gtk.HBox()
-        label =  gtk.Label('Shared queue:')
+        label =  gtk.Label('Batch queues folder:')
+        hbox.pack_start(label, False, False, 5)
+        entry = self.batch_queue_entry = gtk.Entry()
+        entry.set_text(mistika.settings['BATCHPATH'])
+        hbox.pack_start(entry)
+        button = self.shared_queue_pick_button = gtk.Button('...')
+        button.connect("clicked", self.on_folder_pick, entry, 'Select batch queue folder')
+        entry.connect('changed', self.on_batchpath_change)
+        hbox.pack_start(button, False, False, 5)
+        vbox.pack_start(hbox, False, False, 5)
+        hbox = gtk.HBox()
+        label =  gtk.Label('Shared queue folder:')
         hbox.pack_start(label, False, False, 5)
         entry = self.shared_queue_entry = gtk.Entry()
-        # entry.set_text(self.cmd_string)
+        entry.set_text(self.settings['shared_queues_folder'])
+        entry.connect('changed', self.on_settings_change, 'shared_queues_folder')
         hbox.pack_start(entry)
         button = self.shared_queue_pick_button = gtk.Button('...')
         button.connect("clicked", self.on_folder_pick, entry, 'Select shared queue folder')
@@ -257,6 +326,9 @@ class RenderManagerWindow(hyperspeed.ui.Window):
             str,  # 13 Render host
             str,  # 14 Color
             bool, # 15 Status visible
+            str,  # 16 Duration
+            bool, # 17 Private
+            bool, # 18 This host
         )
         treestore.set_sort_column_id(11, gtk.SORT_ASCENDING)
         tree_filter    = self.render_queue_filter    = treestore.filter_new();
@@ -295,11 +367,21 @@ class RenderManagerWindow(hyperspeed.ui.Window):
         column.set_resizable(True)
         column.set_expand(True)
         treeview.append_column(column)
+        column = gtk.TreeViewColumn('Duration', gtk.CellRendererText(), text=16)
+        column.set_resizable(True)
+        column.set_expand(False)
+        treeview.append_column(column)
         column = gtk.TreeViewColumn('Submit time', gtk.CellRendererText(), text=9)
         column.set_resizable(True)
         column.set_expand(False)
         treeview.append_column(column)
         column = gtk.TreeViewColumn('Submit node', gtk.CellRendererText(), text=12)
+        column.set_resizable(True)
+        column.set_expand(False)
+        treeview.append_column(column)
+        cell = gtk.CellRendererToggle()
+        cell.connect("toggled", self.on_toggle_private, treeview)
+        column = gtk.TreeViewColumn('Private', cell, active=17, visible=18)
         column.set_resizable(True)
         column.set_expand(False)
         treeview.append_column(column)
@@ -370,6 +452,16 @@ class RenderManagerWindow(hyperspeed.ui.Window):
         newi.connect("activate", self.on_render_start)
         newi.show()
         menu.append(newi)
+        newi = gtk.ImageMenuItem(gtk.STOCK_MEDIA_PAUSE)
+        newi.set_label('Pause')
+        # newi.connect("activate", self.on_render_start)
+        newi.show()
+        menu.append(newi)
+        newi = gtk.ImageMenuItem(gtk.STOCK_CANCEL)
+        newi.set_label('Cancel')
+        # newi.connect("activate", self.on_render_start)
+        newi.show()
+        menu.append(newi)
         newi = gtk.ImageMenuItem(gtk.STOCK_DELETE)
         newi.connect("activate", self.on_render_delete)
         newi.show()
@@ -380,6 +472,43 @@ class RenderManagerWindow(hyperspeed.ui.Window):
         self.launch_thread(self.io_populate_render_queue)
         vbox.pack_start(afterscriptsBox, True, True, 5)
         return vbox
+    def on_toggle_private(self, cellrenderertoggle, path, treeview):
+        was_private = cellrenderertoggle.get_active()
+        treestore = treeview.get_model()
+        try: # If there is a filter in the middle
+            treestore = treestore.get_model()
+        except AttributeError:
+            pass
+        uid = treestore[path][0]
+        render = self.renders[uid]
+        current_folder = os.path.dirname(render.path)
+        if was_private:
+            new_folder = os.path.join(self.settings['shared_queues_folder'], 'Public')
+        else:
+            new_folder = os.path.join(mistika.settings['BATCHPATH'], 'Private')
+        errors = []
+        if not os.path.isdir(new_folder):
+            try:
+                os.makedirs(new_folder)
+            except OSError as e:
+                hyperspeed.ui.dialog_error(self, str(e))
+                return
+        # Move settings first to avoid reset
+        new_settings_path = render.settings_path.replace(current_folder, new_folder, 1)
+        try:
+            shutil.move(render.settings_path, new_settings_path)
+        except IOError as e:
+            errors.append(str(e))
+        for current_path in glob.glob(os.path.join(current_folder, render.uid+'.*')):
+            new_path = current_path.replace(
+            current_folder, new_folder, 1)
+            try:
+                shutil.move(current_path, new_path)
+            except IOError as e:
+                errors.append(str(e))
+        if len(errors) > 0:
+            hyperspeed.ui.dialog_error(self, '\n'.join(errors))
+        self.launch_thread(self.io_populate_render_queue)
     def on_move(self, widget, direction, treeview):
         selection = treeview.get_selection()
         (treestore, row_paths) = selection.get_selected_rows()
@@ -538,25 +667,33 @@ class RenderManagerWindow(hyperspeed.ui.Window):
         self.launch_thread(self.io_populate_render_queue)
         vbox.pack_start(afterscriptsBox, True, True, 5)
         return vbox
-    def io_populate_render_queue(self):
+    def io_parse_queue_folder(self, queue_folder, private=False):
         renders = self.renders
         hostname = socket.gethostname()
-        for queue_name in os.listdir(mistika.settings['BATCHPATH']):
-            queue_path = os.path.join(mistika.settings['BATCHPATH'], queue_name)
+        for queue_name in os.listdir(queue_folder):
+            queue_path = os.path.join(queue_folder, queue_name)
             try:
                 for file_name in os.listdir(queue_path):
                     file_path = os.path.join(queue_path, file_name)
+                    if private and not queue_name.lower().startswith('private'):
+                        shared_file_path = file_path.replace(
+                            mistika.settings['BATCHPATH'], self.settings['shared_queues_folder'], 1)
+                        try:
+                            shutil.move(file_path, shared_file_path)
+                            print 'Moved %s to %s' % (file_path, shared_file_path)
+                            continue
+                        except IOError as e:
+                            print e
                     file_size = os.path.getsize(file_path)
                     file_id, file_ext = os.path.splitext(file_path)
-                    # file_uid = file_id+str(file_size)
-                    file_uid = file_id
+                    file_uid = os.path.basename(file_id)
                     if file_ext == '.rnd':
                         if not file_uid in renders:
                             render = renders[file_uid] = RenderItem(file_path, file_uid)
                         else:
                             render = renders[file_uid]
-                        render.private = queue_name.startswith(hostname)
-                        #print 'Render groupname: ', queue[file_id].groupname
+                        render.private = private
+                        render.path = file_path
                         render.settings_path = file_id+'.settings'
                         try:
                             render.settings.update(json.loads(open(render.settings_path).read()))
@@ -564,6 +701,9 @@ class RenderManagerWindow(hyperspeed.ui.Window):
                             pass
             except OSError as e:
                 pass
+    def io_populate_render_queue(self):
+        self.io_parse_queue_folder(mistika.settings['BATCHPATH'], private=True)
+        self.io_parse_queue_folder(self.settings['shared_queues_folder'])
         gobject.idle_add(self.gui_update_render_queue)
     def gui_update_render_queue(self):
         renders = self.renders
@@ -571,13 +711,13 @@ class RenderManagerWindow(hyperspeed.ui.Window):
             render = renders[file_id]
             if render.settings['stage'] == 'render':
                 render.treeview = self.render_treeview
-                if render.private:
+                if render.settings['submit_host'] == HOSTNAME:
                     parent_row_reference = self.row_references_render[THIS_HOST_ALIAS]
                 else:
                     parent_row_reference = self.row_references_render[OTHER_HOSTS_ALIAS]
             else:
                 render.treeview = self.afterscript_tree
-                if render.private:
+                if render.settings['submit_host'] == HOSTNAME:
                     parent_row_reference = self.row_references_afterscripts[THIS_HOST_ALIAS]
                 else:
                     parent_row_reference = self.row_references_afterscripts[OTHER_HOSTS_ALIAS]
@@ -635,6 +775,7 @@ class RenderManagerWindow(hyperspeed.ui.Window):
         path = treestore[treepath][0]
         render = self.renders[path]
         message = render.uid
+        message += '\nPrivate: %s' % render.private
         for k, v in render.settings.iteritems():
             message += '\n%s: %s' % (k, v)
         self.gui_info_dialog(message)
@@ -642,6 +783,10 @@ class RenderManagerWindow(hyperspeed.ui.Window):
         treestore = self.render_treestore
         treepath = self.render_queue_selected_path
         path = treestore[treepath][0]
+        render = self.renders[path]
+        for dependency in render.output_stack.dependencies:
+            if dependency.path.startswith(TEMPORARY_RENDERS_FOLDER):
+                print 'Delete intermediate render file: %s' % dependency.path
         print 'Delete', 
         print path
     def on_render_start(self, widget, *ignore):

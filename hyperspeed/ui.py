@@ -4,6 +4,10 @@ import sys
 import os
 import subprocess
 import platform
+import threading
+import hyperspeed
+import json
+
 try:
     import gtk
     import gobject
@@ -119,8 +123,10 @@ class TerminalReplacement(gtk.Window):
 
 class Window(gtk.Window):
     quit = False
-    def __init__(self, title, icon_path=None):
+    def __init__(self, title, settings_default, icon_path=None):
         super(Window, self).__init__()
+        self.settings = settings_default
+        self.settings_load()
         screen = self.get_screen()
         monitor = screen.get_monitor_geometry(0)
         self.set_title(title)
@@ -163,5 +169,89 @@ class Window(gtk.Window):
             widget_name = widget.get_label() + ' button'
         else:
             widget_name = str(widget)
-        print 'Closed by: ' + widget_name
+        # print 'Closed by: ' + widget_name
         gtk.main_quit()
+    def settings_load(self):
+        script_path = os.path.realpath(sys.argv[0])
+        if not script_path.endswith('.cfg'): # Just to be sure we don't overwrite the script
+            script_path = os.path.splitext(script_path)[0]
+        if script_path.startswith(hyperspeed.folder):
+            self.settings_path = script_path.replace(hyperspeed.folder, hyperspeed.config_folder)+'.cfg'
+            settings_folder = os.path.dirname(self.settings_path)
+            if not os.path.isdir(settings_folder):
+                try:
+                    os.makedirs(settings_folder)
+                except OSError as e:
+                    self.settings_path = script_path+'.cfg'
+        else:
+            self.settings_path = script_path+'.cfg'
+        try:
+            self.settings.update(json.loads(open(self.settings_path).read()))
+        except IOError:
+            # No settings found
+            pass
+    def on_settings_change(self, widget, setting_key):
+        if type(widget) == gtk.Entry:
+            value = widget.get_text()
+        elif type(widget) == gtk.CheckButton:
+            value = widget.get_active()
+        self.settings[setting_key] = value
+        t = threading.Thread(target=self.settings_store, name='Store settings')
+        t.setDaemon(True)
+        t.start()
+    def settings_store(self):
+        try:
+            open(self.settings_path, 'w').write(json.dumps(self.settings, sort_keys=True, indent=4))
+            return True
+        except IOError as e:
+            print 'Could not store settings. %s' % e
+            return False
+
+
+def dialog_yesno(parent, question, confirm_object=False, confirm_lock=False):
+    dialog = gtk.MessageDialog(
+        parent = parent,
+        flags=0,
+        type=gtk.MESSAGE_QUESTION,
+        buttons=gtk.BUTTONS_YES_NO,
+        message_format=question
+    )
+    dialog.set_position(gtk.WIN_POS_CENTER)
+    response = dialog.run()
+    dialog.destroy()
+    if response == -8:
+        status = True
+    else:
+        status = False
+    if confirm_object:
+        confirm_object[0] = status
+    if confirm_lock:
+        confirm_lock.release()
+    if status:
+        return True
+    else:
+        return False
+
+def dialog_info(parent, message):
+    dialog = gtk.MessageDialog(
+        parent = parent,
+        flags=0,
+        type=gtk.MESSAGE_INFO,
+        buttons=gtk.BUTTONS_OK,
+        message_format=message
+    )
+    dialog.set_position(gtk.WIN_POS_CENTER)
+    response = dialog.run()
+    dialog.destroy()
+
+def dialog_error(parent, message):
+    dialog = gtk.MessageDialog(
+        parent = parent,
+        flags=0,
+        type=gtk.MESSAGE_ERROR,
+        buttons=gtk.BUTTONS_OK,
+        message_format=message
+    )
+    dialog.set_position(gtk.WIN_POS_CENTER)
+    response = dialog.run()
+    dialog.destroy()

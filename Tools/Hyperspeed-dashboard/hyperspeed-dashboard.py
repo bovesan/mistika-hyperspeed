@@ -38,8 +38,8 @@ VERSION_STRING = ''
 CONFIG_FOLDER = '~/.mistika-hyperspeed/'
 CONFIG_FILE = 'hyperspeed.cfg'
 STACK_EXTENSIONS = ['.grp', '.fx', '.env']
-THIS_HOST_ALIAS = 'This machine'
-OTHER_HOSTS_ALIAS = 'Others'
+THIS_HOST_ALIAS = 'Submitted by this machine'
+OTHER_HOSTS_ALIAS = 'Submitted by others'
 
 AUTORUN_TIMES = {
     'Never' :   False,

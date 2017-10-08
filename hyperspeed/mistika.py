@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import platform as platform_module
+import tempfile
 
 from xml.etree import ElementTree
 from distutils.version import LooseVersion
@@ -124,3 +125,16 @@ def reload():
         #print 'Could not read fonts config: %s' % fonts_config_path
 
 reload()
+
+def set_settings(settings):
+    mistika_settings_file = get_mistikarc_path(env_folder)
+    with tempfile.NamedTemporaryFile(delete=False) as temp_handle:
+        for line in open(mistika_settings_file):
+            key = line.split()[0]
+            if key in settings:
+                line = key.ljust(31)+str(settings[key])+'\n'
+            temp_handle.write(line)
+            # print line,
+        temp_handle.flush()
+    os.rename(mistika_settings_file, mistika_settings_file+'.bak')
+    os.rename(temp_handle.name, mistika_settings_file)

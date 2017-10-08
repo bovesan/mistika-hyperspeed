@@ -45,7 +45,7 @@ class Afterscript(object):
     render_name = ''
     def __init__(self, script_path, cmd, default_output, title=None):
         if not title:
-            title = os.path.splitext(os.path.basename(__file__))
+            title = os.path.splitext(os.path.basename(script_path))
         self.title = title
         self.script_path = script_path
         if type(cmd) == list:
@@ -120,13 +120,13 @@ class Afterscript(object):
             callback(output_path)
 
 class AfterscriptFfmpeg(Afterscript):
-    processes = []
     abort = False
-    input_args = []
     cmd_string = ''
-    args = []
     def __init__(self, script_path, cmd, default_output, title='Afterscript', executable='ffmpeg'):
         super(AfterscriptFfmpeg, self).__init__(script_path, cmd, default_output, title)
+        self.processes = []
+        self.input_args = []
+        self.args = []
         self.executable = executable
         self.init_input_args()
         gobject.threads_init()
@@ -235,7 +235,7 @@ class AfterscriptFfmpeg(Afterscript):
             try:
                 value = widget.get_active()
             except AttributeError:
-                print 'Could not get value "%s" from %s. Event: %s' % (setting_key, widget, event)
+                # print 'Could not get value "%s" from %s. Event: %s' % (setting_key, widget, event)
                 return
         # print '%s: %s' % (setting_key, value)
         self.settings[setting_key] = value
@@ -351,29 +351,6 @@ class AfterscriptFfmpeg(Afterscript):
                 args_quoted.append(arg)
         self.cmd_entry.set_text(' '.join(args_quoted))
         self.args = args_quoted
-    def gui_yesno_dialog(self, question, confirm_object=False, confirm_lock=False):
-        dialog = gtk.MessageDialog(
-            parent = self.window,
-            flags=0,
-            type=gtk.MESSAGE_QUESTION,
-            buttons=gtk.BUTTONS_YES_NO,
-            message_format=question
-        )
-        dialog.set_position(gtk.WIN_POS_CENTER)
-        response = dialog.run()
-        dialog.destroy()
-        if response == -8:
-            status = True
-        else:
-            status = False
-        if confirm_object:
-            confirm_object[0] = status
-        if confirm_lock:
-            confirm_lock.release()
-        if status:
-            return True
-        else:
-            return False
     def gui_info_dialog(self, message):
         dialog = gtk.MessageDialog(
             parent = self.window,
