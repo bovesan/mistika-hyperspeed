@@ -18,6 +18,8 @@ import json
 import shutil
 from datetime import datetime
 import glob
+import signal
+import re
 
 import hyperspeed
 import hyperspeed.ui
@@ -37,33 +39,45 @@ UPDATE_RATE = 1.0
 COLOR_DEFAULT = '#111111'
 TEMPORARY_RENDERS_FOLDER = '/Volumes/SAN3/Limbo'
 
+def process_suspended_status(pid):
+    try:
+        return re.sub(r'\(.*\)', '()', open(os.path.join('/proc', str(pid), 'stat')).readline()).split()[2]=='T'
+    except AttributeError:
+        return None
+
 class RenderItem(hyperspeed.stack.Render):
     treeview = None
     treestore = None
     row_reference = None
     afterscript_progress = 0.0
     owner = 'Unknown'
-    def __init__(self, path, uid):
+    def __init__(self, path):
         super(RenderItem, self).__init__(path)
         self.duration = hyperspeed.video.frames2tc(self.frames, self.fps)
         description = 'Resolution: %sx%s' % (self.resX, self.resY)
         description += '\nFps: %s' % self.fps
         description += '\nDuration: %s (%s frames)' % (self.duration, self.frames)
         self.settings = {
-            'description' : description,
-            'color' : COLOR_DEFAULT,
-            'priority' : self.ctime,
-            'submit_host' : HOSTNAME,
-            'stage': 'render',
-            'render_host' : None,
-            'render_frames' : 0,
-            'afterscript' : None,
-            'status' : 'Not started',
+            'description'          : description,
+            'color'                : COLOR_DEFAULT,
+            'priority'             : self.ctime,
+            'submit_host'          : HOSTNAME,
+            'stage'                : 'render',
+            'is_rendering'         : False,
+            'render_paused'        : False,
+            'render_host'          : None,
+            'render_queued'        : False,
+            'render_frames'        : 0,
+            'afterscript'          : None,
+            'status'               : 'Not started',
             'afterscript_progress' : 0.0,
         }
-        self.uid = uid
-    def do_render(self):
+        self.settings_path = os.path.join(os.path.dirname(self.path), self.uid+'.cfg')
+        self.settings_read()
+        self.set_settings()
+    def do_render(self, render_processes):
         cmd = ['mistika', '-r', self.path]
+        print ' '.join(cmd)
         log_path = self.path + '.log'
         logfile_h = open(log_path, 'w')
         # self.process = subprocess.Popen(cmd, stdout=logfile_h, stderr=subprocess.STDOUT)
@@ -71,10 +85,27 @@ class RenderItem(hyperspeed.stack.Render):
         self.set_settings({
             'render_host' : HOSTNAME,
             'render_start_time' : time.time(),
+            'is_rendering' : True,
+            'render_frames' : 0,
         })
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.PIPE)
+        mistika_bin_pid = None
         with open(log_path, 'w') as log:
             while proc.returncode == None:
+                mistika_bin_pid = mistika.get_mistika_bin_pid(proc.pid)
+                if mistika_bin_pid:
+                    render_processes.append(mistika_bin_pid)
+                if not self.settings['render_queued']:
+                    print 'Render aborted'
+                    # proc.send_signal(signal.SIGINT)
+                    os.kill(mistika_bin_pid, signal.SIGINT)
+                    break
+                if self.settings['render_paused']:
+                    print 'Render paused'
+                    os.kill(mistika_bin_pid, signal.SIGSTOP)
+                    while self.settings['render_paused']:
+                        time.sleep(1)
+                    os.kill(mistika_bin_pid, signal.SIGCONT)
                 line = proc.stdout.readline()
                 log.write(line)
                 if line.startswith('Done:'):
@@ -87,6 +118,7 @@ class RenderItem(hyperspeed.stack.Render):
                         'render_end_time' : time.time(),
                         'render_elapsed_time' : float(line.split()[2]),
                         'status' : 'Render complete',
+                        'is_rendering' : False,
                     })
                 proc.poll()
         # logfile_h.flush()
@@ -94,11 +126,18 @@ class RenderItem(hyperspeed.stack.Render):
         row_path = self.row_reference.get_path()
         row_iter = treestore.get_iter(row_path)
         treestore.remove(iter)
-    def set_settings(self, settings):
+    def set_settings(self, settings={}):
         self.settings.update(settings)
         open(self.settings_path, 'w').write(json.dumps(self.settings, indent=4, sort_keys=True))
         gobject.idle_add(self.gui_update)
+    def settings_read(self):
+        try:
+            self.settings.update(json.loads(open(self.settings_path).read()))
+        except (IOError, ValueError) as e:
+            pass
     def gui_update(self):
+        if self.row_reference == None:
+            return
         row_path = self.row_reference.get_path()
         if list(self.treestore[row_path]) != self.treestore_values:
             self.treestore[row_path] = self.treestore_values
@@ -107,7 +146,7 @@ class RenderItem(hyperspeed.stack.Render):
         try:
             return float(self.settings['render_frames']) / float(self.frames)
         except (KeyError, ZeroDivisionError) as e:
-            return 0.0
+            return 0
     @property
     def treestore_values(self):
         if self.settings['stage'] == 'render':
@@ -122,15 +161,17 @@ class RenderItem(hyperspeed.stack.Render):
                 self.ctime, # Added time
                 self.settings['description'], # Description
                 hyperspeed.human.time(self.ctime), # Human time
-                1 > self.render_progress > 0, # 10 Progress visible
+                self.settings['is_rendering'] , # 10 Progress visible
                 self.settings['priority'],
                 self.settings['submit_host'],
                 self.settings['render_host'],
                 self.settings['color'],
-                not 1 > self.render_progress > 0, # Status visible
+                not 1 > self.render_progress >= 0, # Status visible
                 self.duration, # 16
                 self.private, 
                 self.settings['submit_host'] == HOSTNAME,
+                self.settings['render_queued'],
+                self.render_progress < 1, # 20 Settings visible
             ]
         else:
             return [
@@ -150,6 +191,7 @@ class RenderItem(hyperspeed.stack.Render):
                 self.settings['render_host'],
                 self.private,
                 self.settings['submit_host'] == HOSTNAME,
+                self.settings['afterscript_queued'],
             ]
 
 class RenderQueue(object):
@@ -178,6 +220,9 @@ class RenderManagerWindow(hyperspeed.ui.Window):
         )
         self.renders = {}
         self.threads = []
+        self.render_threads = []
+        self.render_processes = []
+        self.render_threads_limit = 1
         self.queue_io = Queue.Queue()
         self.config_rw()
         vbox = gtk.VBox(False, 10)
@@ -280,7 +325,26 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         vbox.pack_start(gtk.HSeparator(), False, False, 10)
         expander.add(vbox)
         return expander
+    def gui_process_renders(self):
+        model = self.render_treestore
+        if self.process_queue_checkbox.get_active():
+            row_path = self.row_references_render[THIS_HOST_ALIAS].get_path()
+            row_iter = model.get_iter(row_path)
+            for n in range(model.iter_n_children(row_iter)):
+                child_iter = model.iter_nth_child(row_iter, n)
+                child_id = model.get_value(child_iter, 0)
+                render = self.renders[child_id]
+                if render.settings['render_queued'] and \
+                render.settings['render_frames'] < render.frames and \
+                not render.settings['render_paused']:
+                    self.render_start(render)
+                    return
+                child_has_child = model.iter_has_child(child_iter)
+                child_is_folder = model.get_value(child_iter, 2)
+        if self.process_others_checkbox.get_active():
+            print 'Starting other jobs'
     def gui_periodical_updates(self):
+        self.gui_process_renders()
         self.launch_thread(self.io_populate_render_queue)
         return True # Must return true to keep repeating
     def on_folder_pick(self, widget, entry, title):
@@ -321,7 +385,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             float,# 07 Added time
             str,  # 08 Description
             str,  # 09 Human time
-            bool, # 10 Progress visible
+            bool, # 10 Is rendering
             float,# 11 Priority
             str,  # 12 Submit host
             str,  # 13 Render host
@@ -330,6 +394,8 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             str,  # 16 Duration
             bool, # 17 Private
             bool, # 18 This host
+            bool, # 19 Queued
+            bool, # 20 Settings visible
         )
         treestore.set_sort_column_id(11, gtk.SORT_ASCENDING)
         tree_filter    = self.render_queue_filter    = treestore.filter_new();
@@ -346,13 +412,13 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         headerBox.pack_start(headerLabel, False, False, 5)
         vbox.pack_start(headerBox, False, False, 2)
         toolbar = gtk.HBox(False, 2)
-        checkButton = gtk.CheckButton('Process queue')
+        checkButton = self.process_queue_checkbox = gtk.CheckButton('Process queue')
         checkButton.set_property("active", True)
         toolbar.pack_start(checkButton, False, False, 5)
-        checkButton = gtk.CheckButton('Process jobs for other hosts')
+        checkButton = self.process_others_checkbox = gtk.CheckButton('Process jobs for other hosts')
         checkButton.set_property("active", False)
         toolbar.pack_start(checkButton, False, False, 5)
-        checkButton = gtk.CheckButton('Autostart jobs from this machine')
+        checkButton = self.autoqueue_checkbox = gtk.CheckButton('Autoqueue new jobs from this machine')
         checkButton.set_property("active", False)
         toolbar.pack_start(checkButton, False, False, 5)
         button = gtk.CheckButton('Autostart jobs from this machine')
@@ -383,6 +449,12 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         cell = gtk.CellRendererToggle()
         cell.connect("toggled", self.on_toggle_private, treeview)
         column = gtk.TreeViewColumn('Private', cell, active=17, visible=18)
+        column.set_resizable(True)
+        column.set_expand(False)
+        treeview.append_column(column)
+        cell = gtk.CellRendererToggle()
+        cell.connect("toggled", self.on_render_settings_change, None, 'render_queued', treestore)
+        column = gtk.TreeViewColumn('Queued', cell, active=19, visible=20)
         column.set_resizable(True)
         column.set_expand(False)
         treeview.append_column(column)
@@ -448,19 +520,19 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         newi.connect("activate", self.on_render_info)
         newi.show()
         menu.append(newi)
-        newi = gtk.ImageMenuItem(gtk.STOCK_MEDIA_PLAY)
-        newi.set_label('Start')
-        newi.connect("activate", self.on_render_start)
+        newi = gtk.ImageMenuItem(gtk.STOCK_UNDO)
+        newi.set_label('Reset')
+        newi.connect("activate", self.on_render_reset)
         newi.show()
         menu.append(newi)
         newi = gtk.ImageMenuItem(gtk.STOCK_MEDIA_PAUSE)
-        newi.set_label('Pause')
-        # newi.connect("activate", self.on_render_start)
+        newi.set_label('Pause/resume')
+        newi.connect("activate", self.on_render_pause)
         newi.show()
         menu.append(newi)
         newi = gtk.ImageMenuItem(gtk.STOCK_CANCEL)
-        newi.set_label('Cancel')
-        # newi.connect("activate", self.on_render_start)
+        newi.set_label('Abort')
+        newi.connect("activate", self.on_render_abort)
         newi.show()
         menu.append(newi)
         newi = gtk.ImageMenuItem(gtk.STOCK_DELETE)
@@ -676,30 +748,31 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             try:
                 for file_name in os.listdir(queue_path):
                     file_path = os.path.join(queue_path, file_name)
-                    if private and not queue_name.lower().startswith('private'):
-                        shared_file_path = file_path.replace(
-                            mistika.settings['BATCHPATH'], self.settings['shared_queues_folder'], 1)
-                        try:
-                            shutil.move(file_path, shared_file_path)
-                            print 'Moved %s to %s' % (file_path, shared_file_path)
-                            continue
-                        except IOError as e:
-                            print e
-                    file_size = os.path.getsize(file_path)
                     file_id, file_ext = os.path.splitext(file_path)
-                    file_uid = os.path.basename(file_id)
-                    if file_ext == '.rnd':
-                        if not file_uid in renders:
-                            render = renders[file_uid] = RenderItem(file_path, file_uid)
-                        else:
-                            render = renders[file_uid]
-                        render.private = private
-                        render.path = file_path
-                        render.settings_path = file_id+'.settings'
-                        try:
-                            render.settings.update(json.loads(open(render.settings_path).read()))
-                        except (IOError, ValueError) as e:
-                            pass
+                    if file_ext != '.rnd':
+                        continue
+                    render = RenderItem(file_path)
+                    if private:
+                        id_path = os.path.join(os.path.dirname(render.path), render.uid+'.rnd')
+                        if not os.path.basename(render.path) == id_path:
+                            os.rename(render.path, id_path)
+                        if not queue_name.lower().startswith('private'):
+                            shared_file_path = file_path.replace(
+                                mistika.settings['BATCHPATH'], self.settings['shared_queues_folder'], 1)
+                            try:
+                                shutil.move(file_path, shared_file_path)
+                                print 'Moved %s to %s' % (file_path, shared_file_path)
+                                continue
+                            except IOError as e:
+                                print e
+                    file_size = os.path.getsize(file_path)
+                    if not render.uid in renders:
+                        renders[render.uid] = render
+                    else:
+                        render = renders[render.uid]
+                    render.private = private
+                    render.path = file_path
+                    render.settings_read()
             except OSError as e:
                 pass
     def io_populate_render_queue(self, first_run=False):
@@ -755,6 +828,9 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         t.start()
         return t
     def on_render_settings_change(self, cell, path, value, setting_key, treestore):
+        if hasattr(cell, 'get_active'): # Checkbox
+            value = not cell.get_active()
+        print '%s:%s' % (setting_key, value)
         file_id = treestore[path][0]
         render = self.renders[file_id]
         if value == 'None':
@@ -791,17 +867,74 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                 print 'Delete intermediate render file: %s' % dependency.path
         print 'Delete', 
         print path
-    def on_render_start(self, widget, *ignore):
+    def on_render_reset(self, widget, *ignore):
         treestore = self.render_treestore
         treepath = self.render_queue_selected_path
         path = treestore[treepath][0]
         render = self.renders[path]
         render.set_settings({
-            'status': 'Rendering',
-            'host': HOSTNAME,
-            'progress': 0.0
+            'render_queued': False,
+            'render_frames': 0,
+            'render_host'  : None,
             })
-        self.launch_thread(render.do_render, name='Render %s' % render.name)
+        render.is_rendering = False
+    def on_render_pause(self, widget, *ignore):
+        treestore = self.render_treestore
+        treepath = self.render_queue_selected_path
+        path = treestore[treepath][0]
+        render = self.renders[path]
+        render.set_settings({
+            'render_paused': not render.settings['render_paused'],
+            })
+    def on_render_abort(self, widget, *ignore):
+        treestore = self.render_treestore
+        treepath = self.render_queue_selected_path
+        path = treestore[treepath][0]
+        render = self.renders[path]
+        render.set_settings({
+            'render_queued': False,
+            })
+    def on_render_resume(self, widget, *ignore):
+        treestore = self.render_treestore
+        treepath = self.render_queue_selected_path
+        path = treestore[treepath][0]
+        render = self.renders[path]
+        render.set_settings({
+            'render_paused': False,
+            })
+    def render_start(self, render):
+        # for thread in self.render_threads:
+        #     if not thread.is_alive():
+        #         print '%s is active' % thread.name
+        #         self.render_threads.remove(thread)
+        active_renders = 0
+        for pid in self.render_processes:
+            try:
+                os.kill(pid, 0)
+                if not process_suspended_status(pid):
+                    active_renders += 1
+            except OSError:
+                self.render_processes.remove(pid)
+            
+        if active_renders < self.render_threads_limit:
+            if 'render_host' in  render.settings and not render.settings['render_host'] in [HOSTNAME, None]:
+                print '%s is already rendering on %s' % (render.name, render.settings['render_host'])
+                return
+            render.set_settings({
+                'status': 'Rendering',
+                'render_host': HOSTNAME,
+                })
+            self.render_threads.append(
+                self.launch_thread(
+                    render.do_render,
+                    name='Render %s' % render.name,
+                    kwargs={
+                        'render_processes' : self.render_processes
+                    }
+                )
+            )
+        else:
+            print 'All %i render threads in use' % self.render_threads_limit
     def on_render_button_press_event(self, treeview, event, *ignore):
         treestore = treeview.get_model()
         if event.button == 3:
