@@ -100,7 +100,8 @@ class RenderItem(hyperspeed.stack.Render):
         gobject.idle_add(self.gui_update)
     def gui_update(self):
         row_path = self.row_reference.get_path()
-        self.treestore[row_path] = self.treestore_values
+        if list(self.treestore[row_path]) != self.treestore_values:
+            self.treestore[row_path] = self.treestore_values
     @property
     def render_progress(self):
         try:
@@ -405,8 +406,8 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         cell.set_property("has-entry", False)
         cell.set_property("text-column", 0)
         cell.set_property("model", self.afterscripts_model)
-        cell.connect('changed', self.on_combo_changed)
-        cell.connect('editing-started', self.on_editing_started)
+        # cell.connect('changed', self.on_combo_changed)
+        # cell.connect('editing-started', self.on_editing_started)
         cell.connect("edited", self.on_render_settings_change, 'afterscript', treestore)
         column = gtk.TreeViewColumn("Afterscript", cell, text=6)
         column.set_resizable(True)
@@ -469,7 +470,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         menu.set_title('Popup')
         treeview.connect('button_release_event', self.on_render_button_press_event, treeview)
 
-        self.launch_thread(self.io_populate_render_queue)
+        self.launch_thread(self.io_populate_render_queue, kwargs={ 'first_run' : True })
         vbox.pack_start(afterscriptsBox, True, True, 5)
         return vbox
     def on_toggle_private(self, cellrenderertoggle, path, treeview):
@@ -664,7 +665,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         menu.set_title('Popup')
         tree.connect('button_release_event', self.on_render_button_press_event, tree)
 
-        self.launch_thread(self.io_populate_render_queue)
+        self.launch_thread(self.io_populate_render_queue, kwargs={ 'first_run' : True })
         vbox.pack_start(afterscriptsBox, True, True, 5)
         return vbox
     def io_parse_queue_folder(self, queue_folder, private=False):
@@ -701,10 +702,12 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                             pass
             except OSError as e:
                 pass
-    def io_populate_render_queue(self):
+    def io_populate_render_queue(self, first_run=False):
         self.io_parse_queue_folder(mistika.settings['BATCHPATH'], private=True)
         self.io_parse_queue_folder(self.settings['shared_queues_folder'])
         gobject.idle_add(self.gui_update_render_queue)
+        if first_run:
+            gobject.idle_add(self.render_treeview.expand_all)
     def gui_update_render_queue(self):
         renders = self.renders
         for file_id in sorted(renders):
@@ -735,7 +738,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                 render.treestore = treestore
             else:
                 render.gui_update()
-        self.render_treeview.expand_all()
+        # self.render_treeview.expand_all()
         # self.afterscript_tree.expand_all()
     def launch_thread(self, target, name=False, args=[], kwargs={}):
         if threading.active_count() >= THREAD_LIMIT:
@@ -754,7 +757,6 @@ Change local batch queue folder to %s?''' % private_queue_folder)
     def on_render_settings_change(self, cell, path, value, setting_key, treestore):
         file_id = treestore[path][0]
         render = self.renders[file_id]
-        render.settings[setting_key] = value
         if value == 'None':
             value = None
         render.set_settings({
