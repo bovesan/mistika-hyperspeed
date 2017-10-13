@@ -89,23 +89,25 @@ class RenderItem(hyperspeed.stack.Render):
             'render_frames' : 0,
         })
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.PIPE)
-        mistika_bin_pid = None
+        mistika_bin_pids = []
         with open(log_path, 'w') as log:
             while proc.returncode == None:
-                mistika_bin_pid = mistika.get_mistika_bin_pid(proc.pid)
-                if mistika_bin_pid:
-                    render_processes.append(mistika_bin_pid)
+                mistika_bin_pids = mistika.get_mistika_bin_pids(proc.pid)
+                if len(mistika_bin_pids) > 0:
+                    render_processes.append(mistika_bin_pids[0])
                 if not self.settings['render_queued']:
                     print 'Render aborted'
                     # proc.send_signal(signal.SIGINT)
-                    os.kill(mistika_bin_pid, signal.SIGINT)
+                    os.kill(mistika_bin_pids[0], signal.SIGINT)
                     break
                 if self.settings['render_paused']:
                     print 'Render paused'
-                    os.kill(mistika_bin_pid, signal.SIGSTOP)
+                    for thread_pid in mistika_bin_pids:
+                        os.kill(thread_pid, signal.SIGSTOP)
                     while self.settings['render_paused']:
                         time.sleep(1)
-                    os.kill(mistika_bin_pid, signal.SIGCONT)
+                    for thread_pid in mistika_bin_pids:
+                        os.kill(thread_pid, signal.SIGCONT)
                 line = proc.stdout.readline()
                 log.write(line)
                 if line.startswith('Done:'):

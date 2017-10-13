@@ -9,13 +9,13 @@ import tempfile
 from xml.etree import ElementTree
 from distutils.version import LooseVersion
 
-def get_mistika_bin_pid(parent_pid):
+def get_mistika_bin_pids(parent_pid):
     cmd = ['pstree', '-p', str(parent_pid)]
-    line = subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0].splitlines()[0]
+    pstree = subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0]
     try:
-        return int(re.search('mistika.bin\((\d+)\)', line).group(1))
+        return [int(pid) for pid in re.findall('mistika.bin\((\d+)\)', pstree)]
     except AttributeError:
-        return None
+        return []
 
 def get_rnd_path(rnd_name):
     for root, dirs, files in os.walk(os.path.join(projects_folder, project, 'DATA/RENDER')):
