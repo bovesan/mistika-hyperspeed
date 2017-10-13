@@ -162,7 +162,13 @@ class RenderItem(hyperspeed.stack.Render):
         treestore.remove(iter)
     def set_settings(self, settings={}):
         self.settings.update(settings)
-        open(self.settings_path, 'w').write(json.dumps(self.settings, indent=4, sort_keys=True))
+        json_dump = json.dumps(self.settings, indent=4, sort_keys=True)
+        try:
+            if open(self.settings_path).read() != json_dump:
+                open(self.settings_path, 'w').write(json_dump)
+        except IOError:
+            print 'File is moved'
+            return
         gobject.idle_add(self.gui_update)
     def settings_read(self):
         try:
@@ -194,7 +200,7 @@ class RenderItem(hyperspeed.stack.Render):
             return [
                 self.uid, # Id
                 self.project, # Project
-                self.name, # Name
+                self.prettyname, # Name
                 self.render_progress * 100.0, # Progress
                 '%5.2f%%' % (self.render_progress * 100.0), # Progress str
                 self.settings['status'], # Status
@@ -218,7 +224,7 @@ class RenderItem(hyperspeed.stack.Render):
             return [
                 self.uid, # Id
                 self.project, # Project
-                self.name, # Name
+                self.prettyname, # Name
                 self.afterscript_progress * 100.0, # Progress
                 '%5.2f%%' % (self.afterscript_progress * 100.0), # Progress str
                 self.status, # Status
@@ -294,6 +300,13 @@ class RenderManagerWindow(hyperspeed.ui.Window):
         gobject.idle_add(self.bring_to_front)
         gobject.timeout_add(1000, self.gui_periodical_updates)
         gobject.idle_add(self.gui_batch_folders_setup)
+    def on_quit(self, widget):
+        for pid in self.render_processes:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                print 'Could not kill process %i' % pid
+        super(RenderManagerWindow, self).on_quit(widget)
     def gui_batch_folders_setup(self):
         batchpath_fstype = subprocess.Popen(['df', '--output=fstype', mistika.settings['BATCHPATH']],
             stdout=subprocess.PIPE).communicate()[0].splitlines()[-1]
@@ -577,28 +590,40 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         (treestore, row_paths) = selection.get_selected_rows()
         row_paths = sorted(row_paths)
         menu = gtk.Menu()
-        for row_path in row_paths:
-            render = self.renders[treestore[row_path][0]]
         if len(row_paths) == 1:
             newi = gtk.ImageMenuItem(gtk.STOCK_INFO)
             newi.connect("activate", self.on_render_info)
             newi.show()
             menu.append(newi)
-        newi = gtk.ImageMenuItem(gtk.STOCK_MEDIA_PLAY)
-        newi.set_label('Enqueue')
-        newi.connect("activate", self.on_render_enqueue)
-        newi.show()
-        menu.append(newi)
-        newi = gtk.ImageMenuItem(gtk.STOCK_UNDO)
-        newi.set_label('Reset')
-        newi.connect("activate", self.on_render_reset)
-        newi.show()
-        menu.append(newi)
-        newi = gtk.ImageMenuItem(gtk.STOCK_CANCEL)
-        newi.set_label('Abort')
-        newi.connect("activate", self.on_render_abort)
-        newi.show()
-        menu.append(newi)
+        enqueue = False
+        reset = False
+        abort = False
+        for row_path in row_paths:
+            render = self.renders[treestore[row_path][0]]
+            if render.settings['render_frames'] < render.frames:
+                enqueue = True
+            else:
+                reset = True
+            if render.settings['is_rendering']:
+                abort = True
+        if enqueue:
+            newi = gtk.ImageMenuItem(gtk.STOCK_MEDIA_PLAY)
+            newi.set_label('Enqueue')
+            newi.connect("activate", self.on_render_enqueue)
+            newi.show()
+            menu.append(newi)
+        if reset:
+            newi = gtk.ImageMenuItem(gtk.STOCK_UNDO)
+            newi.set_label('Reset')
+            newi.connect("activate", self.on_render_reset)
+            newi.show()
+            menu.append(newi)
+        if abort:
+            newi = gtk.ImageMenuItem(gtk.STOCK_CANCEL)
+            newi.set_label('Abort')
+            newi.connect("activate", self.on_render_abort)
+            newi.show()
+            menu.append(newi)
         newi = gtk.ImageMenuItem(gtk.STOCK_DELETE)
         newi.set_label('Remove')
         newi.connect("activate", self.on_render_delete)
@@ -632,7 +657,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         # Move settings first to avoid reset
         new_settings_path = render.settings_path.replace(current_folder, new_folder, 1)
         try:
-            print 'Moving settings: %s -> %s' % (render.settings_path, new_settings_path)
+            # print 'Moving settings: %s -> %s' % (render.settings_path, new_settings_path)
             shutil.move(render.settings_path, new_settings_path)
         except IOError as e:
             errors.append(str(e))
@@ -640,7 +665,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             new_path = current_path.replace(
             current_folder, new_folder, 1)
             try:
-                print 'Moving files: %s -> %s' % (current_path, new_path)
+                # print 'Moving files: %s -> %s' % (current_path, new_path)
                 shutil.move(current_path, new_path)
             except IOError as e:
                 errors.append(str(e))
@@ -892,20 +917,6 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                 render.gui_update()
         # self.render_treeview.expand_all()
         # self.afterscript_tree.expand_all()
-    def launch_thread(self, target, name=False, args=[], kwargs={}):
-        if threading.active_count() >= THREAD_LIMIT:
-            print 'Thread limit reached: %i/%i' % (threading.active_count(), THREAD_LIMIT)
-        arg_strings = []
-        for arg in list(args):
-            arg_strings.append(repr(arg))
-        for k, v in kwargs.iteritems():
-            arg_strings.append('%s=%s' % (k, v))
-        if not name:
-            name = '%s(%s)' % (target, ', '.join(arg_strings))
-        t = threading.Thread(target=target, name=name, args=args, kwargs=kwargs)
-        t.setDaemon(True)
-        t.start()
-        return t
     def on_render_freeze(self, cell, widget, path, value):
         treestore = self.render_treestore
         # print 'cell: %s' % cell

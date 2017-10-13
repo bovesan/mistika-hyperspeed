@@ -8,6 +8,7 @@ import threading
 import tempfile
 import copy
 import shutil
+import re
 
 import hyperspeed.utils
 
@@ -244,6 +245,12 @@ class Stack(object):
         except IOError as e:
             print 'Could not open ' + self.path
             raise e
+    @property
+    def prettyname(self):
+        if self.groupname:
+            return self.groupname
+        else:
+            return re.sub('^%s\W*' % self.project, '', self.name)
     @property
     def groupname(self):
         try:

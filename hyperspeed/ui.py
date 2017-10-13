@@ -125,12 +125,15 @@ class Window(gtk.Window):
     quit = False
     def __init__(self, title, settings_default, icon_path=None):
         super(Window, self).__init__()
-        self.settings = settings_default
+        settings = self.settings = settings_default
         self.settings_load()
         screen = self.get_screen()
         monitor = screen.get_monitor_geometry(0)
         self.set_title(title)
-        self.set_default_size(monitor.width-200, monitor.height-200)
+        if 'window_size' in settings:
+            self.set_default_size(settings['window_size']['width'], settings['window_size']['height'])
+        else:
+            self.set_default_size(monitor.width-200, monitor.height-200)
         self.set_border_width(20)
         self.set_position(gtk.WIN_POS_CENTER)
         if 'darwin' in platform.system().lower():
@@ -145,6 +148,7 @@ class Window(gtk.Window):
             gtk.gdk.pixbuf_new_from_file_at_size(icon_path, 128, 128),
             gtk.gdk.pixbuf_new_from_file_at_size(icon_path, 256, 256),
         )
+        self.connect('check-resize', self.on_window_resize)
         self.connect("destroy", self.on_quit)
         # gtkrc = '''
         # style "theme-fixes" {
@@ -152,6 +156,20 @@ class Window(gtk.Window):
         # }
         # class "*" style "theme-fixes"'''
         # gtk.rc_parse_string(gtkrc)
+    def on_window_resize(self, window):
+        width, height = self.get_size()
+        self.set_settings({
+            'window_size' : {
+                'width' : width,
+                'height': height
+            }
+        })
+        # self.launch_thread(self.set_settings, [{
+        #     'window_size' : {
+        #         'width' : width,
+        #         'height': height
+        #     }
+        # }])
     def on_key_press_event(self,widget,event):
         keyval = event.keyval
         keyval_name = gtk.gdk.keyval_name(keyval)
@@ -211,6 +229,18 @@ class Window(gtk.Window):
         except IOError as e:
             print 'Could not store settings. %s' % e
             return False
+    def launch_thread(self, target, name=False, args=[], kwargs={}):
+        arg_strings = []
+        for arg in list(args):
+            arg_strings.append(repr(arg))
+        for k, v in kwargs.iteritems():
+            arg_strings.append('%s=%s' % (k, v))
+        if not name:
+            name = '%s(%s)' % (target, ', '.join(arg_strings))
+        t = threading.Thread(target=target, name=name, args=args, kwargs=kwargs)
+        t.setDaemon(True)
+        t.start()
+        return t
 
 
 def dialog_yesno(parent, question, confirm_object=False, confirm_lock=False):
