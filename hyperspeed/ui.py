@@ -261,5 +261,5 @@ def dialog_error(parent, message):
     response = dialog.run()
     dialog.destroy()
 
-def event_debug(**kwargs):
-    print repr(kwargs)
+def event_debug(*args):
+    print repr(args)

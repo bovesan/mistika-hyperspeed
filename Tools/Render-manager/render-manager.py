@@ -566,9 +566,27 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         vbox_move.pack_start(button)
         afterscriptsBox.pack_start(vbox_move, False, False)
 
-        menu = self.popup_menu = gtk.Menu()
-        newi = gtk.ImageMenuItem(gtk.STOCK_INFO)
-        newi.connect("activate", self.on_render_info)
+        # treeview.connect('event', hyperspeed.ui.event_debug, treeview)
+        treeview.connect('button_press_event', self.on_render_button_press_event, treeview)
+
+        self.launch_thread(self.io_populate_render_queue, kwargs={ 'first_run' : True })
+        vbox.pack_start(afterscriptsBox, True, True, 5)
+        return vbox
+    def render_item_menu(self):
+        selection = self.render_treeview.get_selection()
+        (treestore, row_paths) = selection.get_selected_rows()
+        row_paths = sorted(row_paths)
+        menu = gtk.Menu()
+        for row_path in row_paths:
+            render = self.renders[treestore[row_path][0]]
+        if len(row_paths) == 1:
+            newi = gtk.ImageMenuItem(gtk.STOCK_INFO)
+            newi.connect("activate", self.on_render_info)
+            newi.show()
+            menu.append(newi)
+        newi = gtk.ImageMenuItem(gtk.STOCK_MEDIA_PLAY)
+        newi.set_label('Enqueue')
+        newi.connect("activate", self.on_render_enqueue)
         newi.show()
         menu.append(newi)
         newi = gtk.ImageMenuItem(gtk.STOCK_UNDO)
@@ -582,15 +600,12 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         newi.show()
         menu.append(newi)
         newi = gtk.ImageMenuItem(gtk.STOCK_DELETE)
+        newi.set_label('Remove')
         newi.connect("activate", self.on_render_delete)
         newi.show()
         menu.append(newi)
         menu.set_title('Popup')
-        treeview.connect('button_release_event', self.on_render_button_press_event, treeview)
-
-        self.launch_thread(self.io_populate_render_queue, kwargs={ 'first_run' : True })
-        vbox.pack_start(afterscriptsBox, True, True, 5)
-        return vbox
+        return menu
     def on_toggle_private(self, cellrenderertoggle, path, treeview):
         was_private = cellrenderertoggle.get_active()
         treestore = treeview.get_model()
@@ -939,50 +954,56 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             message += '\n%s: %s' % (k, v)
         self.gui_info_dialog(message)
     def on_render_delete(self, widget, *ignore):
-        treestore = self.render_treestore
-        treepath = self.render_queue_selected_path
-        path = treestore[treepath][0]
-        render = self.renders[path]
-        for dependency in render.output_stack.dependencies:
-            if dependency.path.startswith(TEMPORARY_RENDERS_FOLDER):
-                print 'Delete intermediate render file: %s' % dependency.path
-        print 'Delete', 
-        print path
+        selection = self.render_treeview.get_selection()
+        (treestore, row_paths) = selection.get_selected_rows()
+        row_paths = sorted(row_paths)
+        for row_path in row_paths:
+            render = self.renders[treestore[row_path][0]]
+            for dependency in render.output_stack.dependencies:
+                if dependency.path.startswith(TEMPORARY_RENDERS_FOLDER):
+                    print 'Delete intermediate render file: %s' % dependency.path
+            print 'Delete', 
+            print path
     def on_render_reset(self, widget, *ignore):
-        treestore = self.render_treestore
-        treepath = self.render_queue_selected_path
-        path = treestore[treepath][0]
-        render = self.renders[path]
-        render.set_settings({
-            'render_queued': False,
-            'render_frames': 0,
-            'render_host'  : None,
-            })
-        render.is_rendering = False
-    def on_render_pause(self, widget, *ignore):
-        treestore = self.render_treestore
-        treepath = self.render_queue_selected_path
-        path = treestore[treepath][0]
-        render = self.renders[path]
-        render.set_settings({
-            'render_paused': not render.settings['render_paused'],
-            })
+        selection = self.render_treeview.get_selection()
+        (treestore, row_paths) = selection.get_selected_rows()
+        row_paths = sorted(row_paths)
+        for row_path in row_paths:
+            render = self.renders[treestore[row_path][0]]
+            render.set_settings({
+                'render_queued': False,
+                'render_frames': 0,
+                'render_host'  : None,
+                })
+            render.is_rendering = False
+    def on_render_enqueue(self, widget, *ignore):
+        selection = self.render_treeview.get_selection()
+        (treestore, row_paths) = selection.get_selected_rows()
+        row_paths = sorted(row_paths)
+        for row_path in row_paths:
+            render = self.renders[treestore[row_path][0]]
+            print repr(render)
+            render.set_settings({
+                'render_queued': True,
+                })
     def on_render_abort(self, widget, *ignore):
-        treestore = self.render_treestore
-        treepath = self.render_queue_selected_path
-        path = treestore[treepath][0]
-        render = self.renders[path]
-        render.set_settings({
-            'render_queued': False,
-            })
+        selection = self.render_treeview.get_selection()
+        (treestore, row_paths) = selection.get_selected_rows()
+        row_paths = sorted(row_paths)
+        for row_path in row_paths:
+            render = self.renders[treestore[row_path][0]]
+            render.set_settings({
+                'render_queued': False,
+                })
     def on_render_resume(self, widget, *ignore):
-        treestore = self.render_treestore
-        treepath = self.render_queue_selected_path
-        path = treestore[treepath][0]
-        render = self.renders[path]
-        render.set_settings({
-            'render_paused': False,
-            })
+        selection = self.render_treeview.get_selection()
+        (treestore, row_paths) = selection.get_selected_rows()
+        row_paths = sorted(row_paths)
+        for row_path in row_paths:
+            render = self.renders[treestore[row_path][0]]
+            render.set_settings({
+                'render_paused': False,
+                })
     def render_start(self, render):
         # for thread in self.render_threads:
         #     if not thread.is_alive():
@@ -1028,8 +1049,8 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                 if treestore[path].parent == None:
                     return False
                 treeview.grab_focus()
-                treeview.set_cursor( path, col, 0)
-                self.popup_menu.popup( None, None, None, event.button, time)
+                # treeview.set_cursor( path, col, 0)
+                self.render_item_menu().popup( None, None, None, event.button, time)
                 self.render_queue_selected_path = path
             return True
     
