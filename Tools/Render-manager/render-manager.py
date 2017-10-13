@@ -121,18 +121,31 @@ class RenderItem(hyperspeed.stack.Render):
                         'render_frames' : int(self.frames),
                         'render_end_time' : time.time(),
                         'render_elapsed_time' : float(line.split()[2]),
-                        'status' : 'Render complete',
-                        'is_rendering' : False,
                     })
                 proc.poll()
             if proc.returncode == 0:
+                print 'Render complete'
                 self.set_settings({
                     'render_queued' : False,
+                    })
+            elif proc.returncode == 1:
+                print 'Render process ended with returncode 1'
+                self.set_settings({
+                    'render_queued' : False,
+                    })
+            elif proc.returncode == 2:
+                self.set_settings({
+                    'render_queued' : False,
+                    'render_frames' : self.frames,
+                    'is_rendering' : False,
+                    'status' : 'Render complete',
                     })
             elif proc.returncode == 3:
                 print 'Aborted by user'
                 self.set_settings({
                     'render_queued' : False,
+                    'status' : 'Aborted by user',
+                    'is_rendering' : False,
                     })
             else:
                 print proc.returncode
@@ -140,6 +153,7 @@ class RenderItem(hyperspeed.stack.Render):
                     'renders_failed' :self.settings['renders_failed'] + [
                         self.settings['render_frames']
                     ],
+                    'is_rendering' : False,
                 })
         # logfile_h.flush()
     def gui_remove(self, item):
@@ -311,6 +325,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             if not os.path.isdir(queue_folder):
                 try:
                     os.makedirs(queue_folder)
+                    open(os.path.join(queue_folder, 'priority.cfg'), 'w').write('1\n')
                 except OSError as e:
                     hyperspeed.ui.dialog_error(self,
                         'Could not create folder: %s\n%s' % (batchpath, e))
@@ -403,6 +418,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         self.render_queue = {}
         row_references = self.row_references_render = {}
         treeview       = self.render_treeview  = gtk.TreeView()
+        treeview.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
         treestore      = self.render_treestore = gtk.TreeStore(
             str,  # 00 Id
             str,  # 01 Project
@@ -593,12 +609,15 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         if not os.path.isdir(new_folder):
             try:
                 os.makedirs(new_folder)
+                open(os.path.join(queue_folder, 'priority.cfg'), 'w').write('1\n')
             except OSError as e:
+                print e
                 hyperspeed.ui.dialog_error(self, str(e))
                 return
         # Move settings first to avoid reset
         new_settings_path = render.settings_path.replace(current_folder, new_folder, 1)
         try:
+            print 'Moving settings: %s -> %s' % (render.settings_path, new_settings_path)
             shutil.move(render.settings_path, new_settings_path)
         except IOError as e:
             errors.append(str(e))
@@ -606,33 +625,47 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             new_path = current_path.replace(
             current_folder, new_folder, 1)
             try:
+                print 'Moving files: %s -> %s' % (current_path, new_path)
                 shutil.move(current_path, new_path)
             except IOError as e:
                 errors.append(str(e))
         if len(errors) > 0:
+            print repr(errors)
             hyperspeed.ui.dialog_error(self, '\n'.join(errors))
         self.launch_thread(self.io_populate_render_queue)
     def on_move(self, widget, direction, treeview):
         selection = treeview.get_selection()
         (treestore, row_paths) = selection.get_selected_rows()
-        for row_path in sorted(row_paths, reverse=True):
+        row_paths = sorted(row_paths, reverse=direction>0)
+        row_references = []
+        for row_path in row_paths:
+            row_references.append(gtk.TreeRowReference(treestore, row_path))
+        for row_reference in row_references:
+            row_path = row_reference.get_path()
             file_id = treestore[row_path][0]
             render = self.renders[file_id]
             row_path_parent = row_path[:-1]
             row_path_lastbit = row_path[1]
             if direction < 0 and row_path_lastbit == 0:
+                print 'Cannot move before first position'
                 return
             path_one_away = row_path_parent+(row_path_lastbit+direction,)
-            path_two_away = row_path_parent+(row_path_lastbit+(direction*2),)
+            if direction > 0:
+                path_two_away = row_path_parent+(row_path_lastbit+(direction+1),)
+            else:
+                path_two_away = row_path_parent+(row_path_lastbit+(direction-1),)
             try:
                 priority_one_away = treestore[path_one_away][11]
             except IndexError:
+                print 'Cannot move after end'
                 return
             try:
                 priority_two_away = treestore[path_two_away][11]
             except IndexError:
                 priority_two_away = priority_one_away+(direction*0.01)
             priority_between = priority_one_away - ((priority_one_away - priority_two_away) * 0.5)
+            print 'New priority: %s' % priority_between
+            treestore[row_path][11] = priority_between
             render.set_settings({
                 'priority' :  priority_between
             })
@@ -783,10 +816,10 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                     if file_ext != '.rnd':
                         continue
                     render = RenderItem(file_path, self.settings)
+                    id_path = os.path.join(os.path.dirname(render.path), render.uid+'.rnd')
+                    if not os.path.basename(render.path) == id_path:
+                        os.rename(render.path, id_path)
                     if private:
-                        id_path = os.path.join(os.path.dirname(render.path), render.uid+'.rnd')
-                        if not os.path.basename(render.path) == id_path:
-                            os.rename(render.path, id_path)
                         if not queue_name.lower().startswith('private'):
                             shared_file_path = file_path.replace(
                                 mistika.settings['BATCHPATH'], self.settings['shared_queues_folder'], 1)
@@ -875,7 +908,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
     def on_render_settings_change(self, cell, path, value, setting_key, treestore):
         if hasattr(cell, 'get_active'): # Checkbox
             value = not cell.get_active()
-        print '%s:%s' % (setting_key, value)
+        # print '%s:%s' % (setting_key, value)
         file_id = treestore[path][0]
         render = self.renders[file_id]
         render.gui_freeze_render = False
@@ -981,7 +1014,8 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                 )
             )
         else:
-            print 'All %i render threads in use' % self.render_threads_limit
+            return
+            # print 'All %i render threads in use' % self.render_threads_limit
     def on_render_button_press_event(self, treeview, event, *ignore):
         treestore = treeview.get_model()
         if event.button == 3:

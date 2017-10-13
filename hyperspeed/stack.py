@@ -541,7 +541,7 @@ class Render(Stack):
         if self.name.startswith(self.project):
             self.uid = self.name
         else:
-            self.uid = self.project+'-'+self.name
+            self.uid = self.project+'_'+self.name
         if self.exists:
             self.clp_path = 'clp'.join(self.path.rsplit('rnd', 1))
             if os.path.exists(self.clp_path):

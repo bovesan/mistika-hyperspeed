@@ -23,14 +23,15 @@ def get_rnd_path(rnd_name):
             if basename.startswith(rnd_name) and basename.endswith('.rnd'):
                 return os.path.join(root, basename)
             
-def get_mistikarc_path(env_folder):
+def get_mistikarc_path(env_folder, multiple=False):
     mistikarc_paths = [
-    env_folder + '/mistikarc.cfg',
-    env_folder + '/.mistikarc',
-    env_folder + '/.mambarc',
+        env_folder + '/mistikarc.cfg',
+        env_folder + '/.mistikarc',
+        env_folder + '/.mambarc',
     ]
-    while len(mistikarc_paths) > 0 and not os.path.exists(mistikarc_paths[0]):
-        del mistikarc_paths[0]
+    for path in mistikarc_paths:
+        if not os.path.exists(path):
+            mistikarc_paths.remove(path)
     if len(mistikarc_paths) == 0:
         print 'Error: mistikarc config not found in %s' % env_folder
         return False
@@ -135,14 +136,14 @@ def reload():
 reload()
 
 def set_settings(settings):
-    mistika_settings_file = get_mistikarc_path(env_folder)
-    with tempfile.NamedTemporaryFile(delete=False) as temp_handle:
-        for line in open(mistika_settings_file):
-            key = line.split()[0]
-            if key in settings:
-                line = key.ljust(31)+str(settings[key])+'\n'
-            temp_handle.write(line)
-            # print line,
-        temp_handle.flush()
-    os.rename(mistika_settings_file, mistika_settings_file+'.bak')
-    os.rename(temp_handle.name, mistika_settings_file)
+    for mistika_settings_file in get_mistikarc_path(env_folder, multiple=False):
+        with tempfile.NamedTemporaryFile(delete=False) as temp_handle:
+            for line in open(mistika_settings_file):
+                key = line.split()[0]
+                if key in settings:
+                    line = key.ljust(31)+str(settings[key])+'\n'
+                temp_handle.write(line)
+                # print line,
+            temp_handle.flush()
+        os.rename(mistika_settings_file, mistika_settings_file+'.bak')
+        os.rename(temp_handle.name, mistika_settings_file)
