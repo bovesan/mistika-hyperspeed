@@ -72,6 +72,12 @@ class RenderItem(hyperspeed.stack.Render):
             'render_frames'        : 0,
             'renders_failed'       : [],
             'afterscript'          : None,
+            'is_afterscripting'    : False,
+            'afterscript_paused'   : False,
+            'afterscript_host'     : None,
+            'afterscript_queued'   : False,
+            'afterscript_frames'   : 0,
+            'afterscripts_failed'  : [],
             'status'               : 'Not started',
             'afterscript_progress' : 0.0,
         }
@@ -139,7 +145,9 @@ class RenderItem(hyperspeed.stack.Render):
                     'render_frames' : self.frames,
                     'is_rendering' : False,
                     'status' : 'Render complete',
-                    })
+                })
+                if self.settings['afterscript']:
+                    self.move_to_stage('afterscript')
             elif proc.returncode == 3:
                 print 'Aborted by user'
                 self.set_settings({
@@ -156,6 +164,13 @@ class RenderItem(hyperspeed.stack.Render):
                     'is_rendering' : False,
                 })
         # logfile_h.flush()
+    def move_to_stage(self, stage):
+        gobject.idle_add(self.gui_remove)
+        self.treestore = None
+        self.row_reference = None
+        self.set_settings({
+            'stage' : stage,
+        })
     def gui_remove(self, item):
         row_path = self.row_reference.get_path()
         row_iter = treestore.get_iter(row_path)
@@ -213,7 +228,7 @@ class RenderItem(hyperspeed.stack.Render):
                 self.settings['submit_host'],
                 self.settings['render_host'],
                 self.settings['color'],
-                not 1 > self.render_progress >= 0, # Status visible
+                not self.settings['is_rendering'], # Status visible
                 self.duration, # 16
                 self.private, 
                 self.settings['submit_host'] == HOSTNAME,
@@ -227,35 +242,23 @@ class RenderItem(hyperspeed.stack.Render):
                 self.prettyname, # Name
                 self.afterscript_progress * 100.0, # Progress
                 '%5.2f%%' % (self.afterscript_progress * 100.0), # Progress str
-                self.status, # Status
+                self.settings['status'], # Status
                 self.settings['afterscript'], # Afterscript
                 self.ctime, # Added time
                 self.settings['description'], # Description
                 hyperspeed.human.time(self.ctime), # Human time
-                self.afterscript_progress > 0, # Progress visible
+                self.settings['is_afterscripting'] , # 10 Progress visible
                 self.settings['priority'],
                 self.settings['submit_host'],
-                self.settings['render_host'],
+                self.settings['afterscript_host'],
+                self.settings['color'],
+                not self.settings['is_afterscripting'], # Status visible
+                self.duration, # 16
                 self.private,
                 self.settings['submit_host'] == HOSTNAME,
                 self.settings['afterscript_queued'],
+                self.afterscript_progress < 1, # 20 Settings visible
             ]
-
-class RenderQueue(object):
-    queue = Queue.Queue()
-    items = {}
-    def __init__(self, treeview_renders, treeview_afterscripts):
-        self.treeview_renders = treeview_renders
-        self.treeview_afterscripts = treeview_afterscripts
-    def put(self, item):
-        queue.put_nowait(self._put, item)
-    def _put(self, item):
-        self.items[item.path] = item
-    def remove(self, item):
-        queue.put_nowait(self._remove, item)
-    def _remove(self, item):
-        gobject.idle_add(self._remove_from_views, item.path)
-        del self.items[item.path]
 
 class RenderManagerWindow(hyperspeed.ui.Window):
     def __init__(self):
@@ -264,6 +267,7 @@ class RenderManagerWindow(hyperspeed.ui.Window):
             settings_default = {
                 'shared_queues_folder' : '',
                 'render_process' : True,
+                'afterscript_process' : True,
             }
         )
         self.renders = {}
@@ -271,6 +275,9 @@ class RenderManagerWindow(hyperspeed.ui.Window):
         self.render_threads = []
         self.render_processes = []
         self.render_threads_limit = 1
+        self.afterscript_threads = []
+        self.afterscript_processes = []
+        self.afterscript_threads_limit = 1
         self.queue_io = Queue.Queue()
         self.config_rw()
         vbox = gtk.VBox(False, 10)
@@ -282,7 +289,7 @@ class RenderManagerWindow(hyperspeed.ui.Window):
 
         vbox.pack_start(self.settings_panel(), False, False, 10)
         vbox.pack_start(self.init_render_queue_window())
-        # vbox.pack_start(self.init_afterscript_queue_window())
+        vbox.pack_start(self.init_afterscript_queue_window())
 
         footer = gtk.HBox(False, 10)
         quitButton = gtk.Button('Quit')
@@ -382,25 +389,43 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         expander.add(vbox)
         return expander
     def gui_process_renders(self):
-        model = self.render_treestore
         if self.process_queue_checkbox.get_active():
-            row_path = self.row_references_render[THIS_HOST_ALIAS].get_path()
-            row_iter = model.get_iter(row_path)
-            for n in range(model.iter_n_children(row_iter)):
-                child_iter = model.iter_nth_child(row_iter, n)
-                child_id = model.get_value(child_iter, 0)
-                render = self.renders[child_id]
-                if render.settings['render_queued'] and \
-                render.settings['render_frames'] < render.frames and \
-                not render.settings['render_paused']:
+            if not self.gui_process_start_renders(THIS_HOST_ALIAS):
+                if self.process_others_checkbox.get_active():
+                    self.gui_process_start_renders(OTHER_HOSTS_ALIAS)
+    def gui_process_start_renders(self, host_group):
+        model = self.render_treestore
+        row_path = self.row_references_render[host_group].get_path()
+        row_iter = model.get_iter(row_path)
+        for n in range(model.iter_n_children(row_iter)):
+            child_iter = model.iter_nth_child(row_iter, n)
+            child_id = model.get_value(child_iter, 0)
+            render = self.renders[child_id]
+            if render.settings['render_queued']:
+                if render.settings['render_frames'] < render.frames:
                     self.render_start(render)
-                    return
-                child_has_child = model.iter_has_child(child_iter)
-                child_is_folder = model.get_value(child_iter, 2)
-        if self.process_others_checkbox.get_active():
-            print 'Starting other jobs'
+                    return True
+    def gui_process_afterscripts(self):
+        if self.process_queue_afterscripts_checkbox.get_active():
+            if not self.gui_process_start_afterscripts(THIS_HOST_ALIAS):
+                if self.process_others_afterscripts_checkbox.get_active():
+                    self.gui_process_start_afterscripts(OTHER_HOSTS_ALIAS)
+    def gui_process_start_afterscripts(self, host_group):
+        model = self.afterscript_treestore
+        row_path = self.row_references_afterscript[host_group].get_path()
+        row_iter = model.get_iter(row_path)
+        for n in range(model.iter_n_children(row_iter)):
+            child_iter = model.iter_nth_child(row_iter, n)
+            child_id = model.get_value(child_iter, 0)
+            render = self.renders[child_id]
+            if render.settings['afterscript']:
+                if render.settings['afterscript_queued']:
+                    if render.settings['afterscript_frames'] < render.frames:
+                        self.afterscript_start(render)
+                        return True
     def gui_periodical_updates(self):
         self.gui_process_renders()
+        self.gui_process_afterscripts()
         self.launch_thread(self.io_populate_render_queue)
         return True # Must return true to keep repeating
     def on_folder_pick(self, widget, entry, title):
@@ -551,16 +576,6 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         treeview.append_column(column)
         treeview.set_tooltip_column(8)
         treeview.set_rules_hint(True)
-        # it = queueTreestore.append(None, ["Private (6)", '', '', '', '', 0, ''])
-        # queueTreestore.append(it, ["RnD", 'test_0001', 'Rendering on gaia', 'gaia', '08:27', 20, '20%'])
-        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
-        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
-        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
-        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
-        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
-        # it = queueTreestore.append(None, ["Public (2)", '', '', '', '', 0, ''])
-        # queueTreestore.append(it, ["Mastering", 'film01', 'Queued', 'apollo2', '08:27', 0, ''])
-        # queueTreestore.append(it, ["Mastering", 'film02', 'Queued', 'apollo2', '08:27', 0, ''])
         treeview.set_model(treestore)
         treeview.expand_all()
         scrolled_window = gtk.ScrolledWindow()
@@ -721,26 +736,41 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         response = dialog.run()
         dialog.destroy()
     def init_afterscript_queue_window(self):
-        self.render_queue = {}
+        settings = self.settings
+        self.afterscript_queue = {}
         row_references = self.row_references_afterscript = {}
-        tree           = self.afterscript_treeview  = gtk.TreeView()
+        treeview       = self.afterscript_treeview  = gtk.TreeView()
+        treeview.get_selection().set_mode(gtk.SELECTION_MULTIPLE)
         treestore      = self.afterscript_treestore = gtk.TreeStore(
-            str, # Id
-            str, # Project
-            str, # Name
-            int, # Progress
-            str, # Progress str
-            str, # Status
-            str, # Afterscript
-            str, # Added time
-            str, # Description
-            str, # Human time
-            bool # Progress visible
+            str,  # 00 Id
+            str,  # 01 Project
+            str,  # 02 Name
+            int,  # 03 Progress
+            str,  # 04 Progress str
+            str,  # 05 Status
+            str,  # 06 Afterscript
+            float,# 07 Added time
+            str,  # 08 Description
+            str,  # 09 Human time
+            bool, # 10 Is afterscripting
+            float,# 11 Priority
+            str,  # 12 Submit host
+            str,  # 13 Afterscript host
+            str,  # 14 Color
+            bool, # 15 Status visible
+            str,  # 16 Duration
+            bool, # 17 Private
+            bool, # 18 This host
+            bool, # 19 Queued
+            bool, # 20 Settings visible
         )
+        treestore.set_sort_column_id(11, gtk.SORT_ASCENDING)
         tree_filter    = self.afterscript_queue_filter    = treestore.filter_new();
+        # tree.connect('button-press-event' , self.button_press_event)
         for queue_name in [THIS_HOST_ALIAS, OTHER_HOSTS_ALIAS]:
-            row_iter = treestore.append(None, [queue_name, queue_name, '', 0, '', '', '', '', 'Render jobs submitted by %s' % queue_name.lower(), '', False])
+            row_iter = treestore.append(None, None)
             row_path = treestore.get_path(row_iter)
+            treestore[row_path][1] = queue_name
             row_references[queue_name] = gtk.TreeRowReference(treestore, row_path)
         vbox = gtk.VBox(False, 10)
         headerBox = gtk.HBox(False, 5)
@@ -749,16 +779,14 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         headerBox.pack_start(headerLabel, False, False, 5)
         vbox.pack_start(headerBox, False, False, 2)
         toolbar = gtk.HBox(False, 2)
-        checkButton = gtk.CheckButton('Process queue')
-        checkButton.set_property("active", True)
+        checkButton = self.process_queue_afterscripts_checkbox = gtk.CheckButton('Process queue')
+        checkButton.set_property("active", settings['afterscript_process'])
+        checkButton.connect("toggled", self.on_settings_change, 'afterscript_process')
         toolbar.pack_start(checkButton, False, False, 5)
-        checkButton = gtk.CheckButton('Process jobs for other hosts')
+        checkButton = self.process_others_afterscripts_checkbox = gtk.CheckButton('Process jobs for other hosts')
         checkButton.set_property("active", False)
         toolbar.pack_start(checkButton, False, False, 5)
-        checkButton = gtk.CheckButton('Autostart jobs from this machine')
-        checkButton.set_property("active", False)
-        toolbar.pack_start(checkButton, False, False, 5)
-        button = gtk.CheckButton('Autostart jobs from this machine')
+        checkButton = self.autoqueue_checkbox = gtk.CheckButton('Autoqueue new jobs from this machine')
         checkButton.set_property("active", False)
         toolbar.pack_start(checkButton, False, False, 5)
         vbox.pack_start(toolbar, False, False, 2)
@@ -766,82 +794,81 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         column = gtk.TreeViewColumn('Project', gtk.CellRendererText(), text=1)
         column.set_resizable(True)
         column.set_expand(False)
-        tree.append_column(column)
+        treeview.append_column(column)
         column = gtk.TreeViewColumn('Name', gtk.CellRendererText(), text=2)
         column.set_resizable(True)
-        column.set_expand(False)
-        tree.append_column(column)
-        cell = gtk.CellRendererProgress()
-        column = gtk.TreeViewColumn('Progress', cell, value=3, text=4)
-        column.add_attribute(cell, 'visible', 10)
+        column.set_expand(True)
+        treeview.append_column(column)
+        column = gtk.TreeViewColumn('Duration', gtk.CellRendererText(), text=16)
         column.set_resizable(True)
         column.set_expand(False)
-        tree.append_column(column)
-        column = gtk.TreeViewColumn('Status', gtk.CellRendererText(), text=5)
+        treeview.append_column(column)
+        column = gtk.TreeViewColumn('Submit time', gtk.CellRendererText(), text=9)
+        column.set_resizable(True)
+        column.set_expand(False)
+        treeview.append_column(column)
+        column = gtk.TreeViewColumn('Submit node', gtk.CellRendererText(), text=12)
+        column.set_resizable(True)
+        column.set_expand(False)
+        treeview.append_column(column)
+        cell = gtk.CellRendererToggle()
+        cell.connect("toggled", self.on_render_settings_change, None, 'afterscript_queued', treestore)
+        column = gtk.TreeViewColumn('Queued', cell, active=19, visible=20)
+        column.set_resizable(True)
+        column.set_expand(False)
+        treeview.append_column(column)
+        column = gtk.TreeViewColumn('Afterscript node', gtk.CellRendererText(), text=13)
+        column.set_resizable(True)
+        column.set_expand(False)
+        treeview.append_column(column)
+        cell = gtk.CellRendererText()
+        column = gtk.TreeViewColumn('Status')
+        column.pack_start(cell, False)
+        column.set_attributes(cell, text=5, foreground=14, visible=15)
+        cell = gtk.CellRendererProgress()
+        column.pack_start(cell, True)
+        column.set_attributes(cell, value=3, text=4, visible=10)
         column.set_resizable(True)
         column.set_expand(True)
-        tree.append_column(column)
+        treeview.append_column(column)
 
-        afterscripts_model = self.afterscripts_model
         cell = gtk.CellRendererCombo()
         cell.set_property("editable", True)
         cell.set_property("has-entry", False)
         cell.set_property("text-column", 0)
-        cell.set_property("model", afterscripts_model)
-        # cell.connect('changed', self.on_combo_changed)
-        # cell.connect('editing-started', self.on_editing_started)
-        cell.connect("popup-shown", self.on_render_editing)
-        cell.connect("edited", self.on_render_afterscript_set)
+        cell.set_property("model", self.afterscripts_model)
+        # cell.connect('event', hyperspeed.ui.event_debug)
+        cell.connect('editing-started', self.on_render_freeze, True)
+        cell.connect("edited", self.on_render_settings_change, 'afterscript', treestore)
         column = gtk.TreeViewColumn("Afterscript", cell, text=6)
+        # column.connect('clicked', hyperspeed.ui.event_debug)
         column.set_resizable(True)
-        column.set_expand(False)
-        tree.append_column(column)
-        column = gtk.TreeViewColumn('Added time', gtk.CellRendererText(), text=9)
-        column.set_resizable(True)
-        column.set_expand(False)
-        tree.append_column(column)
-        tree.set_tooltip_column(8)
-        tree.set_rules_hint(True)
-        # it = queueTreestore.append(None, ["Private (6)", '', '', '', '', 0, ''])
-        # queueTreestore.append(it, ["RnD", 'test_0001', 'Rendering on gaia', 'gaia', '08:27', 20, '20%'])
-        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
-        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
-        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
-        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
-        # queueTreestore.append(it, ["RnD", 'test_0001', 'Queued', 'gaia', '08:27', 0, ''])
-        # it = queueTreestore.append(None, ["Public (2)", '', '', '', '', 0, ''])
-        # queueTreestore.append(it, ["Mastering", 'film01', 'Queued', 'apollo2', '08:27', 0, ''])
-        # queueTreestore.append(it, ["Mastering", 'film02', 'Queued', 'apollo2', '08:27', 0, ''])
-        tree.set_model(treestore)
-        tree.expand_all()
+        column.set_expand(True)
+        treeview.append_column(column)
+        treeview.set_tooltip_column(8)
+        treeview.set_rules_hint(True)
+        treeview.set_model(treestore)
+        treeview.expand_all()
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
-        scrolled_window.add(tree)
+        scrolled_window.add(treeview)
         afterscriptsBox.pack_start(scrolled_window)
-        afterscriptsButtons = gtk.VBox(False, 3)
-        afterscriptsButtons.set_size_request(30,80)
+        vbox_move = gtk.VBox(False, 3)
+        vbox_move.set_size_request(30,80)
         gtk.stock_add([(gtk.STOCK_GO_UP, "", 0, 0, "")])
-        upButton = gtk.Button(stock=gtk.STOCK_GO_UP)
-        afterscriptsButtons.pack_start(upButton)
+        button = gtk.Button(stock=gtk.STOCK_GO_UP)
+        vbox_move.pack_start(button)
+        button.connect('clicked', self.on_move, -1, treeview)
         gtk.stock_add([(gtk.STOCK_GO_DOWN, "", 0, 0, "")])
-        downButton = gtk.Button(stock=gtk.STOCK_GO_DOWN)
-        afterscriptsButtons.pack_start(downButton)
-        afterscriptsBox.pack_start(afterscriptsButtons, False, False)
+        button = gtk.Button(stock=gtk.STOCK_GO_DOWN)
+        button.connect('clicked', self.on_move, +1, treeview)
+        vbox_move.pack_start(button)
+        afterscriptsBox.pack_start(vbox_move, False, False)
 
-        menu = self.popup = gtk.Menu()
-        newi = gtk.ImageMenuItem(gtk.STOCK_DELETE)
-        newi.connect("activate", self.on_render_delete)
-        newi.show()
-        menu.append(newi)
-        newi = gtk.ImageMenuItem(gtk.STOCK_MEDIA_PLAY)
-        newi.set_label('Start')
-        newi.connect("activate", self.on_render_start)
-        newi.show()
-        menu.append(newi)
-        menu.set_title('Popup')
-        tree.connect('button_release_event', self.on_render_button_press_event, tree)
+        # treeview.connect('event', hyperspeed.ui.event_debug, treeview)
+        treeview.connect('button_press_event', self.on_render_button_press_event, treeview)
 
-        self.launch_thread(self.io_populate_render_queue, kwargs={ 'first_run' : True })
+        # self.launch_thread(self.io_populate_afterscript_queue, kwargs={ 'first_run' : True })
         vbox.pack_start(afterscriptsBox, True, True, 5)
         return vbox
     def io_parse_queue_folder(self, queue_folder, private=False):
@@ -896,11 +923,11 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                 else:
                     parent_row_reference = self.row_references_render[OTHER_HOSTS_ALIAS]
             else:
-                render.treeview = self.afterscript_tree
+                render.treeview = self.afterscript_treeview
                 if render.settings['submit_host'] == HOSTNAME:
-                    parent_row_reference = self.row_references_afterscripts[THIS_HOST_ALIAS]
+                    parent_row_reference = self.row_references_afterscript[THIS_HOST_ALIAS]
                 else:
-                    parent_row_reference = self.row_references_afterscripts[OTHER_HOSTS_ALIAS]
+                    parent_row_reference = self.row_references_afterscript[OTHER_HOSTS_ALIAS]
             treestore = render.treeview.get_model()
             parent_row_path = parent_row_reference.get_path()
             parent_row_iter = treestore.get_iter(parent_row_path)
@@ -934,12 +961,14 @@ Change local batch queue folder to %s?''' % private_queue_folder)
     def on_render_settings_change(self, cell, path, value, setting_key, treestore):
         if hasattr(cell, 'get_active'): # Checkbox
             value = not cell.get_active()
-        # print '%s:%s' % (setting_key, value)
         file_id = treestore[path][0]
         render = self.renders[file_id]
         render.gui_freeze_render = False
         if value == 'None':
             value = None
+        elif setting_key == 'afterscript' and render.render_progress >= 1.0:
+            render.move_to_stage('afterscript')
+            return
         render.set_settings({
             setting_key : value
         })
@@ -1029,9 +1058,10 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                 self.render_processes.remove(pid)
             
         if active_renders < self.render_threads_limit:
-            if 'render_host' in  render.settings and not render.settings['render_host'] in [HOSTNAME, None]:
-                print '%s is already rendering on %s' % (render.name, render.settings['render_host'])
-                return
+            if 'render_host' in render.settings:
+                if not render.settings['render_host'] in [HOSTNAME, None]:
+                    print '%s is already rendering on %s' % (render.name, render.settings['render_host'])
+                    return
             render.set_settings({
                 'status': 'Rendering',
                 'render_host': HOSTNAME,
@@ -1048,6 +1078,31 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         else:
             return
             # print 'All %i render threads in use' % self.render_threads_limit
+    def afterscript_start(self, render):
+        # Check cpu wait and IO to determine wether to start new processes
+        cmd = ['uptime']
+        status = subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0].splitlines()[0]
+        wait = float(status.split()[-3].strip(','))
+        if wait * multiprocessing.cpu_count() > 1:
+            print 'System is busy'
+            return
+        if 'afterscript_host' in render.settings:
+            if not render.settings['afterscript_host'] in [HOSTNAME, None]:
+                print '%s is already rendering on %s' % (render.name, render.settings['render_host'])
+                return
+        render.set_settings({
+            'status': 'Afterscript running',
+            'afterscript_host': HOSTNAME,
+            })
+        self.render_threads.append(
+            self.launch_thread(
+                render.do_afterscript,
+                name='%s %s' % (afterscript, render.name),
+                kwargs={
+                    'afterscript_processes' : self.afterscript_processes
+                }
+            )
+        )
     def on_render_button_press_event(self, treeview, event, *ignore):
         treestore = treeview.get_model()
         if event.button == 3:
