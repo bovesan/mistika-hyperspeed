@@ -51,8 +51,10 @@ class RenderItem(hyperspeed.stack.Render):
     row_reference = None
     afterscript_progress = 0.0
     owner = 'Unknown'
-    def __init__(self, path):
+    gui_freeze_render = None
+    def __init__(self, path, global_settings):
         super(RenderItem, self).__init__(path)
+        self.global_settings = global_settings
         self.duration = hyperspeed.video.frames2tc(self.frames, self.fps)
         description = 'Resolution: %sx%s' % (self.resX, self.resY)
         description += '\nFps: %s' % self.fps
@@ -68,6 +70,7 @@ class RenderItem(hyperspeed.stack.Render):
             'render_host'          : None,
             'render_queued'        : False,
             'render_frames'        : 0,
+            'renders_failed'       : [],
             'afterscript'          : None,
             'status'               : 'Not started',
             'afterscript_progress' : 0.0,
@@ -75,6 +78,7 @@ class RenderItem(hyperspeed.stack.Render):
         self.settings_path = os.path.join(os.path.dirname(self.path), self.uid+'.cfg')
         self.settings_read()
         self.set_settings()
+        self.prev_treestore_values = None
     def do_render(self, render_processes):
         cmd = ['mistika', '-r', self.path]
         print ' '.join(cmd)
@@ -100,14 +104,12 @@ class RenderItem(hyperspeed.stack.Render):
                     # proc.send_signal(signal.SIGINT)
                     os.kill(mistika_bin_pids[0], signal.SIGINT)
                     break
-                if self.settings['render_paused']:
+                if not self.global_settings['render_process']:
                     print 'Render paused'
-                    for thread_pid in mistika_bin_pids:
-                        os.kill(thread_pid, signal.SIGSTOP)
-                    while self.settings['render_paused']:
+                    os.kill(mistika_bin_pids[0], signal.SIGSTOP)
+                    while not self.global_settings['render_process']:
                         time.sleep(1)
-                    for thread_pid in mistika_bin_pids:
-                        os.kill(thread_pid, signal.SIGCONT)
+                    os.kill(mistika_bin_pids[0], signal.SIGCONT)
                 line = proc.stdout.readline()
                 log.write(line)
                 if line.startswith('Done:'):
@@ -123,6 +125,22 @@ class RenderItem(hyperspeed.stack.Render):
                         'is_rendering' : False,
                     })
                 proc.poll()
+            if proc.returncode == 0:
+                self.set_settings({
+                    'render_queued' : False,
+                    })
+            elif proc.returncode == 3:
+                print 'Aborted by user'
+                self.set_settings({
+                    'render_queued' : False,
+                    })
+            else:
+                print proc.returncode
+                self.set_settings({
+                    'renders_failed' :self.settings['renders_failed'] + [
+                        self.settings['render_frames']
+                    ],
+                })
         # logfile_h.flush()
     def gui_remove(self, item):
         row_path = self.row_reference.get_path()
@@ -138,11 +156,18 @@ class RenderItem(hyperspeed.stack.Render):
         except (IOError, ValueError) as e:
             pass
     def gui_update(self):
+        treestore = self.treestore
         if self.row_reference == None:
             return
+        if self.gui_freeze_render:
+            return
+        new_values = self.treestore_values
+        if new_values == self.prev_treestore_values:
+            return
+        self.prev_treestore_values = new_values
         row_path = self.row_reference.get_path()
-        if list(self.treestore[row_path]) != self.treestore_values:
-            self.treestore[row_path] = self.treestore_values
+        row_iter = treestore.get_iter(row_path)
+        treestore[row_path] = self.treestore_values
     @property
     def render_progress(self):
         try:
@@ -217,7 +242,8 @@ class RenderManagerWindow(hyperspeed.ui.Window):
         super(RenderManagerWindow, self).__init__(
             title='Hyperspeed render manager',
             settings_default = {
-                'shared_queues_folder' : ''
+                'shared_queues_folder' : '',
+                'render_process' : True,
             }
         )
         self.renders = {}
@@ -373,6 +399,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
     def config_rw(self, write=False):
         pass
     def init_render_queue_window(self):
+        settings = self.settings
         self.render_queue = {}
         row_references = self.row_references_render = {}
         treeview       = self.render_treeview  = gtk.TreeView()
@@ -415,7 +442,8 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         vbox.pack_start(headerBox, False, False, 2)
         toolbar = gtk.HBox(False, 2)
         checkButton = self.process_queue_checkbox = gtk.CheckButton('Process queue')
-        checkButton.set_property("active", True)
+        checkButton.set_property("active", settings['render_process'])
+        checkButton.connect("toggled", self.on_settings_change, 'render_process')
         toolbar.pack_start(checkButton, False, False, 5)
         checkButton = self.process_others_checkbox = gtk.CheckButton('Process jobs for other hosts')
         checkButton.set_property("active", False)
@@ -480,10 +508,15 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         cell.set_property("has-entry", False)
         cell.set_property("text-column", 0)
         cell.set_property("model", self.afterscripts_model)
-        # cell.connect('changed', self.on_combo_changed)
-        # cell.connect('editing-started', self.on_editing_started)
+        # cell.connect('event', hyperspeed.ui.event_debug)
+        cell.connect('editing-started', self.on_render_freeze, True)
+        # cell.connect('editing-canceled', self.on_render_freeze, False, False, False)
+        # cell.connect('changed', self.on_render_freeze, False)
+        # cell.connect("popup", self.on_render_freeze, True)
+        # cell.connect("popdown", self.on_render_freeze, True)
         cell.connect("edited", self.on_render_settings_change, 'afterscript', treestore)
         column = gtk.TreeViewColumn("Afterscript", cell, text=6)
+        # column.connect('clicked', hyperspeed.ui.event_debug)
         column.set_resizable(True)
         column.set_expand(True)
         treeview.append_column(column)
@@ -525,11 +558,6 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         newi = gtk.ImageMenuItem(gtk.STOCK_UNDO)
         newi.set_label('Reset')
         newi.connect("activate", self.on_render_reset)
-        newi.show()
-        menu.append(newi)
-        newi = gtk.ImageMenuItem(gtk.STOCK_MEDIA_PAUSE)
-        newi.set_label('Pause/resume')
-        newi.connect("activate", self.on_render_pause)
         newi.show()
         menu.append(newi)
         newi = gtk.ImageMenuItem(gtk.STOCK_CANCEL)
@@ -687,8 +715,9 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         cell.set_property("has-entry", False)
         cell.set_property("text-column", 0)
         cell.set_property("model", afterscripts_model)
-        cell.connect('changed', self.on_combo_changed)
-        cell.connect('editing-started', self.on_editing_started)
+        # cell.connect('changed', self.on_combo_changed)
+        # cell.connect('editing-started', self.on_editing_started)
+        cell.connect("popup-shown", self.on_render_editing)
         cell.connect("edited", self.on_render_afterscript_set)
         column = gtk.TreeViewColumn("Afterscript", cell, text=6)
         column.set_resizable(True)
@@ -753,7 +782,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                     file_id, file_ext = os.path.splitext(file_path)
                     if file_ext != '.rnd':
                         continue
-                    render = RenderItem(file_path)
+                    render = RenderItem(file_path, self.settings)
                     if private:
                         id_path = os.path.join(os.path.dirname(render.path), render.uid+'.rnd')
                         if not os.path.basename(render.path) == id_path:
@@ -829,12 +858,27 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         t.setDaemon(True)
         t.start()
         return t
+    def on_render_freeze(self, cell, widget, path, value):
+        treestore = self.render_treestore
+        # print 'cell: %s' % cell
+        # print 'path: %s' % path
+        # print 'value: %s' % value
+        file_id = treestore[path][0]
+        render = self.renders[file_id]
+        render.gui_freeze = True
+        widget.connect('notify::popup-shown', self.render_unfreeze, render)
+    def render_unfreeze(self, widget, status, render):
+        if widget.get_property('popup-shown'):
+            render.gui_freeze_render = False
+        else:
+            render.gui_freeze_render = False
     def on_render_settings_change(self, cell, path, value, setting_key, treestore):
         if hasattr(cell, 'get_active'): # Checkbox
             value = not cell.get_active()
         print '%s:%s' % (setting_key, value)
         file_id = treestore[path][0]
         render = self.renders[file_id]
+        render.gui_freeze_render = False
         if value == 'None':
             value = None
         render.set_settings({
@@ -842,13 +886,15 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         })
         self.launch_thread(self.io_populate_render_queue)
     def on_editing_started(self, cell, editable, path):
+        print 'on_editing_started()'
         self.comboEditable = editable
     def on_combo_changed(self, cell, path, newiter):
-      e = gtk.gdk.Event(gtk.gdk.FOCUS_CHANGE)
-      e.window = self.window
-      e.send_event = True
-      e.in_ = False
-      self.comboEditable.emit('focus-out-event', e)
+        print 'on_combo_changed'
+        e = gtk.gdk.Event(gtk.gdk.FOCUS_CHANGE)
+        e.window = self.window
+        e.send_event = True
+        e.in_ = False
+        self.comboEditable.emit('focus-out-event', e)
     def on_render_info(self, widget, *ignore):
         treestore = self.render_treestore
         treepath = self.render_queue_selected_path
@@ -913,8 +959,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         for pid in self.render_processes:
             try:
                 os.kill(pid, 0)
-                if not process_suspended_status(pid):
-                    active_renders += 1
+                active_renders += 1
             except OSError:
                 self.render_processes.remove(pid)
             

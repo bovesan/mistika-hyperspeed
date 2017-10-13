@@ -190,15 +190,20 @@ class Window(gtk.Window):
         except IOError:
             # No settings found
             pass
-    def on_settings_change(self, widget, setting_key):
-        if type(widget) == gtk.Entry:
-            value = widget.get_text()
-        elif type(widget) == gtk.CheckButton:
-            value = widget.get_active()
-        self.settings[setting_key] = value
+    def set_settings(self, settings={}):
+        self.settings.update(settings)
         t = threading.Thread(target=self.settings_store, name='Store settings')
         t.setDaemon(True)
         t.start()
+
+    def on_settings_change(self, widget, setting_key):
+        if hasattr(widget, 'get_active'): # Checkbox
+            value = widget.get_active()
+        elif hasattr(widget, 'get_text'): # Textbox
+            value = widget.get_text()
+        self.set_settings({
+            setting_key : value
+        })
     def settings_store(self):
         try:
             open(self.settings_path, 'w').write(json.dumps(self.settings, sort_keys=True, indent=4))
@@ -255,3 +260,6 @@ def dialog_error(parent, message):
     dialog.set_position(gtk.WIN_POS_CENTER)
     response = dialog.run()
     dialog.destroy()
+
+def event_debug(**kwargs):
+    print repr(kwargs)
