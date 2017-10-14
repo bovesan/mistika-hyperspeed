@@ -32,6 +32,7 @@ SETTINGS_DEFAULT = {
     'autostart' : False, 
     'remove-input' : False,
     'overwrite' : False,
+    'autoquit' : False,
 }
 SETTINGS_FILENAME = 'settings.cfg'
 RENAME_MAGIC_WORDS = ['auto', 'rename']
@@ -66,6 +67,7 @@ class Afterscript(object):
             self.load_render(render_path)
     def init_settings(self):
         self.settings = SETTINGS_DEFAULT
+        self.tempsettings = {}
         script_folder = os.path.dirname(self.script_path)
         # self.script_settings_path = os.path.join(script_folder, SETTINGS_FILENAME)
         self.script_settings_path = os.path.join(hyperspeed.config_folder, self.title+'.cfg')
@@ -74,6 +76,13 @@ class Afterscript(object):
         except IOError:
             # No settings found
             pass
+        for setting in self.settings:
+            if '--%s' % setting in sys.argv[3:]:
+                self.settings[setting] = True
+                self.tempsettings[setting] = False
+            if '--no-%s' % setting in sys.argv[3:]:
+                self.settings[setting] = False
+                self.tempsettings[setting] = False
     def settings_store(self):
         try:
             open(self.script_settings_path, 'w').write(json.dumps(self.settings, sort_keys=True, indent=4))
@@ -85,8 +94,7 @@ class Afterscript(object):
         if render.exists:
             self.init_output_path()
         else:
-            print 'Could not load render: %s' % render_path
-            
+            print 'Could not load render: %s' % render_path        
     def init_output_path(self, callback=None):
         variables = {
             'project' : self.render.project,
@@ -127,6 +135,7 @@ class Afterscript(object):
 class AfterscriptFfmpeg(Afterscript):
     abort = False
     cmd_string = ''
+    returncode = 1
     def __init__(self, script_path, cmd, default_output, title='Afterscript', executable='ffmpeg'):
         super(AfterscriptFfmpeg, self).__init__(script_path, cmd, default_output, title)
         self.processes = []
@@ -153,14 +162,26 @@ class AfterscriptFfmpeg(Afterscript):
         checkbox = self.checkbox_overwrite = gtk.CheckButton('Start automatically')
         checkbox.set_active(self.settings['autostart'])
         checkbox.connect('toggled', self.on_settings_change, 'autostart')
+        if 'autostart' in self.tempsettings:
+            checkbox.set_sensitive(False)
         vbox2.pack_start(checkbox, False, False, 5)
         checkbox = self.checkbox_overwrite = gtk.CheckButton('Overwrite existing output without asking')
         checkbox.set_active(self.settings['overwrite'])
         checkbox.connect('toggled', self.on_settings_change, 'overwrite')
+        if 'overwrite' in self.tempsettings:
+            checkbox.set_sensitive(False)
         vbox2.pack_start(checkbox, False, False, 5)
         checkbox = self.checkbox_remove_input = gtk.CheckButton('Remove input after encoding')
         checkbox.set_active(self.settings['remove-input'])
         checkbox.connect('toggled', self.on_settings_change, 'remove-input')
+        if 'remove-input' in self.tempsettings:
+            checkbox.set_sensitive(False)
+        vbox2.pack_start(checkbox, False, False, 5)
+        checkbox = self.checkbox_autoquit = gtk.CheckButton('Quit automatically')
+        checkbox.set_active(self.settings['autoquit'])
+        checkbox.connect('toggled', self.on_settings_change, 'autoquit')
+        if 'autoquit' in self.tempsettings:
+            checkbox.set_sensitive(False)
         vbox2.pack_start(checkbox, False, False, 5)
         hbox = gtk.HBox()
         label =  gtk.Label('Default output:')
@@ -183,7 +204,7 @@ class AfterscriptFfmpeg(Afterscript):
         vbox2.pack_start(hbox, False, False, 5)
         vbox2.pack_start(gtk.HSeparator(), False, False, 10)
         expander.add(vbox2)
-        vbox.pack_start(expander)
+        vbox.pack_start(expander, False, False)
         hbox = gtk.HBox()
         label =  gtk.Label('Render:')
         hbox.pack_start(label, False, False, 5)
@@ -289,7 +310,7 @@ class AfterscriptFfmpeg(Afterscript):
         # for thread in threading.enumerate():
         #     print 'Ending thread: %s' % thread.name
         gtk.main_quit()
-        sys.exit(0)
+        sys.exit(self.returncode)
     def on_render_pick(self, widget):
         path = self.render_path_entry.get_text()
         if path == RENDER_DEFAULT_PATH:
@@ -424,7 +445,12 @@ class AfterscriptFfmpeg(Afterscript):
         else:
             cmd_args = [cmd_args[0]] + ['-n'] + cmd_args[1:]
         self.write(' '.join(cmd_args)+'\n')
-        proc = subprocess.Popen(cmd_args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        proc = subprocess.Popen(
+            cmd_args,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT
+        )
         self.processes.append(proc)
         output = ''
         while True:
@@ -437,6 +463,7 @@ class AfterscriptFfmpeg(Afterscript):
             while not char in ['\r', '\n', '']:
                 char = proc.stdout.read(1)
                 output += char
+            proc.stdout.flush()
             if char == '':
                 break
             output = output.rstrip()
@@ -473,12 +500,15 @@ class AfterscriptFfmpeg(Afterscript):
             print 'Could not remove incomplete marker: %s' % self.output_marker
             print e
         print 'Process ended'
+        self.returncode = proc.returncode
         if proc.returncode > 0:
             gobject.idle_add(self.gui_info_dialog, output_prev)
         else:
             gobject.idle_add(self.reveal_output_button.set_property, 'visible', True)
             if self.checkbox_remove_input.get_active():
                 render.remove_output()
+        if self.checkbox_autoquit.get_active():
+            sys.exit('autoquit')
     def log_widget(self):
         textview = self.console = gtk.TextView()
         fontdesc = pango.FontDescription("monospace")
@@ -494,6 +524,7 @@ class AfterscriptFfmpeg(Afterscript):
         return expander
     def write(self, string):
         print string,
+        sys.stdout.flush()
         gobject.idle_add(self.gui_write, string)
     def gui_write(self, string):
         self.console_buffer.insert(self.console_buffer.get_end_iter(), string)
