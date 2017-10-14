@@ -78,6 +78,7 @@ class Dependency(object):
             self.frame_ranges = [DependencyFrameRange(self.path, start, end, parent)]
             self._parsed_frame_ranges = None
             self._complete = None
+            self.format = None
             if f_type == 'dat':
                 for font in text.Title(self.path).fonts:
                     self.dependencies.append(Dependency(font, 'font', parent=parent))
@@ -371,6 +372,7 @@ class Stack(object):
         self._dependencies = []
         self._dependency_paths = []
         try:
+            dependency = None
             level_names = []
             fx_type = None
             char_buffer = ''
@@ -411,7 +413,6 @@ class Stack(object):
                             else:
                                 hidden_level = False
                                 # print 'Hidden ends, line', str(line_i)
-                        f_path = False
                         object_path = '/'.join(level_names)
                         if object_path.endswith('F/T'):
                             fx_type = char_buffer
@@ -422,6 +423,7 @@ class Stack(object):
                         elif object_path.endswith('C/F'): # Clip source link
                             f_path = char_buffer
                             f_type = 'lnk'
+                            dependency = Dependency(f_path, f_type, parent=self)
                         elif object_path.endswith('C/d/I/H/p') or object_path.endswith('C/d/I/L/p') or object_path.endswith('C/d/S/p'): # Clip media folder
                             f_folder = char_buffer
                         elif object_path.endswith('C/d/I/s'): # Clip start frame
@@ -431,15 +433,27 @@ class Stack(object):
                         elif object_path.endswith('C/d/I/H/n'):
                             f_path = f_folder + char_buffer
                             f_type = 'highres'
+                        elif object_path.endswith('C/d/I/H/f'):
+                            f_format = char_buffer
                         elif object_path.endswith('C/d/I/L/n'):
                             f_path = f_folder + char_buffer
                             f_type = 'lowres'
+                        elif object_path.endswith('C/d/I/L/f'):
+                            f_format = char_buffer
+                        elif object_path.endswith('C/d/I/H') or object_path.endswith('C/d/I/L'):
+                            if '%' in f_path:
+                                dependency = Dependency(f_path, f_type, CdIs, CdIe, parent=self)
+                            else:
+                                dependency = Dependency(f_path, f_type, parent=self)
+                            dependency.format = f_format
                         elif object_path.endswith('C/d/S/n'):
                             f_path = f_folder + char_buffer
                             f_type = 'audio'
+                            dependency = Dependency(f_path, f_type, parent=self)
                         elif object_path.endswith('F/D'): # .dat file relative path (from projects_path)
                             f_path = char_buffer
                             f_type = 'dat'
+                            dependency = Dependency(f_path, f_type, parent=self)
                         elif fx_type == '146':
                             f_type = 'glsl'
                             if object_path.endswith('F/p/s/c/c'):
@@ -449,6 +463,7 @@ class Stack(object):
                                     f_path = char_buffer
                                 else:
                                     f_path = f_folder + '/' + char_buffer
+                                dependency = Dependency(f_path, f_type, parent=self)
                         elif fx_type == '143':
                             f_type = 'lut'
                             if object_path.endswith('F/p/s/c/c'):
@@ -458,11 +473,8 @@ class Stack(object):
                                     f_path = char_buffer
                                 else:
                                     f_path = f_folder + '/' + char_buffer
-                        if f_path:
-                            if '%' in f_path:
-                                dependency = Dependency(f_path, f_type, CdIs, CdIe, parent=self)
-                            else:
                                 dependency = Dependency(f_path, f_type, parent=self)
+                        if dependency:
                             if relink and not dependency.complete:
                                 print 'Missing dependency: ', dependency.name
                                 new_line, dependency = self.relink_line(line, dependency)
@@ -478,6 +490,7 @@ class Stack(object):
                                     if not child_dependency.name in self._dependency_paths:
                                         self._dependencies.append(child_dependency)
                                         yield child_dependency
+                                dependency = None
 
                         char_buffer = ''
                         del level_names[-1]

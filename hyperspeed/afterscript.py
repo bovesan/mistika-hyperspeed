@@ -57,8 +57,9 @@ class Afterscript(object):
         if len(sys.argv) >= 3 and sys.argv[1] == 'ok':
             hyperspeed.sockets.launch(sys.argv)
             render_name = sys.argv[2]
-            if render_name.startswith('/'):
-                render_path = render_name
+            if '/' in render_name:
+                render_path = os.path.realpath(render_name)
+                rener_name = os.path.basename(render_name)
             else:
                 render_path = mistika.get_rnd_path(render_name)
             self.render_path = render_path
