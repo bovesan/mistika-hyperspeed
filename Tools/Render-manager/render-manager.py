@@ -38,6 +38,8 @@ HOSTNAME = socket.gethostname()
 UPDATE_RATE = 1.0
 COLOR_DEFAULT = '#111111'
 TEMPORARY_RENDERS_FOLDER = '/Volumes/SAN3/Limbo'
+MAX_RENDER_ATTEMPTS = 3
+MAX_AFTERSCRIPT_ATTEMPTS = 1
 
 def process_suspended_status(pid):
     try:
@@ -89,7 +91,6 @@ class RenderItem(hyperspeed.stack.Render):
         cmd = ['mistika', '-r', self.path]
         print ' '.join(cmd)
         log_path = self.path + '.log'
-        logfile_h = open(log_path, 'w')
         # self.process = subprocess.Popen(cmd, stdout=logfile_h, stderr=subprocess.STDOUT)
         # total time: 4.298 sec, 0.029 sec per frame, 34.665 frames per sec
         self.set_settings({
@@ -171,10 +172,13 @@ class RenderItem(hyperspeed.stack.Render):
         self.set_settings({
             'stage' : stage,
         })
-    def gui_remove(self, item):
-        row_path = self.row_reference.get_path()
-        row_iter = treestore.get_iter(row_path)
-        treestore.remove(iter)
+    def gui_remove(self):
+        try:
+            row_path = self.row_reference.get_path()
+            row_iter = treestore.get_iter(row_path)
+            treestore.remove(iter)
+        except AttributeError:
+            pass
     def set_settings(self, settings={}):
         self.settings.update(settings)
         json_dump = json.dumps(self.settings, indent=4, sort_keys=True)
@@ -209,6 +213,10 @@ class RenderItem(hyperspeed.stack.Render):
             return float(self.settings['render_frames']) / float(self.frames)
         except (KeyError, ZeroDivisionError) as e:
             return 0
+    def attempts_string(self, current, total):
+        if current == 0:
+            return ''
+        return "%i/%i" % (current,total)
     @property
     def treestore_values(self):
         if self.settings['stage'] == 'render':
@@ -234,6 +242,7 @@ class RenderItem(hyperspeed.stack.Render):
                 self.settings['submit_host'] == HOSTNAME,
                 self.settings['render_queued'],
                 self.render_progress < 1, # 20 Settings visible
+                self.attempts_string(len(self.settings['renders_failed']), MAX_RENDER_ATTEMPTS), # 21 Failed attempts
             ]
         else:
             return [
@@ -258,6 +267,7 @@ class RenderItem(hyperspeed.stack.Render):
                 self.settings['submit_host'] == HOSTNAME,
                 self.settings['afterscript_queued'],
                 self.afterscript_progress < 1, # 20 Settings visible
+                self.attempts_string(len(self.settings['afterscripts_failed']), MAX_AFTERSCRIPT_ATTEMPTS), # 21 Failed attempts
             ]
 
 class RenderManagerWindow(hyperspeed.ui.Window):
@@ -418,11 +428,20 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             child_iter = model.iter_nth_child(row_iter, n)
             child_id = model.get_value(child_iter, 0)
             render = self.renders[child_id]
-            if render.settings['afterscript']:
-                if render.settings['afterscript_queued']:
-                    if render.settings['afterscript_frames'] < render.frames:
-                        self.afterscript_start(render)
-                        return True
+            if not render.settings['afterscript']:
+                print 'No afterscript selected:', render.prettyname
+                return
+            if not render.settings['afterscript_queued']:
+                print 'Not afterscript queued:', render.prettyname
+                return
+            if not render.settings['afterscript_frames'] < render.frames:
+                print 'Afterscript is already complete:', render.prettyname
+                return
+            if render.settings['is_afterscripting']:
+                print 'Afterscript is already running:', render.prettyname
+                return
+            self.afterscript_start(render)
+            return True
     def gui_periodical_updates(self):
         self.gui_process_renders()
         self.gui_process_afterscripts()
@@ -479,6 +498,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             bool, # 18 This host
             bool, # 19 Queued
             bool, # 20 Settings visible
+            str,  # 21 Failed attempts
         )
         treestore.set_sort_column_id(11, gtk.SORT_ASCENDING)
         tree_filter    = self.render_queue_filter    = treestore.filter_new();
@@ -543,6 +563,10 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         column.set_expand(False)
         treeview.append_column(column)
         column = gtk.TreeViewColumn('Render node', gtk.CellRendererText(), text=13)
+        column.set_resizable(True)
+        column.set_expand(False)
+        treeview.append_column(column)
+        column = gtk.TreeViewColumn('Attempts', gtk.CellRendererText(), text=21)
         column.set_resizable(True)
         column.set_expand(False)
         treeview.append_column(column)
@@ -637,6 +661,52 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             newi = gtk.ImageMenuItem(gtk.STOCK_CANCEL)
             newi.set_label('Abort')
             newi.connect("activate", self.on_render_abort)
+            newi.show()
+            menu.append(newi)
+        newi = gtk.ImageMenuItem(gtk.STOCK_DELETE)
+        newi.set_label('Remove')
+        newi.connect("activate", self.on_render_delete)
+        newi.show()
+        menu.append(newi)
+        menu.set_title('Popup')
+        return menu
+    def afterscript_item_menu(self):
+        selection = self.afterscript_treeview.get_selection()
+        (treestore, row_paths) = selection.get_selected_rows()
+        row_paths = sorted(row_paths)
+        menu = gtk.Menu()
+        if len(row_paths) == 1:
+            newi = gtk.ImageMenuItem(gtk.STOCK_INFO)
+            newi.connect("activate", self.on_render_info)
+            newi.show()
+            menu.append(newi)
+        enqueue = False
+        reset = False
+        abort = False
+        for row_path in row_paths:
+            render = self.renders[treestore[row_path][0]]
+            if render.settings['afterscript_frames'] < render.frames:
+                enqueue = True
+            else:
+                reset = True
+            if render.settings['is_afterscripting']:
+                abort = True
+        if enqueue:
+            newi = gtk.ImageMenuItem(gtk.STOCK_MEDIA_PLAY)
+            newi.set_label('Enqueue')
+            newi.connect("activate", self.on_afterscript_enqueue)
+            newi.show()
+            menu.append(newi)
+        if reset:
+            newi = gtk.ImageMenuItem(gtk.STOCK_UNDO)
+            newi.set_label('Reset')
+            newi.connect("activate", self.on_afterscript_reset)
+            newi.show()
+            menu.append(newi)
+        if abort:
+            newi = gtk.ImageMenuItem(gtk.STOCK_CANCEL)
+            newi.set_label('Abort')
+            newi.connect("activate", self.on_afterscript_abort)
             newi.show()
             menu.append(newi)
         newi = gtk.ImageMenuItem(gtk.STOCK_DELETE)
@@ -763,6 +833,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             bool, # 18 This host
             bool, # 19 Queued
             bool, # 20 Settings visible
+            str,  # 21 Failed attempts
         )
         treestore.set_sort_column_id(11, gtk.SORT_ASCENDING)
         tree_filter    = self.afterscript_queue_filter    = treestore.filter_new();
@@ -821,6 +892,10 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         column.set_resizable(True)
         column.set_expand(False)
         treeview.append_column(column)
+        column = gtk.TreeViewColumn('Attempts', gtk.CellRendererText(), text=21)
+        column.set_resizable(True)
+        column.set_expand(False)
+        treeview.append_column(column)
         cell = gtk.CellRendererText()
         column = gtk.TreeViewColumn('Status')
         column.pack_start(cell, False)
@@ -866,7 +941,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         afterscriptsBox.pack_start(vbox_move, False, False)
 
         # treeview.connect('event', hyperspeed.ui.event_debug, treeview)
-        treeview.connect('button_press_event', self.on_render_button_press_event, treeview)
+        treeview.connect('button_press_event', self.on_afterscript_button_press_event, treeview)
 
         # self.launch_thread(self.io_populate_afterscript_queue, kwargs={ 'first_run' : True })
         vbox.pack_start(afterscriptsBox, True, True, 5)
@@ -966,12 +1041,13 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         render.gui_freeze_render = False
         if value == 'None':
             value = None
-        elif setting_key == 'afterscript' and render.render_progress >= 1.0:
-            render.move_to_stage('afterscript')
-            return
         render.set_settings({
             setting_key : value
         })
+        if setting_key == 'afterscript':
+            if render.render_progress >= 1.0 and render.settings['stage'] != 'afterscript':
+                render.move_to_stage('afterscript')
+                return
         self.launch_thread(self.io_populate_render_queue)
     def on_editing_started(self, cell, editable, path):
         print 'on_editing_started()'
@@ -1035,6 +1111,38 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             render.set_settings({
                 'render_queued': False,
                 })
+    def on_afterscript_reset(self, widget, *ignore):
+        selection = self.afterscript_treeview.get_selection()
+        (treestore, row_paths) = selection.get_selected_rows()
+        row_paths = sorted(row_paths)
+        for row_path in row_paths:
+            afterscript = self.renders[treestore[row_path][0]]
+            afterscript.set_settings({
+                'afterscript_queued': False,
+                'afterscript_frames': 0,
+                'afterscript_host'  : None,
+                })
+            afterscript.is_afterscripting = False
+    def on_afterscript_enqueue(self, widget, *ignore):
+        selection = self.afterscript_treeview.get_selection()
+        (treestore, row_paths) = selection.get_selected_rows()
+        row_paths = sorted(row_paths)
+        for row_path in row_paths:
+            afterscript = self.renders[treestore[row_path][0]]
+            print repr(afterscript)
+            afterscript.set_settings({
+                'afterscript_queued': True,
+                })
+    def on_afterscript_abort(self, widget, *ignore):
+        selection = self.afterscript_treeview.get_selection()
+        (treestore, row_paths) = selection.get_selected_rows()
+        row_paths = sorted(row_paths)
+        for row_path in row_paths:
+            afterscript = self.renders[treestore[row_path][0]]
+            afterscript.set_settings({
+                'afterscript_queued': False,
+                'is_afterscripting': False,
+                })
     def on_render_resume(self, widget, *ignore):
         selection = self.render_treeview.get_selection()
         (treestore, row_paths) = selection.get_selected_rows()
@@ -1078,14 +1186,81 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         else:
             return
             # print 'All %i render threads in use' % self.render_threads_limit
+    def thread_afterscript(self, render):
+        cmd = [os.path.join(mistika.scripts_folder, render.settings['afterscript']), 'ok', render.path]
+        print ' '.join(cmd)
+        log_path = render.path + '.log'
+        # self.process = subprocess.Popen(cmd, stdout=logfile_h, stderr=subprocess.STDOUT)
+        # total time: 4.298 sec, 0.029 sec per frame, 34.665 frames per sec
+        render.set_settings({
+            'afterscript_host' : HOSTNAME,
+            'afterscript_start_time' : time.time(),
+            'is_afterscripting' : True,
+            'afterscript_frames' : 0,
+        })
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.PIPE)
+        self.afterscript_processes.append(proc)
+        with open(log_path, 'w') as log:
+            output = ''
+            while proc.returncode == None:
+                if not render.settings['afterscript_queued']:
+                    print 'Afterscript aborted'
+                    # proc.send_signal(signal.SIGINT)
+                    os.kill(proc.pid, signal.SIGINT)
+                    break
+                if not self.settings['afterscript_process']:
+                    print 'Render paused'
+                    os.kill(proc.pid, signal.SIGSTOP)
+                    while not self.settings['afterscript_process']:
+                        time.sleep(1)
+                    os.kill(proc.pid, signal.SIGCONT)
+                output_prev = output
+                output = ''
+                char = None
+                while not char in ['\r', '\n', '']:
+                    char = proc.stdout.read(1)
+                    output += char
+                if char == '':
+                    break
+                output = output.rstrip()
+                log.write(output)
+                if output.startswith('frame='):
+                    status = {}
+                    keyvalue_pairs = re.findall('\w+=\s*\S+', output)
+                    for keyvalue_pair in keyvalue_pairs:
+                        k, v = keyvalue_pair.split('=')
+                        status[k] = v
+                    print '\r'+output,
+                    render.set_settings({
+                        'afterscript_frames' : status['frame']
+                    })
+                proc.poll()
+            proc.wait()
+            if proc.returncode == 0:
+                print 'Afterscript complete'
+                render.set_settings({
+                    'is_afterscripting' : False,
+                    'afterscript_queued' : False,
+                    'status' : 'Afterscript complete',
+                    })
+            else:
+                print 'Return code: %i' % proc.returncode
+                render.set_settings({
+                    'afterscripts_failed' :render.settings['afterscripts_failed'] + [
+                        render.settings['afterscript_frames']
+                    ],
+                    'is_afterscripting' : False,
+                    'afterscript_queued' : False,
+                    'status' : 'Afterscript failed',
+                })
     def afterscript_start(self, render):
         # Check cpu wait and IO to determine wether to start new processes
         cmd = ['uptime']
         status = subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0].splitlines()[0]
         wait = float(status.split()[-3].strip(','))
-        if wait * multiprocessing.cpu_count() > 1:
-            print 'System is busy'
-            return
+        # if wait * multiprocessing.cpu_count() > 1:
+        #     print 'System is busy'
+        #     return
         if 'afterscript_host' in render.settings:
             if not render.settings['afterscript_host'] in [HOSTNAME, None]:
                 print '%s is already rendering on %s' % (render.name, render.settings['render_host'])
@@ -1096,10 +1271,10 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             })
         self.render_threads.append(
             self.launch_thread(
-                render.do_afterscript,
-                name='%s %s' % (afterscript, render.name),
+                self.thread_afterscript,
+                name='%s %s' % (render.settings['afterscript'], render.name),
                 kwargs={
-                    'afterscript_processes' : self.afterscript_processes
+                    'render' : render
                 }
             )
         )
@@ -1118,6 +1293,22 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                 # treeview.set_cursor( path, col, 0)
                 self.render_item_menu().popup( None, None, None, event.button, time)
                 self.render_queue_selected_path = path
+            return True
+    def on_afterscript_button_press_event(self, treeview, event, *ignore):
+        treestore = treeview.get_model()
+        if event.button == 3:
+            x = int(event.x)
+            y = int(event.y)
+            time = event.time
+            pthinfo = treeview.get_path_at_pos(x, y)
+            if pthinfo is not None:
+                path, col, cellx, celly = pthinfo
+                if treestore[path].parent == None:
+                    return False
+                treeview.grab_focus()
+                # treeview.set_cursor( path, col, 0)
+                self.afterscript_item_menu().popup( None, None, None, event.button, time)
+                self.afterscript_queue_selected_path = path
             return True
     
 warnings.filterwarnings("ignore")

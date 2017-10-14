@@ -57,7 +57,11 @@ class Afterscript(object):
         if len(sys.argv) >= 3 and sys.argv[1] == 'ok':
             hyperspeed.sockets.launch(sys.argv)
             render_name = sys.argv[2]
-            render_path = self.render_path = mistika.get_rnd_path(render_name)
+            if render_name.startswith('/'):
+                render_path = render_name
+            else:
+                render_path = mistika.get_rnd_path(render_name)
+            self.render_path = render_path
             self.load_render(render_path)
     def init_settings(self):
         self.settings = SETTINGS_DEFAULT
@@ -84,7 +88,7 @@ class Afterscript(object):
             
     def init_output_path(self, callback=None):
         variables = {
-            'project' : mistika.project,
+            'project' : self.render.project,
             'rendername' : self.render_name,
             'codec' : self.render.primary_output.get_codec
         }
@@ -284,6 +288,7 @@ class AfterscriptFfmpeg(Afterscript):
         # for thread in threading.enumerate():
         #     print 'Ending thread: %s' % thread.name
         gtk.main_quit()
+        sys.exit(0)
     def on_render_pick(self, widget):
         path = self.render_path_entry.get_text()
         if path == RENDER_DEFAULT_PATH:
@@ -373,7 +378,7 @@ class AfterscriptFfmpeg(Afterscript):
             if self.settings['overwrite']:
                 overwrite = True
             else:
-                overwrite = self.gui_yesno_dialog("File '%s' already exists. Overwrite?" % self.output_path)
+                overwrite = hyperspeed.ui.dialog_yesno(self.window, "File '%s' already exists. Overwrite?" % self.output_path)
             if overwrite:
                 force_overwrite = True
                 try:
@@ -441,7 +446,7 @@ class AfterscriptFfmpeg(Afterscript):
                 confirm = [False]
                 confirm_lock = threading.Lock()
                 confirm_lock.aqcuire()
-                confirm = gobject.idle_add(self.gui_yesno_dialog, output, confirm, confirm_lock)
+                confirm = gobject.idle_add(hyperspeed.ui.dialog_yesno, self.window, output, confirm, confirm_lock)
                 confirm_lock.aqcuire()
                 if confirm[0]:
                     proc.write('y\r')
