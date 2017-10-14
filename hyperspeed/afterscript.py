@@ -508,7 +508,7 @@ class AfterscriptFfmpeg(Afterscript):
             if self.checkbox_remove_input.get_active():
                 render.remove_output()
         if self.checkbox_autoquit.get_active():
-            sys.exit('autoquit')
+            gobject.idle_add(self.on_quit, 'autoquit')
     def log_widget(self):
         textview = self.console = gtk.TextView()
         fontdesc = pango.FontDescription("monospace")

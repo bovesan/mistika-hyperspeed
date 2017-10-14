@@ -220,7 +220,6 @@ class RenderItem(hyperspeed.stack.Render):
             return float(self.settings['afterscript_frames']) / float(self.frames)
         except (KeyError, ZeroDivisionError) as e:
             return 0.0
-            return (time.time() % 3) / 3.0
     def attempts_string(self, current, total):
         if current == 0:
             return ''
@@ -444,10 +443,10 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                 # print 'Not afterscript queued:', render.prettyname
                 continue
             if render.settings['afterscript_frames'] >= render.frames:
-                print 'Afterscript is already complete:', render.prettyname
+                # print 'Afterscript is already complete:', render.prettyname
                 continue
             if render.settings['afterscript_host']:
-                print 'Afterscript is already running:', render.prettyname
+                # print 'Afterscript is already running:', render.prettyname
                 continue
             self.afterscript_start(render)
             return True
@@ -922,7 +921,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         column.set_attributes(cell, text=5, foreground=14, visible=15)
         cell = gtk.CellRendererProgress()
         column.pack_start(cell, True)
-        column.set_attributes(cell, value=3, text=4, visible=10, pulse=23)
+        column.set_attributes(cell, value=3, text=4, visible=10)
         column.set_resizable(True)
         column.set_expand(True)
         treeview.append_column(column)
@@ -1224,7 +1223,16 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             return
             # print 'All %i render threads in use' % self.render_threads_limit
     def thread_afterscript(self, render):
-        cmd = [os.path.join(mistika.scripts_folder, render.settings['afterscript']), 'ok', render.path]
+        cmd = [
+            os.path.join(mistika.scripts_folder, render.settings['afterscript']),
+            'ok',
+            render.path,
+            '--no-socket',
+            '--autostart',
+            '--no-remove-input',
+            '--overwrite',
+            '--autoquit',
+        ]
         print ' '.join(cmd)
         log_path = render.path + '.log'
         # self.process = subprocess.Popen(cmd, stdout=logfile_h, stderr=subprocess.STDOUT)
@@ -1248,6 +1256,8 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         with open(log_path, 'w') as log:
             output = ''
             while proc.returncode == None:
+                # print 'afterscript exec proc loop. pid: %i' % proc.pid
+                # subprocess.Popen(['pstree', str(proc.pid)]).communicate()
                 if not render.settings['afterscript_queued']:
                     print 'Afterscript aborted'
                     # proc.send_signal(signal.SIGINT)
@@ -1259,26 +1269,32 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                     while not self.settings['afterscript_process']:
                         time.sleep(1)
                     os.kill(proc.pid, signal.SIGCONT)
+                # print 'line 1271'
                 output_prev = output
+                # output = proc.stdout.readline()
                 output = ''
                 char = None
                 while not char in ['\r', '\n', '']:
                     char = proc.stdout.read(1)
                     output += char
+                proc.stdout.flush()
                 if char == '':
                     break
-                output = output.rstrip()
+                # print 'line 1280'
                 log.write(output)
+                output = output.rstrip()
+                # print output
                 if output.startswith('frame='):
                     status = {}
                     keyvalue_pairs = re.findall('\w+=\s*\S+', output)
                     for keyvalue_pair in keyvalue_pairs:
                         k, v = keyvalue_pair.split('=')
                         status[k] = v
-                    print '\r'+output,
+                    # print '\r'+output,
                     render.set_settings({
                         'afterscript_frames' : status['frame']
                     })
+                # print 'line 1294'
                 proc.poll()
             proc.wait()
             if proc.returncode == 0:
