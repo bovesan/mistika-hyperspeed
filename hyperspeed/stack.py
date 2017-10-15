@@ -200,6 +200,7 @@ class Stack(object):
     resY = None
     fps = None
     frames = None
+    format = None
     def __init__(self, path):
         self.path = path
         try:
@@ -235,6 +236,8 @@ class Stack(object):
                             self.fps = char_buffer
                         elif object_path.endswith('p/W'):
                             self.frames = int(char_buffer)
+                        elif object_path.endswith('D/H/f'):
+                            self.format = char_buffer
                         elif object_path.endswith('Group/p'): # End of header
                             return
                         char_buffer = ''

@@ -174,7 +174,7 @@ class RenderItem(hyperspeed.stack.Render):
         new_settings = {
             'stage' : stage,
         }
-        if 'stage' == 'afterscript':
+        if stage == 'afterscript':
             new_settings['afterscript_queued'] = True
         self.set_settings(new_settings)
     def gui_remove(self, remove_render=False):
@@ -190,7 +190,7 @@ class RenderItem(hyperspeed.stack.Render):
         self.settings.update(settings)
         json_dump = json.dumps(self.settings, indent=4, sort_keys=True)
         try:
-            if open(self.settings_path).read() != json_dump:
+            if not os.path.exists(self.settings_path) or open(self.settings_path).read() != json_dump:
                 open(self.settings_path, 'w').write(json_dump)
         except IOError:
             print 'Settings file is moved'
@@ -214,7 +214,10 @@ class RenderItem(hyperspeed.stack.Render):
         row_path = self.row_reference.get_path()
         row_iter = treestore.get_iter(row_path)
         print 'Updating tree row: %s' % self.uid
-        treestore[row_path] = self.treestore_values
+        try:
+            treestore[row_path] = self.treestore_values
+        except ValueError:
+            pass # Just changed stage
     @property
     def render_progress(self):
         try:
@@ -270,7 +273,7 @@ class RenderItem(hyperspeed.stack.Render):
                 self.settings['render_queued'],
                 self.render_progress < 1, # 20 Settings visible
                 self.attempts_string(len(self.settings['renders_failed']), MAX_RENDER_ATTEMPTS), # 21 Failed attempts
-                self.primary_output.format,
+                self.format,
             ]
         else:
             return [
@@ -296,7 +299,7 @@ class RenderItem(hyperspeed.stack.Render):
                 self.settings['afterscript_queued'],
                 self.afterscript_progress < 1, # 20 Settings visible
                 self.attempts_string(len(self.settings['afterscripts_failed']), MAX_AFTERSCRIPT_ATTEMPTS), # 21 Failed attempts
-                self.primary_output.format,
+                self.format,
                 self.afterscript_pulse(), # pulse
             ]
 class RendersDelete(object):
@@ -351,9 +354,8 @@ class RenderManagerWindow(hyperspeed.ui.Window):
         vbox = gtk.VBox(False, 10)
         # vbox.pack_start(self.init_toolbar(), False, False, 10)
 
-        self.afterscripts_model = gtk.ListStore(str)
-        for afterscript in hyperspeed.afterscript.list():
-            self.afterscripts_model.append([afterscript])
+        self.afterscripts_model_refresh()
+        gobject.timeout_add(5000, self.afterscripts_model_refresh)
 
         vbox.pack_start(self.settings_panel(), False, False, 10)
         vbox.pack_start(self.init_render_queue_window())
@@ -373,7 +375,7 @@ class RenderManagerWindow(hyperspeed.ui.Window):
 
         self.comboEditable = None
         gobject.idle_add(self.bring_to_front)
-        gobject.timeout_add(100, self.gui_periodical_updates)
+        gobject.timeout_add(1000, self.gui_periodical_updates)
         gobject.idle_add(self.gui_batch_folders_setup)
     def on_quit(self, widget):
         for pid in self.render_processes:
@@ -382,6 +384,22 @@ class RenderManagerWindow(hyperspeed.ui.Window):
             except OSError:
                 pass
         super(RenderManagerWindow, self).on_quit(widget)
+    def afterscripts_model_refresh(self):
+        try:
+            self.afterscripts_model
+        except AttributeError:
+            self.afterscripts_model = gtk.ListStore(str)
+            self.afterscripts_prev = []
+        afterscripts = []
+        for afterscript in hyperspeed.afterscript.list():
+            afterscripts.append(afterscript)
+        if afterscripts != self.afterscripts_prev:
+            self.afterscripts_prev = afterscripts
+            new_model = gtk.ListStore(str)
+            for afterscript in afterscripts:
+                new_model.append([afterscript])
+            self.afterscripts_model = new_model
+        return True
     def gui_batch_folders_setup(self):
         batchpath_fstype = subprocess.Popen(['df', '--output=fstype', mistika.settings['BATCHPATH']],
             stdout=subprocess.PIPE).communicate()[0].splitlines()[-1]

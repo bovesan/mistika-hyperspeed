@@ -281,18 +281,18 @@ class AfterscriptFfmpeg(Afterscript):
         input_args = []
         if render:
             if render.output_video != None:
-                input_args.append('-i')
                 if '%' in render.output_video.path:
-                    video_file_path = render.output_video.path % render.output_video.start
-                else:
-                    video_file_path = render.output_video.path
+                    input_args.append('-r')
+                    input_args.append(str(render.fps))
+                video_file_path = render.output_video.path
+                input_args.append('-i')
                 input_args.append(video_file_path)
             elif render.output_proxy != None:
-                input_args.append('-i')
                 if '%' in render.output_proxy.path:
-                    video_file_path = render.output_proxy.path % render.output_proxy.start
-                else:
-                    video_file_path = render.output_proxy.path
+                    input_args.append('-r')
+                    input_args.append(str(render.fps))
+                video_file_path = render.output_proxy.path
+                input_args.append('-i')
                 input_args.append(video_file_path)
             if render.output_audio != None:
                 input_args.append('-i')
