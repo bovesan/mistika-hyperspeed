@@ -77,7 +77,6 @@ class RenderItem(hyperspeed.stack.Render):
             'render_frames'        : 0,
             'renders_failed'       : [],
             'afterscript'          : None,
-            'is_afterscripting'    : False,
             'afterscript_paused'   : False,
             'afterscript_host'     : None,
             'afterscript_queued'   : False,
@@ -214,6 +213,7 @@ class RenderItem(hyperspeed.stack.Render):
         self.prev_treestore_values = new_values
         row_path = self.row_reference.get_path()
         row_iter = treestore.get_iter(row_path)
+        print 'Updating tree row: %s' % self.uid
         treestore[row_path] = self.treestore_values
     @property
     def render_progress(self):
@@ -227,7 +227,10 @@ class RenderItem(hyperspeed.stack.Render):
             return float(self.settings['afterscript_frames']) / float(self.frames)
         except (KeyError, ZeroDivisionError) as e:
             return 0.0
-    def pulse(self, value):
+    def afterscript_pulse(self):
+        if self.settings['afterscript_host'] == None:
+            return -1
+        value = self.afterscript_progress
         if value > 0:
             return -1
         fraction = (time.time() - START_TIME) * 5.0
@@ -281,12 +284,12 @@ class RenderItem(hyperspeed.stack.Render):
                 self.settings['submit_time'], # Added time
                 self.settings['description'], # Description
                 hyperspeed.human.time(self.settings['submit_time']), # Human time
-                self.settings['is_afterscripting'] , # 10 Progress visible
+                bool(self.settings['afterscript_host']) , # 10 Progress visible
                 self.settings['priority'],
                 self.settings['submit_host'],
                 self.settings['afterscript_host'],
                 self.settings['color'],
-                not self.settings['is_afterscripting'], # Status visible
+                not bool(self.settings['afterscript_host']), # Status visible
                 self.duration, # 16
                 self.private,
                 self.settings['submit_host'] == HOSTNAME,
@@ -294,7 +297,7 @@ class RenderItem(hyperspeed.stack.Render):
                 self.afterscript_progress < 1, # 20 Settings visible
                 self.attempts_string(len(self.settings['afterscripts_failed']), MAX_AFTERSCRIPT_ATTEMPTS), # 21 Failed attempts
                 self.primary_output.format,
-                self.pulse(self.afterscript_progress), # pulse
+                self.afterscript_pulse(), # pulse
             ]
 class RendersDelete(object):
     def __init__(self, renders):
@@ -399,23 +402,24 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                 self.shared_queue_entry.set_text(mistika.settings['BATCHPATH'])
             if self.set_mistika_batchpath(private_queue_folder):
                 self.batch_queue_entry.set_text(private_queue_folder)
-    def get_selected_renders(self, treeview=None):
-        renders = []
-        if treeview:
-            treeviews = [treeview]
-        else:
-            treeviews = [
-                self.render_treeview,
-                self.afterscript_treeview
-            ]
+    def get_selected_treeview(self):
+        treeviews = [
+            self.render_treeview,
+            self.afterscript_treeview
+        ]
         for treeview in treeviews:
             if treeview.is_focus():
+                return treeview
+    def get_selected_renders(self, treeview=None):
+        renders = []
+        if not treeview:
+            treeview = self.get_selected_treeview()
+            if treeview:
                 selection = treeview.get_selection()
                 (treestore, row_paths) = selection.get_selected_rows()
                 row_paths = sorted(row_paths)
                 for row_path in row_paths:
                     renders.append(self.renders[treestore[row_path][0]])
-                break
         return renders
     def set_mistika_batchpath(self, batchpath):
         cache_queue_folder = os.path.join(batchpath, 'Cache')
@@ -660,18 +664,13 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         column.set_resizable(True)
         column.set_expand(True)
         treeview.append_column(column)
-
         cell = gtk.CellRendererCombo()
         cell.set_property("editable", True)
         cell.set_property("has-entry", False)
         cell.set_property("text-column", 0)
         cell.set_property("model", self.afterscripts_model)
-        # cell.connect('event', hyperspeed.ui.event_debug)
-        cell.connect('editing-started', self.on_render_freeze, True)
-        # cell.connect('editing-canceled', self.on_render_freeze, False, False, False)
-        # cell.connect('changed', self.on_render_freeze, False)
-        # cell.connect("popup", self.on_render_freeze, True)
-        # cell.connect("popdown", self.on_render_freeze, True)
+        # cell.connect('clicked', hyperspeed.ui.event_debug)
+        cell.connect('editing-started', self.on_edit_afterscript, True, treestore)
         cell.connect("edited", self.on_render_settings_change, 'afterscript', treestore)
         column = gtk.TreeViewColumn("Afterscript", cell, text=6)
         # column.connect('clicked', hyperspeed.ui.event_debug)
@@ -1003,7 +1002,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         cell.set_property("text-column", 0)
         cell.set_property("model", self.afterscripts_model)
         # cell.connect('event', hyperspeed.ui.event_debug)
-        cell.connect('editing-started', self.on_render_freeze, True)
+        cell.connect('editing-started', self.on_edit_afterscript, True, treestore)
         cell.connect("edited", self.on_render_settings_change, 'afterscript', treestore)
         column = gtk.TreeViewColumn("Afterscript", cell, text=6)
         # column.connect('clicked', hyperspeed.ui.event_debug)
@@ -1119,20 +1118,17 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         if expand:
             self.render_treeview.expand_all()
             self.afterscript_treeview.expand_all()
-    def on_render_freeze(self, cell, widget, path, value):
-        treestore = self.render_treestore
-        # print 'cell: %s' % cell
-        # print 'path: %s' % path
-        # print 'value: %s' % value
+    def on_edit_afterscript(self, cell, widget, path, value, treestore):
         file_id = treestore[path][0]
         render = self.renders[file_id]
-        render.gui_freeze = True
-        widget.connect('notify::popup-shown', self.render_unfreeze, render)
-    def render_unfreeze(self, widget, status, render):
+        render.gui_freeze_render = True
+        widget.connect('notify::popup-shown', self.on_edit_afterscript_popup, render, cell)
+    def on_edit_afterscript_popup(self, widget, status, render, cell):
         if widget.get_property('popup-shown'):
-            render.gui_freeze_render = False
+            render.gui_freeze_render = True
         else:
             render.gui_freeze_render = False
+            cell.stop_editing(False)
     def on_render_settings_change(self, cell, path, value, setting_key, treestore):
         if hasattr(cell, 'get_active'): # Checkbox
             value = not cell.get_active()
@@ -1229,7 +1225,6 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                 'afterscript_frames': 0,
                 'afterscript_host'  : None,
                 })
-            render.is_afterscripting = False
     def on_afterscript_enqueue(self, widget, *ignore):
         selection = self.afterscript_treeview.get_selection()
         (treestore, row_paths) = selection.get_selected_rows()
@@ -1248,7 +1243,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             afterscript = self.renders[treestore[row_path][0]]
             afterscript.set_settings({
                 'afterscript_queued': False,
-                'is_afterscripting': False,
+                'afterscript_host': None,
                 })
     def on_render_resume(self, widget, *ignore):
         selection = self.render_treeview.get_selection()
@@ -1319,7 +1314,6 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         render.set_settings({
             'afterscript_host' : HOSTNAME,
             'afterscript_start_time' : time.time(),
-            'is_afterscripting' : True,
             'afterscript_frames' : 0,
             'afterscript_pid' : proc.pid,
         })
@@ -1371,7 +1365,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             if proc.returncode == 0:
                 print 'Afterscript complete'
                 render.set_settings({
-                    'is_afterscripting' : False,
+                    'afterscript_host' : None,
                     'afterscript_queued' : False,
                     'afterscript_frames' : render.frames,
                     'status' : 'Afterscript complete',
@@ -1382,7 +1376,6 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                     'afterscripts_failed' :render.settings['afterscripts_failed'] + [
                         render.settings['afterscript_frames']
                     ],
-                    'is_afterscripting' : False,
                     'afterscript_queued' : False,
                     'status' : 'Afterscript failed',
                     'afterscript_host' : None,
