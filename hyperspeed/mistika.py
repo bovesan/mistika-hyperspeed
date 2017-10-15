@@ -28,15 +28,18 @@ def get_mistikarc_path(env_folder, multiple=False):
         env_folder + '/mistikarc.cfg',
         env_folder + '/.mistikarc',
         env_folder + '/.mambarc',
+        env_folder + '/../MAMBA-ENV.config/.mambarc',
     ]
     for path in mistikarc_paths[:]:
         if not os.path.exists(path):
-            print 'Removing path candidate:', path
             mistikarc_paths.remove(path)
     if len(mistikarc_paths) == 0:
         print 'Error: mistikarc config not found in %s' % env_folder
         return False
-    return mistikarc_paths[0]
+    if multiple:
+        return mistikarc_paths
+    else:
+        return mistikarc_paths[0]
 
 def get_mistika_projects_folder(env_folder):
     product_work = '%s_WORK' % product.upper()
@@ -54,15 +57,19 @@ def reload():
     global fonts
     global fonts_folder
     global platform
+    global executable
     env_folder = os.path.realpath(os.path.expanduser("~/MISTIKA-ENV"))
     if os.path.exists(env_folder):
         product = 'Mistika'
+        executable = 'mistika'
     else:
         env_folder = os.path.realpath(os.path.expanduser("~/MAMBA-ENV"))
+        executable = '/Applications/SGOMambaFX.app/Contents/MacOS/mamba'
         if os.path.exists(env_folder):
             product = 'Mamba'
         else:
             product = False
+            env_folder = None
     if 'linux' in platform_module.system().lower():
         platform = 'linux'
         fonts_folder = '/usr/share/fonts/mistika/'
@@ -75,10 +82,9 @@ def reload():
     shared_folder = os.path.join(env_folder, 'shared')
     try:
         version = LooseVersion('.'.join(re.findall(r'\d+',
-            subprocess.Popen([product.lower(), '-V'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0].splitlines()[0])))
+            subprocess.Popen([executable, '-V'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0].splitlines()[0])))
     except OSError:
-        version = LooseVersion('.'.join(re.findall(r'\d+',
-            subprocess.Popen(['/Applications/SGOMambaFX.app/Contents/MacOS/mamba', '-V'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0].splitlines()[0])))
+        version = None
     try:
         version.vstring
     except AttributeError:
@@ -136,15 +142,22 @@ def reload():
 
 reload()
 
-def set_settings(settings):
-    for mistika_settings_file in get_mistikarc_path(env_folder, multiple=False):
+def set_settings(new_settings):
+    print repr(new_settings)
+    global settings
+    for mistika_settings_file in get_mistikarc_path(env_folder, multiple=True):
         with tempfile.NamedTemporaryFile(delete=False) as temp_handle:
             for line in open(mistika_settings_file):
                 key = line.split()[0]
-                if key in settings:
-                    line = key.ljust(31)+str(settings[key])+'\n'
+                if key in new_settings:
+                    line = key.ljust(31)+str(new_settings[key])+'\n'
+                    del new_settings[key]
                 temp_handle.write(line)
                 # print line,
+            for key in new_settings:
+                line = key.ljust(31)+str(new_settings[key])+'\n'
+                temp_handle.write(line)
             temp_handle.flush()
         os.rename(mistika_settings_file, mistika_settings_file+'.bak')
         os.rename(temp_handle.name, mistika_settings_file)
+        settings.update(new_settings)

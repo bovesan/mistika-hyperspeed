@@ -143,14 +143,15 @@ class Window(gtk.Window):
         screen = self.get_screen()
         monitor = screen.get_monitor_geometry(0)
         self.set_title(title)
-        if 'window_size' in settings:
-            self.set_default_size(settings['window_size']['width'], settings['window_size']['height'])
-        else:
-            self.set_default_size(monitor.width-200, monitor.height-200)
         self.set_border_width(20)
         self.set_position(gtk.WIN_POS_CENTER)
         if 'darwin' in platform.system().lower():
             self.set_resizable(False) # Because resizing crashes the app on Mac
+            self.set_size_request(monitor.width-200, monitor.height-200)
+        if 'window_size' in settings:
+            self.set_default_size(settings['window_size']['width'], settings['window_size']['height'])
+        else:
+            self.set_default_size(monitor.width-200, monitor.height-200)
         self.connect("key-press-event",self.on_key_press_event)
         if not icon_path:
             icon_path = 'res/img/hyperspeed_1024px.png'

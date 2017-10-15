@@ -89,11 +89,13 @@ class RenderItem(hyperspeed.stack.Render):
         self.set_settings()
         self.prev_treestore_values = None
     def do_render(self, render_processes):
-        cmd = ['mistika', '-r', self.path]
-        print ' '.join(cmd)
+        cmd = [mistika.executable, '-r', self.path]
         log_path = self.path + '.log'
         # self.process = subprocess.Popen(cmd, stdout=logfile_h, stderr=subprocess.STDOUT)
         # total time: 4.298 sec, 0.029 sec per frame, 34.665 frames per sec
+        if json.loads(open(self.settings_path).read())['render_host']:
+            return
+        print ' '.join(cmd)
         self.set_settings({
             'render_host' : HOSTNAME,
             'render_start_time' : time.time(),
@@ -401,8 +403,11 @@ class RenderManagerWindow(hyperspeed.ui.Window):
             self.afterscripts_model = new_model
         return True
     def gui_batch_folders_setup(self):
-        batchpath_fstype = subprocess.Popen(['df', '--output=fstype', mistika.settings['BATCHPATH']],
+        try:
+            batchpath_fstype = subprocess.Popen(['df', '--output=fstype', mistika.settings['BATCHPATH']],
             stdout=subprocess.PIPE).communicate()[0].splitlines()[-1]
+        except IndexError:
+            return
         if batchpath_fstype in ['nfs', 'cifs', 'cvfs']:
             private_queue_folder = os.path.expanduser('~/BATCH_QUEUES')
             setup = hyperspeed.ui.dialog_yesno(
@@ -470,7 +475,12 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         label =  gtk.Label('Batch queues folder:')
         hbox.pack_start(label, False, False, 5)
         entry = self.batch_queue_entry = gtk.Entry()
-        entry.set_text(mistika.settings['BATCHPATH'])
+        try:
+            entry.set_text(mistika.settings['BATCHPATH'])
+        except KeyError:
+            mistika.set_settings({
+                'BATCHPATH' : '/'
+            })
         hbox.pack_start(entry)
         button = self.shared_queue_pick_button = gtk.Button('...')
         button.connect("clicked", self.on_folder_pick, entry, 'Select batch queue folder')
