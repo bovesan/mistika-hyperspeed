@@ -125,6 +125,19 @@ class Window(gtk.Window):
     quit = False
     def __init__(self, title, settings_default, icon_path=None):
         super(Window, self).__init__()
+        self.history = []
+        self.hotkeys = [
+            {
+                'combination' : ['Ctrl', 'q'],
+                'method' : self.on_quit,
+                'args' : ['Keyboard shortcut']
+            },
+            {
+                'combination' : ['Ctrl', 'z'],
+                'method' : self.undo,
+                'args' : [1]
+            },
+        ]
         settings = self.settings = settings_default
         self.settings_load()
         screen = self.get_screen()
@@ -156,6 +169,7 @@ class Window(gtk.Window):
         # }
         # class "*" style "theme-fixes"'''
         # gtk.rc_parse_string(gtkrc)
+
     def on_window_resize(self, window):
         width, height = self.get_size()
         self.set_settings({
@@ -171,16 +185,29 @@ class Window(gtk.Window):
         #     }
         # }])
     def on_key_press_event(self,widget,event):
+        hotkeys = self.hotkeys
         keyval = event.keyval
         keyval_name = gtk.gdk.keyval_name(keyval)
         state = event.state
         ctrl = (state & gtk.gdk.CONTROL_MASK)
         command = (state & gtk.gdk.MOD1_MASK)
-        if (ctrl or command) and keyval_name == 'q':
-            self.on_quit('Keyboard shortcut')
-        else:
-            return False
-        return True
+        combination = []
+        if (ctrl or command):
+            combination.append('Ctrl')
+        combination.append(keyval_name)
+        for hotkey in hotkeys:
+            if combination == hotkey['combination']:
+                if 'args' in hotkey:
+                    args = hotkey['args']
+                else:
+                    args = []
+                if 'kwargs' in hotkey:
+                    kwargs = hotkey['kwargs']
+                else:
+                    kwargs = {}
+                hotkey['method'](*args,**kwargs)
+                return True
+        return False
     def on_quit(self, widget):
         self.quit = True
         if type(widget) is gtk.Button:
@@ -189,6 +216,12 @@ class Window(gtk.Window):
             widget_name = str(widget)
         # print 'Closed by: ' + widget_name
         gtk.main_quit()
+    def undo(self, steps):
+        history = self.history
+        while steps > 0 and len(history) > 0:
+            previous = history.pop()
+            previous.undo()
+            steps -= 1
     def settings_load(self):
         script_path = os.path.realpath(sys.argv[0])
         if not script_path.endswith('.cfg'): # Just to be sure we don't overwrite the script
@@ -213,7 +246,6 @@ class Window(gtk.Window):
         t = threading.Thread(target=self.settings_store, name='Store settings')
         t.setDaemon(True)
         t.start()
-
     def on_settings_change(self, widget, setting_key):
         if hasattr(widget, 'get_active'): # Checkbox
             value = widget.get_active()

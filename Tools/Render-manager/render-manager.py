@@ -168,9 +168,9 @@ class RenderItem(hyperspeed.stack.Render):
                 })
         # logfile_h.flush()
     def move_to_stage(self, stage):
-        gobject.idle_add(self.gui_remove)
-        self.treestore = None
-        self.row_reference = None
+        # gobject.idle_add(self.gui_remove)
+        # self.treestore = None
+        # self.row_reference = None
         new_settings = {
             'stage' : stage,
         }
@@ -295,7 +295,25 @@ class RenderItem(hyperspeed.stack.Render):
                 self.primary_output.format,
                 self.pulse(self.afterscript_progress), # pulse
             ]
-
+class RendersDelete(object):
+    def __init__(self, renders):
+        self.files = []
+        self.execute(renders)
+    def execute(self, renders):
+        for render in renders:
+            render_files = glob.glob(re.sub('rnd$', '*', render.path))
+            # Remove settings at last so they are not recreated by mistake
+            try:
+                render_files.remove(render.settings_path)
+                render_files.append(render.settings_path)
+            except ValueError:
+                pass # Render had no settings
+            for f_path in render_files:
+                self.files.append(f_path)
+                print 'Removing  %s' % f_path
+    def undo(self):
+        for f_path in reversed(self.files):
+            print 'Restoring %s' % f_path
 class RenderManagerWindow(hyperspeed.ui.Window):
     def __init__(self):
         super(RenderManagerWindow, self).__init__(
@@ -316,6 +334,10 @@ class RenderManagerWindow(hyperspeed.ui.Window):
         self.afterscript_threads_limit = 1
         self.queue_io = Queue.Queue()
         self.config_rw()
+        self.hotkeys.append({
+                'combination' : ['Delete'],
+                'method' : self.on_hotkey_delete,
+            })
         vbox = gtk.VBox(False, 10)
         # vbox.pack_start(self.init_toolbar(), False, False, 10)
 
@@ -370,6 +392,27 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                 self.shared_queue_entry.set_text(mistika.settings['BATCHPATH'])
             if self.set_mistika_batchpath(private_queue_folder):
                 self.batch_queue_entry.set_text(private_queue_folder)
+    def on_hotkey_delete(self):
+        renders = self.get_selected_renders()
+        self.on_renders_delete('Hotkey', renders)
+    def get_selected_renders(self, treeview=None):
+        renders = []
+        if treeview:
+            treeviews = [treeview]
+        else:
+            treeviews = [
+                self.render_treeview,
+                self.afterscript_treeview
+            ]
+        for treeview in treeviews:
+            if treeview.is_focus():
+                selection = treeview.get_selection()
+                (treestore, row_paths) = selection.get_selected_rows()
+                row_paths = sorted(row_paths)
+                for row_path in row_paths:
+                    renders.append(self.renders[treestore[row_path][0]])
+                break
+        return renders
     def set_mistika_batchpath(self, batchpath):
         cache_queue_folder = os.path.join(batchpath, 'Cache')
         default_queues = [
@@ -670,8 +713,10 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         enqueue = False
         reset = False
         abort = False
+        renders = []
         for row_path in row_paths:
             render = self.renders[treestore[row_path][0]]
+            renders.append(render)
             if render.settings['render_frames'] < render.frames:
                 enqueue = True
             else:
@@ -698,7 +743,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             menu.append(newi)
         newi = gtk.ImageMenuItem(gtk.STOCK_DELETE)
         newi.set_label('Remove')
-        newi.connect("activate", self.on_render_delete)
+        newi.connect("activate", self.on_renders_delete, renders)
         newi.show()
         menu.append(newi)
         menu.set_title('Popup')
@@ -716,8 +761,10 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         enqueue = False
         reset = False
         abort = False
+        renders = []
         for row_path in row_paths:
             render = self.renders[treestore[row_path][0]]
+            renders.append(render)
             if render.settings['afterscript_frames'] < render.frames:
                 enqueue = True
             else:
@@ -744,7 +791,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             menu.append(newi)
         newi = gtk.ImageMenuItem(gtk.STOCK_DELETE)
         newi.set_label('Remove')
-        newi.connect("activate", self.on_render_delete)
+        newi.connect("activate", self.on_renders_delete, renders)
         newi.show()
         menu.append(newi)
         menu.set_title('Popup')
@@ -1034,10 +1081,8 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         for render_id in renders.keys():
             if not os.path.exists(renders[render_id].path):
                 gobject.idle_add(renders[render_id].gui_remove, True)
-        gobject.idle_add(self.gui_update_render_queue)
-        if first_run:
-            gobject.idle_add(self.render_treeview.expand_all)
-    def gui_update_render_queue(self):
+        gobject.idle_add(self.gui_update_render_queue, first_run)
+    def gui_update_render_queue(self, expand=False):
         renders = self.renders
         for file_id in sorted(renders):
             render = renders[file_id]
@@ -1067,8 +1112,9 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                 render.treestore = treestore
             else:
                 render.gui_update()
-        # self.render_treeview.expand_all()
-        # self.afterscript_tree.expand_all()
+        if expand:
+            self.render_treeview.expand_all()
+            self.afterscript_treeview.expand_all()
     def on_render_freeze(self, cell, widget, path, value):
         treestore = self.render_treestore
         # print 'cell: %s' % cell
@@ -1119,17 +1165,12 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         for k, v in render.settings.iteritems():
             message += '\n%s: %s' % (k, v)
         self.gui_info_dialog(message)
-    def on_render_delete(self, widget, *ignore):
-        selection = self.render_treeview.get_selection()
-        (treestore, row_paths) = selection.get_selected_rows()
-        row_paths = sorted(row_paths)
-        for row_path in row_paths:
-            render = self.renders[treestore[row_path][0]]
+    def on_renders_delete(self, widget, renders):
+        for render in renders:
             for dependency in render.output_stack.dependencies:
                 if dependency.path.startswith(TEMPORARY_RENDERS_FOLDER):
                     print 'Delete intermediate render file: %s' % dependency.path
-            print 'Delete', 
-            print path
+            self.history.append(RendersDelete(renders))
     def on_render_reset(self, widget, *ignore):
         selection = self.render_treeview.get_selection()
         (treestore, row_paths) = selection.get_selected_rows()
