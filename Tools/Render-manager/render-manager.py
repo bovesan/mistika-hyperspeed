@@ -67,6 +67,7 @@ class RenderItem(hyperspeed.stack.Render):
             'description'          : description,
             'color'                : COLOR_DEFAULT,
             'priority'             : self.ctime,
+            'submit_time'          : self.ctime,
             'submit_host'          : HOSTNAME,
             'stage'                : 'render',
             'is_rendering'         : False,
@@ -193,7 +194,7 @@ class RenderItem(hyperspeed.stack.Render):
             if open(self.settings_path).read() != json_dump:
                 open(self.settings_path, 'w').write(json_dump)
         except IOError:
-            print 'File is moved'
+            print 'Settings file is moved'
             return
         gobject.idle_add(self.gui_update)
     def settings_read(self):
@@ -251,9 +252,9 @@ class RenderItem(hyperspeed.stack.Render):
                 '%5.2f%%' % (self.render_progress * 100.0), # Progress str
                 self.settings['status'], # Status
                 self.settings['afterscript'], # Afterscript
-                self.ctime, # Added time
+                self.settings['submit_time'], # Added time
                 self.settings['description'], # Description
-                hyperspeed.human.time(self.ctime), # Human time
+                hyperspeed.human.time(self.settings['submit_time']), # Human time
                 self.settings['is_rendering'] , # 10 Progress visible
                 self.settings['priority'],
                 self.settings['submit_host'],
@@ -277,9 +278,9 @@ class RenderItem(hyperspeed.stack.Render):
                 self.progress_string(self.afterscript_progress), # Progress str
                 self.settings['status'], # Status
                 self.settings['afterscript'], # Afterscript
-                self.ctime, # Added time
+                self.settings['submit_time'], # Added time
                 self.settings['description'], # Description
-                hyperspeed.human.time(self.ctime), # Human time
+                hyperspeed.human.time(self.settings['submit_time']), # Human time
                 self.settings['is_afterscripting'] , # 10 Progress visible
                 self.settings['priority'],
                 self.settings['submit_host'],
@@ -314,11 +315,11 @@ class RendersDelete(object):
             for f_path in render_files:
                 self.files.append(f_path)
                 os.renames(f_path, self.trash_path(f_path))
-                print '%s -> %s' % (f_path, self.trash_path(f_path))
+                # print '%s -> %s' % (f_path, self.trash_path(f_path))
     def undo(self):
         for f_path in reversed(self.files):
             os.renames(self.trash_path(f_path), f_path)
-            print '%s -> %s' % (self.trash_path(f_path), f_path)
+            # print '%s -> %s' % (self.trash_path(f_path), f_path)
 
 class RenderManagerWindow(hyperspeed.ui.Window):
     def __init__(self):
