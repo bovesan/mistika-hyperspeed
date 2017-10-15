@@ -47,6 +47,8 @@ def get_desktop_links():
     return tools
 def get_mistika_links():
     tools = []
+    if not os.path.isfile(mistika.tools_path):
+        return tools
     for line in open(mistika.tools_path):
         line_alias, line_path = line.strip().split()[:2]
         line_path = os.path.realpath(os.path.normpath(line_path))

@@ -153,22 +153,6 @@ def get_zip_members(zip):
             zipinfo.filename = name[offset:]
             yield zipinfo
 
-class RenderItem(hyperspeed.stack.Stack):
-    def __init__(self, path):
-        super(RenderItem, self).__init__(path)
-        self.progress = 0.0
-        self.duration = video.frames2tc(self.frames, self.fps)
-        self.afterscript = ''
-        self.owner = 'Unknown'
-        self.status = 'Not started'
-    def run(self):
-        cmd = ['mistika', '-c', self.path]
-        self.logfile_path = self.path + '.log'
-        logfile_h = open(self.logfile_path, 'w')
-        self.process = subprocess.Popen(cmd, stdout=logfile_h, stderr=subprocess.STDOUT)
-        self.ret_code = self.process.wait()
-        logfile_h.flush()
-
 class PyApp(gtk.Window):
     quit = False
     subprocesses = []
