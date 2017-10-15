@@ -273,7 +273,7 @@ class RenderItem(hyperspeed.stack.Render):
                 self.settings['render_queued'],
                 self.render_progress < 1, # 20 Settings visible
                 self.attempts_string(len(self.settings['renders_failed']), MAX_RENDER_ATTEMPTS), # 21 Failed attempts
-                self.format,
+                self.format.split('.', 1)[-1],
             ]
         else:
             return [
@@ -299,7 +299,7 @@ class RenderItem(hyperspeed.stack.Render):
                 self.settings['afterscript_queued'],
                 self.afterscript_progress < 1, # 20 Settings visible
                 self.attempts_string(len(self.settings['afterscripts_failed']), MAX_AFTERSCRIPT_ATTEMPTS), # 21 Failed attempts
-                self.format,
+                self.format.split('.', 1)[-1],
                 self.afterscript_pulse(), # pulse
             ]
 class RendersDelete(object):
@@ -389,12 +389,12 @@ class RenderManagerWindow(hyperspeed.ui.Window):
             self.afterscripts_model
         except AttributeError:
             self.afterscripts_model = gtk.ListStore(str)
-            self.afterscripts_prev = []
+            self.afterscripts_installed = []
         afterscripts = []
         for afterscript in hyperspeed.afterscript.list():
             afterscripts.append(afterscript)
-        if afterscripts != self.afterscripts_prev:
-            self.afterscripts_prev = afterscripts
+        if afterscripts != self.afterscripts_installed:
+            self.afterscripts_installed = afterscripts
             new_model = gtk.ListStore(str)
             for afterscript in afterscripts:
                 new_model.append([afterscript])
@@ -762,6 +762,24 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             newi.connect("activate", self.on_render_abort)
             newi.show()
             menu.append(newi)
+        newi = gtk.ImageMenuItem(gtk.STOCK_GO_FORWARD)
+        newi.set_label('Afterscript')
+        submenu = gtk.Menu()
+        for afterscript in self.afterscripts_installed:
+            subi = gtk.MenuItem(afterscript)
+            subi.connect(
+                "activate",
+                self.on_render_settings_change,
+                None,
+                afterscript,
+                'afterscript',
+                None,
+                renders
+            )
+            submenu.append(subi)
+        newi.set_submenu(submenu)
+        newi.show()
+        menu.append(newi)
         newi = gtk.ImageMenuItem(gtk.STOCK_DELETE)
         newi.set_label('Remove')
         newi.connect("activate", self.on_renders_delete, renders)
@@ -810,12 +828,32 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             newi.connect("activate", self.on_afterscript_abort)
             newi.show()
             menu.append(newi)
+        newi = gtk.ImageMenuItem(gtk.STOCK_GO_FORWARD)
+        newi.set_label('Afterscript')
+        submenu = gtk.Menu()
+        for afterscript in self.afterscripts_installed:
+            subi = gtk.MenuItem(afterscript)
+            subi.connect(
+                "activate",
+                self.on_render_settings_change,
+                None,
+                afterscript,
+                'afterscript',
+                None,
+                renders
+            )
+            submenu.append(subi)
+        newi.set_submenu(submenu)
+        newi.show()
+        menu.append(newi)
+        menu.set_title('Popup')
         newi = gtk.ImageMenuItem(gtk.STOCK_DELETE)
         newi.set_label('Remove')
         newi.connect("activate", self.on_renders_delete, renders)
         newi.show()
         menu.append(newi)
         menu.set_title('Popup')
+        menu.show_all()
         return menu
     def on_toggle_private(self, cellrenderertoggle, path, treeview):
         was_private = cellrenderertoggle.get_active()
@@ -1147,21 +1185,29 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         else:
             render.gui_freeze_render = False
             cell.stop_editing(False)
-    def on_render_settings_change(self, cell, path, value, setting_key, treestore):
+    def on_render_settings_change(self, cell, path, value, setting_key, treestore, renders=[]):
+        print 'cell: %s' % cell
+        print 'path: %s' % path
+        print 'value: %s' % value
+        print 'setting_key: %s' % setting_key
+        print 'treestore: %s' % treestore
+        print 'renders: %s' % renders
         if hasattr(cell, 'get_active'): # Checkbox
             value = not cell.get_active()
-        file_id = treestore[path][0]
-        render = self.renders[file_id]
-        render.gui_freeze_render = False
-        if value == 'None':
-            value = None
-        render.set_settings({
-            setting_key : value
-        })
-        if setting_key == 'afterscript':
-            if render.render_progress >= 1.0 and render.settings['stage'] != 'afterscript':
-                render.move_to_stage('afterscript')
-                return
+        if len(renders) < 1:
+            file_id = treestore[path][0]
+            renders.append(self.renders[file_id])
+        for render in renders:
+            render.gui_freeze_render = False
+            if value == 'None':
+                value = None
+            render.set_settings({
+                setting_key : value
+            })
+            if setting_key == 'afterscript':
+                if render.render_progress >= 1.0 and render.settings['stage'] != 'afterscript':
+                    render.move_to_stage('afterscript')
+                    return
         self.launch_thread(self.io_populate_render_queue)
     def on_editing_started(self, cell, editable, path):
         print 'on_editing_started()'
