@@ -54,9 +54,11 @@ class RenderItem(hyperspeed.stack.Render):
     row_reference = None
     owner = 'Unknown'
     gui_freeze_render = None
-    def __init__(self, path, global_settings):
+    renders_dict = None
+    def __init__(self, path, global_settings, renders_dict):
         super(RenderItem, self).__init__(path)
         self.global_settings = global_settings
+        self.renders_dict = renders_dict
         self.duration = hyperspeed.video.frames2tc(self.frames, self.fps)
         description = 'Resolution: %sx%s' % (self.resX, self.resY)
         description += '\nFps: %s' % self.fps
@@ -175,13 +177,15 @@ class RenderItem(hyperspeed.stack.Render):
         if 'stage' == 'afterscript':
             new_settings['afterscript_queued'] = True
         self.set_settings(new_settings)
-    def gui_remove(self):
+    def gui_remove(self, remove_render=False):
         try:
             row_path = self.row_reference.get_path()
-            row_iter = treestore.get_iter(row_path)
-            treestore.remove(iter)
+            row_iter = self.treestore.get_iter(row_path)
+            self.treestore.remove(row_iter)
         except AttributeError:
             pass
+        if remove_render:
+            del self.renders_dict[self.uid]
     def set_settings(self, settings={}):
         self.settings.update(settings)
         json_dump = json.dumps(self.settings, indent=4, sort_keys=True)
@@ -447,7 +451,11 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         for n in range(model.iter_n_children(row_iter)):
             child_iter = model.iter_nth_child(row_iter, n)
             child_id = model.get_value(child_iter, 0)
-            render = self.renders[child_id]
+            try:
+                render = self.renders[child_id]
+            except KeyError:
+                print '%s has been removed'
+                continue
             if not render.settings['afterscript']:
                 # print 'No afterscript selected:', render.prettyname
                 continue
@@ -988,7 +996,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                     file_id, file_ext = os.path.splitext(file_path)
                     if file_ext != '.rnd':
                         continue
-                    render = RenderItem(file_path, self.settings)
+                    render = RenderItem(file_path, self.settings, renders)
                     id_path = os.path.join(os.path.dirname(render.path), render.uid+'.rnd')
                     if not os.path.basename(render.path) == id_path:
                         os.rename(render.path, id_path)
@@ -1022,6 +1030,10 @@ Change local batch queue folder to %s?''' % private_queue_folder)
     def io_populate_render_queue(self, first_run=False):
         self.io_parse_queue_folder(mistika.settings['BATCHPATH'], private=True)
         self.io_parse_queue_folder(self.settings['shared_queues_folder'])
+        renders = self.renders
+        for render_id in renders.keys():
+            if not os.path.exists(renders[render_id].path):
+                gobject.idle_add(renders[render_id].gui_remove, True)
         gobject.idle_add(self.gui_update_render_queue)
         if first_run:
             gobject.idle_add(self.render_treeview.expand_all)
