@@ -42,7 +42,6 @@ def reveal_file(path):
                     subprocess.Popen(["dolphin", folder], env=dolphinEnv)
             except OSError:
                 subprocess.Popen(["xdg-open", folder])
-                
 def get_stream_info(path):
     cmd = ['ffprobe', path]
     streams = []
@@ -61,7 +60,6 @@ def get_stream_info(path):
             }
             streams.append(stream)
     return streams
-
 def mac_app_link(executable_path, app_path, icon_path=False):
     info_plist_template = '''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

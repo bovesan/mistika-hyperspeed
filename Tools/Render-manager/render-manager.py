@@ -299,6 +299,9 @@ class RendersDelete(object):
     def __init__(self, renders):
         self.files = []
         self.execute(renders)
+    def trash_path(self, f_path):
+        f_dirname, f_basename = os.path.split(f_path)
+        return os.path.join(f_dirname, '.trash', f_basename)
     def execute(self, renders):
         for render in renders:
             render_files = glob.glob(re.sub('rnd$', '*', render.path))
@@ -310,10 +313,13 @@ class RendersDelete(object):
                 pass # Render had no settings
             for f_path in render_files:
                 self.files.append(f_path)
-                print 'Removing  %s' % f_path
+                os.renames(f_path, self.trash_path(f_path))
+                print '%s -> %s' % (f_path, self.trash_path(f_path))
     def undo(self):
         for f_path in reversed(self.files):
-            print 'Restoring %s' % f_path
+            os.renames(self.trash_path(f_path), f_path)
+            print '%s -> %s' % (self.trash_path(f_path), f_path)
+
 class RenderManagerWindow(hyperspeed.ui.Window):
     def __init__(self):
         super(RenderManagerWindow, self).__init__(
@@ -336,7 +342,7 @@ class RenderManagerWindow(hyperspeed.ui.Window):
         self.config_rw()
         self.hotkeys.append({
                 'combination' : ['Delete'],
-                'method' : self.on_hotkey_delete,
+                'method' : self.on_renders_delete,
             })
         vbox = gtk.VBox(False, 10)
         # vbox.pack_start(self.init_toolbar(), False, False, 10)
@@ -392,9 +398,6 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                 self.shared_queue_entry.set_text(mistika.settings['BATCHPATH'])
             if self.set_mistika_batchpath(private_queue_folder):
                 self.batch_queue_entry.set_text(private_queue_folder)
-    def on_hotkey_delete(self):
-        renders = self.get_selected_renders()
-        self.on_renders_delete('Hotkey', renders)
     def get_selected_renders(self, treeview=None):
         renders = []
         if treeview:
@@ -1165,7 +1168,9 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         for k, v in render.settings.iteritems():
             message += '\n%s: %s' % (k, v)
         self.gui_info_dialog(message)
-    def on_renders_delete(self, widget, renders):
+    def on_renders_delete(self, widget=False, renders=[]):
+        if renders == []:
+            renders = self.get_selected_renders()
         for render in renders:
             for dependency in render.output_stack.dependencies:
                 if dependency.path.startswith(TEMPORARY_RENDERS_FOLDER):
