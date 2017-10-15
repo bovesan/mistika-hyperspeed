@@ -40,6 +40,7 @@ COLOR_DEFAULT = '#111111'
 TEMPORARY_RENDERS_FOLDER = '/Volumes/SAN3/Limbo'
 MAX_RENDER_ATTEMPTS = 3
 MAX_AFTERSCRIPT_ATTEMPTS = 1
+START_TIME = time.time()
 
 def process_suspended_status(pid):
     try:
@@ -103,7 +104,8 @@ class RenderItem(hyperspeed.stack.Render):
             while proc.returncode == None:
                 mistika_bin_pids = mistika.get_mistika_bin_pids(proc.pid)
                 if len(mistika_bin_pids) > 0:
-                    render_processes.append(mistika_bin_pids[0])
+                    if not mistika_bin_pids[0] in render_processes:
+                        render_processes.append(mistika_bin_pids[0])
                 if not self.settings['render_queued']:
                     print 'Render aborted'
                     # proc.send_signal(signal.SIGINT)
@@ -220,10 +222,20 @@ class RenderItem(hyperspeed.stack.Render):
             return float(self.settings['afterscript_frames']) / float(self.frames)
         except (KeyError, ZeroDivisionError) as e:
             return 0.0
+    def pulse(self, value):
+        if value > 0:
+            return -1
+        fraction = (time.time() - START_TIME) * 5.0
+        return int(fraction)
     def attempts_string(self, current, total):
         if current == 0:
             return ''
         return "%i/%i" % (current,total)
+    def progress_string(self, value):
+        if value > 0:
+            return '%5.2f%%' % (value * 100.0)
+        else:
+            return ''
     @property
     def treestore_values(self):
         if self.settings['stage'] == 'render':
@@ -258,7 +270,7 @@ class RenderItem(hyperspeed.stack.Render):
                 self.project, # Project
                 self.prettyname, # Name
                 self.afterscript_progress * 100.0, # Progress
-                '%5.2f%%' % (self.afterscript_progress * 100.0), # Progress str
+                self.progress_string(self.afterscript_progress), # Progress str
                 self.settings['status'], # Status
                 self.settings['afterscript'], # Afterscript
                 self.ctime, # Added time
@@ -277,7 +289,7 @@ class RenderItem(hyperspeed.stack.Render):
                 self.afterscript_progress < 1, # 20 Settings visible
                 self.attempts_string(len(self.settings['afterscripts_failed']), MAX_AFTERSCRIPT_ATTEMPTS), # 21 Failed attempts
                 self.primary_output.format,
-                False, # pulse
+                self.pulse(self.afterscript_progress), # pulse
             ]
 
 class RenderManagerWindow(hyperspeed.ui.Window):
@@ -325,14 +337,14 @@ class RenderManagerWindow(hyperspeed.ui.Window):
 
         self.comboEditable = None
         gobject.idle_add(self.bring_to_front)
-        gobject.timeout_add(1000, self.gui_periodical_updates)
+        gobject.timeout_add(100, self.gui_periodical_updates)
         gobject.idle_add(self.gui_batch_folders_setup)
     def on_quit(self, widget):
         for pid in self.render_processes:
             try:
                 os.kill(pid, signal.SIGTERM)
             except OSError:
-                print 'Could not kill process %i' % pid
+                pass
         super(RenderManagerWindow, self).on_quit(widget)
     def gui_batch_folders_setup(self):
         batchpath_fstype = subprocess.Popen(['df', '--output=fstype', mistika.settings['BATCHPATH']],
@@ -848,7 +860,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             bool, # 20 Settings visible
             str,  # 21 Failed attempts
             str,  # 22 Format
-            bool, # 23 Progress pulse
+            int,  # 23 Progress pulse
         )
         treestore.set_sort_column_id(11, gtk.SORT_ASCENDING)
         tree_filter    = self.afterscript_queue_filter    = treestore.filter_new();
@@ -921,7 +933,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         column.set_attributes(cell, text=5, foreground=14, visible=15)
         cell = gtk.CellRendererProgress()
         column.pack_start(cell, True)
-        column.set_attributes(cell, value=3, text=4, visible=10)
+        column.set_attributes(cell, value=3, text=4, visible=10, pulse=23)
         column.set_resizable(True)
         column.set_expand(True)
         treeview.append_column(column)
