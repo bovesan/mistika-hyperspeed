@@ -17,7 +17,7 @@ d(
 	I(
 		s(0) e(0) t(000) T(0)  i(0)
 		L( d(Xfs.dev) p(/Volumes/MATERIAL_HF/MISTIKA_MEDIA/2015_Mastering/MISTIKA_JS/) n(L_segment.js) f(RGB10:RGB10) )
-		H( d(Xfs.dev) p(/home/mistika/mistika-hyperspeed/Stacks/Utilities/.dependencies/) n(segment.js) f(RGB10:RGB10) )
+		H( d(Xfs.dev) p(/Users/bove/Dropbox \(Creativity In Action\)/Mistika/mistika-hyperspeed/Stacks/Utilities/.dependencies/) n(segment.js) f(RGB10:RGB10) )
 	)
 )
 AudioRoute(

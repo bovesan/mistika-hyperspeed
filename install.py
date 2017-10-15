@@ -97,11 +97,12 @@ hyperspeed.tools.desktop_link(
         activated=desktop_link,
         file_path=hyperspeed_dashboard_path
     )
-mistika_link = confirm("Hyperspeed Dashboard in Mistika Extras panel? ")
-hyperspeed.tools.mistika_link(
-        alias='Hyperspeed Dashboard',
-        activated=mistika_link,
-        file_path=hyperspeed_dashboard_path
-    )
+if hyperspeed.mistika.product == 'Mistika':
+    mistika_link = confirm("Hyperspeed Dashboard in Mistika Extras panel? ")
+    hyperspeed.tools.mistika_link(
+            alias='Hyperspeed Dashboard',
+            activated=mistika_link,
+            file_path=hyperspeed_dashboard_path
+        )
 
-subprocess.call([hyperspeed_dashboard_path])
+subprocess.Popen([hyperspeed_dashboard_path])

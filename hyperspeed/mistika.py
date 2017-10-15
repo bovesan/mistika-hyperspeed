@@ -29,8 +29,9 @@ def get_mistikarc_path(env_folder, multiple=False):
         env_folder + '/.mistikarc',
         env_folder + '/.mambarc',
     ]
-    for path in mistikarc_paths:
+    for path in mistikarc_paths[:]:
         if not os.path.exists(path):
+            print 'Removing path candidate:', path
             mistikarc_paths.remove(path)
     if len(mistikarc_paths) == 0:
         print 'Error: mistikarc config not found in %s' % env_folder

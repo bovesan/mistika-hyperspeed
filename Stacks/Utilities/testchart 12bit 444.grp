@@ -8,7 +8,7 @@ p(
 F(
 T(69)
 E(MorphedPaintedTitled/Title.so)
-D(RnD/PRIVATE/testchart 12bit 444/019testchart 12bit 444_grp_2542ae60.dat)
+D(/Users/bove/Dropbox \(Creativity In Action\)/Mistika/mistika-hyperspeed/Stacks/Utilities/.dependencies/PRIVATE/testchart 12bit 444/019testchart 12bit 444_grp_2542ae60.dat)
 p(
 	X(120) Y(-1) W(36) F(17)
 	L(-2)
@@ -43,7 +43,7 @@ s(
 F(
 T(69)
 E(MorphedPaintedTitled/Title.so)
-D(RnD/PRIVATE/testchart 12bit 444/019testchart 12bit 444_grp_1288c0e0.dat)
+D(/Users/bove/Dropbox \(Creativity In Action\)/Mistika/mistika-hyperspeed/Stacks/Utilities/.dependencies/PRIVATE/testchart 12bit 444/019testchart 12bit 444_grp_1288c0e0.dat)
 p(
 	X(120) Y(2) W(36) F(17)
 	L(2)
@@ -226,7 +226,7 @@ d(
 	I(
 		s(0) e(0) t(testchart) T()  i(0)
 		L( d(Disk.dev) p(/Volumes/CENTRAL/Archive/Video/COLORBAR/) n(L_testchart.tif) f(RGB:VST_2) )
-		H( d(Disk.dev) p(/home/mistika/mistika-hyperspeed/Stacks/Utilities/.dependencies/Media/) n(testchart.tif) f(:(1920x1080)) )
+		H( d(Disk.dev) p(/Users/bove/Dropbox \(Creativity In Action\)/Mistika/mistika-hyperspeed/Stacks/Utilities/.dependencies/Media/) n(testchart.tif) f(:(1920x1080)) )
 	)
 )
 AudioRoute(

@@ -119,6 +119,8 @@ def desktop_link(alias, file_path, activated=True, icon_path=False):
                 return False
     return True
 def mistika_link(alias, file_path, activated=True):
+    if not os.path.exists(mistika.tools_path):
+        return False
     file_path = os.path.normpath(file_path)
     new_config = ''
     stored = False
