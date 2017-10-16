@@ -9,6 +9,19 @@ import tempfile
 from xml.etree import ElementTree
 from distutils.version import LooseVersion
 
+def launched_by_mistika():
+    if os.getppid() == 1:
+        return True
+    else:
+        return False
+    process_names = ['mistika', 'mistika.bin']
+    parent = subprocess.Popen(['ps', '-o', 'cmd=', str(os.getppid())], stdout=subprocess.PIPE).communicate()[0].strip()
+    print 'Parent:', parent
+    if parent in process_names:
+        return True
+    else:
+        return False
+
 def get_mistika_bin_pids(parent_pid):
     cmd = ['pstree', '-p', str(parent_pid)]
     pstree = subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0]

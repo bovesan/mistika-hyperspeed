@@ -38,6 +38,12 @@ SETTINGS_FILENAME = 'settings.cfg'
 RENAME_MAGIC_WORDS = ['auto', 'rename']
 RENDER_DEFAULT_PATH = 'No render loaded'
 
+if len(sys.argv) > 1 and sys.argv[1] == 'Render': # Render aborted
+    sys.exit(1)
+
+if hyperspeed.mistika.launched_by_mistika():
+    hyperspeed.sockets.launch(hyperspeed.sockets.afterscripts, sys.argv)
+
 class Afterscript(object):
     render = None
     cmd = []
@@ -56,7 +62,6 @@ class Afterscript(object):
         self.init_settings()
         self.settings['output-pattern'] = default_output
         if len(sys.argv) >= 3 and sys.argv[1] == 'ok':
-            hyperspeed.sockets.launch(sys.argv)
             render_name = sys.argv[2]
             if '/' in render_name:
                 render_path = os.path.realpath(render_name)

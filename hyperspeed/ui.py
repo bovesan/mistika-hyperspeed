@@ -38,6 +38,22 @@ except ImportError as e:
     #     print e
     #     print 'Could not launch %s' % __file__
     #     sys.exit(1)
+def get_script_settings_path(script_path=False):
+    if not script_path:
+        script_path = os.path.realpath(sys.argv[0])
+    if not script_path.endswith('.cfg'): # Just to be sure we don't overwrite the script
+        script_path = os.path.splitext(script_path)[0]
+    if script_path.startswith(hyperspeed.folder):
+        settings_path = script_path.replace(hyperspeed.folder, hyperspeed.config_folder)+'.cfg'
+        settings_folder = os.path.dirname(settings_path)
+        if not os.path.isdir(settings_folder):
+            try:
+                os.makedirs(settings_folder)
+            except OSError as e:
+                settings_path = script_path+'.cfg'
+    else:
+        settings_path = script_path+'.cfg'
+    return settings_path
 
 class TerminalReplacement(gtk.Window):
     def __init__(self, method, inputs=False, default_folder=False):
@@ -224,19 +240,7 @@ class Window(gtk.Window):
             previous.undo()
             steps -= 1
     def settings_load(self):
-        script_path = os.path.realpath(sys.argv[0])
-        if not script_path.endswith('.cfg'): # Just to be sure we don't overwrite the script
-            script_path = os.path.splitext(script_path)[0]
-        if script_path.startswith(hyperspeed.folder):
-            self.settings_path = script_path.replace(hyperspeed.folder, hyperspeed.config_folder)+'.cfg'
-            settings_folder = os.path.dirname(self.settings_path)
-            if not os.path.isdir(settings_folder):
-                try:
-                    os.makedirs(settings_folder)
-                except OSError as e:
-                    self.settings_path = script_path+'.cfg'
-        else:
-            self.settings_path = script_path+'.cfg'
+        self.settings_path = get_script_settings_path()
         try:
             self.settings.update(json.loads(open(self.settings_path).read()))
         except IOError:

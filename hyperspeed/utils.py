@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
+import hyperspeed
 import platform
 import subprocess
 import os
+import sys
 
 def reveal_file(path):
     if isinstance(path, basestring): # Single path

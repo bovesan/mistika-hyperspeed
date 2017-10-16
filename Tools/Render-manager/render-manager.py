@@ -27,6 +27,7 @@ import hyperspeed.afterscript
 import hyperspeed.tools
 import hyperspeed.utils
 import hyperspeed.human
+import hyperspeed.sockets
 import hyperspeed.stack
 import hyperspeed.video
 from hyperspeed import mistika
@@ -41,6 +42,33 @@ TEMPORARY_RENDERS_FOLDER = '/Volumes/SAN3/Limbo'
 MAX_RENDER_ATTEMPTS = 3
 MAX_AFTERSCRIPT_ATTEMPTS = 1
 START_TIME = time.time()
+
+try:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(5.0)
+    s.connect(hyperspeed.sockets.afterscripts)
+    message = b'ping'
+    s.send(message)
+    data = s.recv(1024*1024)
+    s.close()
+    if data == message:
+        print('Another instance is already running')
+        sys.exit(0)
+except socket.error as e:
+    pass
+    # print e
+
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+try:
+    os.remove(hyperspeed.sockets.afterscripts)
+except OSError as e:
+    print e
+try:
+    # print 'Binding socket'
+    s.bind(hyperspeed.sockets.afterscripts)
+    # print 'Socket bound'
+except socket.error as e:
+    print e
 
 def process_suspended_status(pid):
     try:
@@ -59,7 +87,7 @@ class RenderItem(hyperspeed.stack.Render):
         super(RenderItem, self).__init__(path)
         self.global_settings = global_settings
         self.renders_dict = renders_dict
-        self.duration = hyperspeed.video.frames2tc(self.frames, self.fps)
+        self.duration = re.sub(':00$', 'sec', hyperspeed.video.frames2tc(self.frames, self.fps, strip=True))
         description = 'Resolution: %sx%s' % (self.resX, self.resY)
         description += '\nFps: %s' % self.fps
         description += '\nDuration: %s (%s frames)' % (self.duration, self.frames)
@@ -84,16 +112,18 @@ class RenderItem(hyperspeed.stack.Render):
             'afterscripts_failed'  : [],
             'status'               : 'Not started',
         }
-        self.settings_path = os.path.join(os.path.dirname(self.path), self.uid+'.cfg')
         self.settings_read()
         self.set_settings()
         self.prev_treestore_values = None
+    @property
+    def settings_path(self):
+        return os.path.splitext(self.path)[0]+'.cfg'
     def do_render(self, render_processes):
         cmd = [mistika.executable, '-r', self.path]
         log_path = self.path + '.log'
         # self.process = subprocess.Popen(cmd, stdout=logfile_h, stderr=subprocess.STDOUT)
         # total time: 4.298 sec, 0.029 sec per frame, 34.665 frames per sec
-        if json.loads(open(self.settings_path).read())['render_host']:
+        if json.loads(open(self.settings_path).read())['render_host'] != HOSTNAME:
             return
         print ' '.join(cmd)
         self.set_settings({
@@ -187,7 +217,7 @@ class RenderItem(hyperspeed.stack.Render):
         except AttributeError:
             pass
         if remove_render:
-            del self.renders_dict[self.uid]
+            del self.renders_dict[self.id]
     def set_settings(self, settings={}):
         self.settings.update(settings)
         json_dump = json.dumps(self.settings, indent=4, sort_keys=True)
@@ -215,7 +245,7 @@ class RenderItem(hyperspeed.stack.Render):
         self.prev_treestore_values = new_values
         row_path = self.row_reference.get_path()
         row_iter = treestore.get_iter(row_path)
-        print 'Updating tree row: %s' % self.uid
+        print 'Updating tree row: %s' % self.id
         try:
             treestore[row_path] = self.treestore_values
         except ValueError:
@@ -253,7 +283,7 @@ class RenderItem(hyperspeed.stack.Render):
     def treestore_values(self):
         if self.settings['stage'] == 'render':
             return [
-                self.uid, # Id
+                self.id, # Id
                 self.project, # Project
                 self.prettyname, # Name
                 self.render_progress * 100.0, # Progress
@@ -279,7 +309,7 @@ class RenderItem(hyperspeed.stack.Render):
             ]
         else:
             return [
-                self.uid, # Id
+                self.id, # Id
                 self.project, # Project
                 self.prettyname, # Name
                 self.afterscript_progress * 100.0, # Progress
@@ -328,7 +358,6 @@ class RendersDelete(object):
         for f_path in reversed(self.files):
             os.renames(self.trash_path(f_path), f_path)
             # print '%s -> %s' % (self.trash_path(f_path), f_path)
-
 class RenderManagerWindow(hyperspeed.ui.Window):
     def __init__(self):
         super(RenderManagerWindow, self).__init__(
@@ -379,6 +408,32 @@ class RenderManagerWindow(hyperspeed.ui.Window):
         gobject.idle_add(self.bring_to_front)
         gobject.timeout_add(1000, self.gui_periodical_updates)
         gobject.idle_add(self.gui_batch_folders_setup)
+        self.launch_thread(self.socket_listen)
+    def socket_listen(self):
+        try:
+            self.subprocesses
+        except AttributeError:
+            self.subprocesses = []
+        s.listen(1)
+        while s and not self.quit:
+            conn, addr = s.accept()
+            # data = conn.recv(1024*1024)
+            try:
+                data = conn.recv(1024)
+            except IOError as e:
+                print e
+                continue
+            if not data: break
+            # conn.send(data)
+            try:
+                for k, v in json.loads(data).iteritems():
+                    if k == 'launch':
+                        print 'Launch: %s' % ' '.join(v)
+                        self.subprocesses.append(subprocess.Popen(v))
+            except ValueError as e:
+                gobject.idle_add(self.bring_to_front)
+            conn.send(data)
+        conn.close()
     def on_quit(self, widget):
         for pid in self.render_processes:
             try:
@@ -455,7 +510,6 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             if not os.path.isdir(queue_folder):
                 try:
                     os.makedirs(queue_folder)
-                    open(os.path.join(queue_folder, 'priority.cfg'), 'w').write('1\n')
                 except OSError as e:
                     hyperspeed.ui.dialog_error(self,
                         'Could not create folder: %s\n%s' % (batchpath, e))
@@ -708,7 +762,6 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         treeview.set_tooltip_column(8)
         treeview.set_rules_hint(True)
         treeview.set_model(treestore)
-        treeview.expand_all()
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(treeview)
@@ -739,7 +792,6 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         if len(row_paths) == 1:
             newi = gtk.ImageMenuItem(gtk.STOCK_INFO)
             newi.connect("activate", self.on_render_info)
-            newi.show()
             menu.append(newi)
         enqueue = False
         reset = False
@@ -758,19 +810,16 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             newi = gtk.ImageMenuItem(gtk.STOCK_MEDIA_PLAY)
             newi.set_label('Enqueue')
             newi.connect("activate", self.on_render_enqueue)
-            newi.show()
             menu.append(newi)
         if reset:
             newi = gtk.ImageMenuItem(gtk.STOCK_UNDO)
             newi.set_label('Reset')
             newi.connect("activate", self.on_render_reset)
-            newi.show()
             menu.append(newi)
         if abort:
             newi = gtk.ImageMenuItem(gtk.STOCK_CANCEL)
             newi.set_label('Abort')
             newi.connect("activate", self.on_render_abort)
-            newi.show()
             menu.append(newi)
         newi = gtk.ImageMenuItem(gtk.STOCK_GO_FORWARD)
         newi.set_label('Afterscript')
@@ -788,14 +837,13 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             )
             submenu.append(subi)
         newi.set_submenu(submenu)
-        newi.show()
         menu.append(newi)
         newi = gtk.ImageMenuItem(gtk.STOCK_DELETE)
         newi.set_label('Remove')
         newi.connect("activate", self.on_renders_delete, renders)
-        newi.show()
         menu.append(newi)
         menu.set_title('Popup')
+        menu.show_all()
         return menu
     def afterscript_item_menu(self):
         selection = self.afterscript_treeview.get_selection()
@@ -804,10 +852,11 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         menu = gtk.Menu()
         if len(row_paths) == 1:
             newi = gtk.ImageMenuItem(gtk.STOCK_INFO)
-            newi.connect("activate", self.on_afterscript_info)
+            newi.connect("activate", self.on_render_info)
             newi.show()
             menu.append(newi)
         enqueue = False
+        reset_render = True
         reset = False
         abort = False
         renders = []
@@ -826,9 +875,15 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             newi.connect("activate", self.on_afterscript_enqueue)
             newi.show()
             menu.append(newi)
+        if reset_render:
+            newi = gtk.ImageMenuItem(gtk.STOCK_UNDO)
+            newi.set_label('Reset render')
+            newi.connect("activate", self.on_render_reset, renders)
+            newi.show()
+            menu.append(newi)
         if reset:
             newi = gtk.ImageMenuItem(gtk.STOCK_UNDO)
-            newi.set_label('Reset')
+            newi.set_label('Reset afterscript')
             newi.connect("activate", self.on_afterscript_reset)
             newi.show()
             menu.append(newi)
@@ -883,7 +938,6 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         if not os.path.isdir(new_folder):
             try:
                 os.makedirs(new_folder)
-                open(os.path.join(queue_folder, 'priority.cfg'), 'w').write('1\n')
             except OSError as e:
                 print e
                 hyperspeed.ui.dialog_error(self, str(e))
@@ -895,7 +949,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
             shutil.move(render.settings_path, new_settings_path)
         except IOError as e:
             errors.append(str(e))
-        for current_path in glob.glob(os.path.join(current_folder, render.uid+'.*')):
+        for current_path in glob.glob(os.path.join(re.sub('\.rnd$', '.*', render.path))):
             new_path = current_path.replace(
             current_folder, new_folder, 1)
             try:
@@ -1008,9 +1062,9 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         checkButton = self.process_others_afterscripts_checkbox = gtk.CheckButton('Process jobs for other hosts')
         checkButton.set_property("active", False)
         toolbar.pack_start(checkButton, False, False, 5)
-        checkButton = self.autoqueue_checkbox = gtk.CheckButton('Autoqueue new jobs from this machine')
-        checkButton.set_property("active", False)
-        toolbar.pack_start(checkButton, False, False, 5)
+        # checkButton = self.autoqueue_checkbox = gtk.CheckButton('Autoqueue new jobs from this machine')
+        # checkButton.set_property("active", False)
+        # toolbar.pack_start(checkButton, False, False, 5)
         vbox.pack_start(toolbar, False, False, 2)
         afterscriptsBox = gtk.HBox(False, 5)
         column = gtk.TreeViewColumn('Project', gtk.CellRendererText(), text=1)
@@ -1051,17 +1105,6 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         column.set_resizable(True)
         column.set_expand(False)
         treeview.append_column(column)
-        cell = gtk.CellRendererText()
-        column = gtk.TreeViewColumn('Status')
-        column.pack_start(cell, False)
-        column.set_attributes(cell, text=5, foreground=14, visible=15)
-        cell = gtk.CellRendererProgress()
-        column.pack_start(cell, True)
-        column.set_attributes(cell, value=3, text=4, visible=10, pulse=23)
-        column.set_resizable(True)
-        column.set_expand(True)
-        treeview.append_column(column)
-
         cell = gtk.CellRendererCombo()
         cell.set_property("editable", True)
         cell.set_property("has-entry", False)
@@ -1075,10 +1118,19 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         column.set_resizable(True)
         column.set_expand(True)
         treeview.append_column(column)
+        cell = gtk.CellRendererText()
+        column = gtk.TreeViewColumn('Status')
+        column.pack_start(cell, False)
+        column.set_attributes(cell, text=5, foreground=14, visible=15)
+        cell = gtk.CellRendererProgress()
+        column.pack_start(cell, True)
+        column.set_attributes(cell, value=3, text=4, visible=10, pulse=23)
+        column.set_resizable(True)
+        column.set_expand(True)
+        treeview.append_column(column)
         treeview.set_tooltip_column(8)
         treeview.set_rules_hint(True)
         treeview.set_model(treestore)
-        treeview.expand_all()
         scrolled_window = gtk.ScrolledWindow()
         scrolled_window.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(treeview)
@@ -1101,46 +1153,102 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         # self.launch_thread(self.io_populate_afterscript_queue, kwargs={ 'first_run' : True })
         vbox.pack_start(afterscriptsBox, True, True, 5)
         return vbox
+    def try_rmdir(self, file_path):
+        try:
+            os.rmdir(file_path)
+        except OSError:
+            pass
+    def try_remove(self, file_path):
+        try:
+            os.remove(file_path)
+        except OSError:
+            pass
+    def delete_orphaned(self, file_path):
+        # Should not be done imidiately because others nodes might be operating.
+        # gobject.timeout_add(5000, self.delete_orphaned, file_path)
+        file_id, file_ext = os.path.splitext(file_path)
+        rnd_path = file_id+'.rnd'
+        if not os.path.exists(rnd_path):
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
     def io_parse_queue_folder(self, queue_folder, private=False):
         renders = self.renders
         hostname = socket.gethostname()
         for queue_name in os.listdir(queue_folder):
             queue_path = os.path.join(queue_folder, queue_name)
+            queue_config_path = os.path.join(queue_path, 'priority.cfg')
+            if not os.path.exists(queue_config_path):
+                try:
+                    open(queue_config_path, 'w').write('1\n')
+                except:
+                    pass
             try:
-                for file_name in os.listdir(queue_path):
-                    file_path = os.path.join(queue_path, file_name)
-                    file_id, file_ext = os.path.splitext(file_path)
-                    if file_ext != '.rnd':
-                        continue
-                    render = RenderItem(file_path, self.settings, renders)
-                    id_path = os.path.join(os.path.dirname(render.path), render.uid+'.rnd')
-                    if not os.path.basename(render.path) == id_path:
-                        os.rename(render.path, id_path)
-                    if render.settings['afterscript_host'] == HOSTNAME:
+                for root, dir_names, file_names in os.walk(queue_path, topdown=True):
+                    if file_names == dir_names == []:
+                        gobject.timeout_add(5000, self.try_rmdir, root)
+                    # for dir_name in dir_names:
+                    #     if dir_name.startswith('.'):
+                    #         dir_names.remove(dir_name)
+                    for file_name in file_names:
+                        file_path = os.path.join(root, file_name)
+                        file_id, file_ext = os.path.splitext(file_path)
+                        if '/.trash/' in file_path:
+                            # Delete if still there in 60 seconds
+                            gobject.timeout_add(60*1000, self.try_remove, file_path)
+                            continue
+                        if file_name == 'priority.cfg':
+                            continue
+                        if file_ext != '.rnd':
+                            rnd_path = file_id+'.rnd'
+                            if not os.path.exists(rnd_path):
+                                gobject.timeout_add(5000, self.delete_orphaned, file_path)
+                            continue
+                        render = RenderItem(file_path, self.settings, renders)
+                        if not render.path.endswith(render.id+'.rnd'):
+                            id_path = os.path.join(os.path.dirname(render.path), render.id+'.rnd')
+                            os.renames(render.path, id_path)
                         try:
-                            os.kill(render.settings['afterscript_pid'], 0)
-                        except (OSError, KeyError) as e:
-                            render.set_settings({
-                                'afterscript_host' : None,
-                            })
-                    if private:
-                        if not queue_name.lower().startswith('private'):
-                            shared_file_path = file_path.replace(
-                                mistika.settings['BATCHPATH'], self.settings['shared_queues_folder'], 1)
+                            if render.settings['render_host'] == None:
+                                if not render.output_video.complete:
+                                    render.set_settings({
+                                        'stage' : 'render',
+                                        'render_host' : None,
+                                        'render_frames': 0,
+                                        'afterscript_host' : None,
+                                        'afterscript_frames' : 0,
+                                        })
+                                else:
+                                    pass
+                                    # print render.output_video.path
+                        except AttributeError as e:
+                            pass
+                        if render.settings['afterscript_host'] == HOSTNAME:
                             try:
-                                shutil.move(file_path, shared_file_path)
-                                print 'Moved %s to %s' % (file_path, shared_file_path)
-                                continue
-                            except IOError as e:
-                                print e
-                    file_size = os.path.getsize(file_path)
-                    if not render.uid in renders:
-                        renders[render.uid] = render
-                    else:
-                        render = renders[render.uid]
-                    render.private = private
-                    render.path = file_path
-                    render.settings_read()
+                                os.kill(render.settings['afterscript_pid'], 0)
+                            except (OSError, KeyError) as e:
+                                render.set_settings({
+                                    'afterscript_host' : None,
+                                })
+                        if private:
+                            if not queue_name.lower().startswith('private'):
+                                shared_file_path = file_path.replace(
+                                    mistika.settings['BATCHPATH'], self.settings['shared_queues_folder'], 1)
+                                try:
+                                    shutil.move(file_path, shared_file_path)
+                                    print 'Moved %s to %s' % (file_path, shared_file_path)
+                                    continue
+                                except IOError as e:
+                                    print e
+                        file_size = os.path.getsize(file_path)
+                        if not render.id in renders:
+                            renders[render.id] = render
+                        else:
+                            render = renders[render.id]
+                        render.private = private
+                        render.path = file_path
+                        render.settings_read()
             except OSError as e:
                 pass
     def io_populate_render_queue(self, first_run=False):
@@ -1229,16 +1337,15 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         e.send_event = True
         e.in_ = False
         self.comboEditable.emit('focus-out-event', e)
-    def on_render_info(self, widget, *ignore):
-        treestore = self.render_treestore
-        treepath = self.render_queue_selected_path
-        path = treestore[treepath][0]
-        render = self.renders[path]
-        message = render.uid
-        message += '\nPrivate: %s' % render.private
-        for k, v in render.settings.iteritems():
-            message += '\n%s: %s' % (k, v)
-        self.gui_info_dialog(message)
+    def on_render_info(self, widget, renders=[]):
+        if renders == []:
+            renders = self.get_selected_renders()
+        for render in renders[:1]:
+            message = render.id
+            message += '\nPrivate: %s' % render.private
+            for k, v in render.settings.iteritems():
+                message += '\n%s: %s' % (k, v)
+            self.gui_info_dialog(message)
     def on_renders_delete(self, widget=False, renders=[]):
         if renders == []:
             renders = self.get_selected_renders()
@@ -1247,47 +1354,31 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                 if dependency.path.startswith(TEMPORARY_RENDERS_FOLDER):
                     print 'Delete intermediate render file: %s' % dependency.path
             self.history.append(RendersDelete(renders))
-    def on_render_reset(self, widget, *ignore):
-        selection = self.render_treeview.get_selection()
-        (treestore, row_paths) = selection.get_selected_rows()
-        row_paths = sorted(row_paths)
-        for row_path in row_paths:
-            render = self.renders[treestore[row_path][0]]
+    def on_render_reset(self, widget, renders=[]):
+        if renders == []:
+            renders = self.get_selected_renders()
+        for render in renders:
             render.set_settings({
                 'render_queued': False,
                 'render_frames': 0,
                 'render_host'  : None,
+                'stage'  : 'render',
                 })
             render.is_rendering = False
-    def on_render_enqueue(self, widget, *ignore):
-        selection = self.render_treeview.get_selection()
-        (treestore, row_paths) = selection.get_selected_rows()
-        row_paths = sorted(row_paths)
-        for row_path in row_paths:
-            render = self.renders[treestore[row_path][0]]
-            print repr(render)
+    def on_render_enqueue(self, widget, renders=[]):
+        if renders == []:
+            renders = self.get_selected_renders()
+        for render in renders:
             render.set_settings({
                 'render_queued': True,
                 })
-    def on_render_abort(self, widget, *ignore):
-        selection = self.render_treeview.get_selection()
-        (treestore, row_paths) = selection.get_selected_rows()
-        row_paths = sorted(row_paths)
-        for row_path in row_paths:
-            render = self.renders[treestore[row_path][0]]
+    def on_render_abort(self, widget, renders=[]):
+        if renders == []:
+            renders = self.get_selected_renders()
+        for render in renders:
             render.set_settings({
                 'render_queued': False,
                 })
-    def on_afterscript_info(self, widget, *ignore):
-        selection = self.afterscript_treeview.get_selection()
-        (treestore, row_paths) = selection.get_selected_rows()
-        row_paths = sorted(row_paths)
-        render = self.renders[treestore[row_paths[0]][0]]
-        message = render.uid
-        message += '\nPrivate: %s' % render.private
-        for k, v in render.settings.iteritems():
-            message += '\n%s: %s' % (k, v)
-        self.gui_info_dialog(message)
     def on_afterscript_reset(self, widget, *ignore):
         selection = self.afterscript_treeview.get_selection()
         (treestore, row_paths) = selection.get_selected_rows()
@@ -1347,7 +1438,7 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                     print '%s is already rendering on %s' % (render.name, render.settings['render_host'])
                     return
             render.set_settings({
-                'status': 'Rendering',
+                'status': 'Render starting',
                 'render_host': HOSTNAME,
                 })
             self.render_threads.append(

@@ -551,7 +551,7 @@ class Stack(object):
         return (line, dependency)
 
 class Render(Stack):
-
+    output_stack = None
     output_video = None
     output_proxy = None
     output_audio = None
@@ -561,10 +561,7 @@ class Render(Stack):
         super(Render, self).__init__(path)
         self.name = os.path.splitext(os.path.basename(self.path))[0]
         self.output_paths = []
-        if self.name.startswith(self.project):
-            self.uid = self.name
-        else:
-            self.uid = self.project+'_'+self.name
+        self.id = self.project+'/'+self.name
         if self.exists:
             self.clp_path = 'clp'.join(self.path.rsplit('rnd', 1))
             if os.path.exists(self.clp_path):
