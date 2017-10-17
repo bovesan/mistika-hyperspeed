@@ -83,6 +83,7 @@ class RenderItem(hyperspeed.stack.Render):
     owner = 'Unknown'
     gui_freeze_render = None
     renders_dict = None
+    private = False
     def __init__(self, path, global_settings, renders_dict):
         super(RenderItem, self).__init__(path)
         self.global_settings = global_settings
@@ -198,7 +199,7 @@ class RenderItem(hyperspeed.stack.Render):
                     ],
                     'is_rendering' : False,
                 })
-        # logfile_h.flush()
+            log.flush()
     def move_to_stage(self, stage):
         # gobject.idle_add(self.gui_remove)
         # self.treestore = None
@@ -365,6 +366,7 @@ class RenderManagerWindow(hyperspeed.ui.Window):
             settings_default = {
                 'shared_queues_folder' : '',
                 'render_process' : True,
+                'render_autoqueue' : True,
                 'afterscript_process' : True,
             }
         )
@@ -477,7 +479,9 @@ class RenderManagerWindow(hyperspeed.ui.Window):
                 if not setup:
                     return
                 if self.settings['shared_queues_folder'] == '':
-                    self.settings['shared_queues_folder'] = mistika.settings['BATCHPATH']
+                    self.set_settings({
+                        'shared_queues_folder' : mistika.settings['BATCHPATH']
+                        })
                     self.shared_queue_entry.set_text(mistika.settings['BATCHPATH'])
                 if self.set_mistika_batchpath(private_queue_folder):
                     self.batch_queue_entry.set_text(private_queue_folder)
@@ -687,10 +691,10 @@ class RenderManagerWindow(hyperspeed.ui.Window):
         checkButton.set_property("active", False)
         toolbar.pack_start(checkButton, False, False, 5)
         checkButton = self.autoqueue_checkbox = gtk.CheckButton('Autoqueue new jobs from this machine')
-        checkButton.set_property("active", False)
+        checkButton.set_property("active", settings['render_autoqueue'])
+        checkButton.connect("toggled", self.on_settings_change, 'render_autoqueue')
         toolbar.pack_start(checkButton, False, False, 5)
         button = gtk.CheckButton('Autostart jobs from this machine')
-        checkButton.set_property("active", False)
         toolbar.pack_start(checkButton, False, False, 5)
         vbox.pack_start(toolbar, False, False, 2)
         afterscriptsBox = gtk.HBox(False, 5)
@@ -1175,7 +1179,7 @@ class RenderManagerWindow(hyperspeed.ui.Window):
                 os.remove(file_path)
             except OSError:
                 pass
-    def io_parse_queue_folder(self, queue_folder, private=False):
+    def io_parse_queue_folder(self, queue_folder, local=False):
         renders = self.renders
         hostname = socket.gethostname()
         for queue_name in os.listdir(queue_folder):
@@ -1233,35 +1237,52 @@ class RenderManagerWindow(hyperspeed.ui.Window):
                                 render.set_settings({
                                     'afterscript_host' : None,
                                 })
-                        if private:
+                        if local:
+                            if self.autoqueue_checkbox.get_active():
+                                render.set_settings({
+                                    'render_queued' : True,
+                                })
                             if not queue_name.lower().startswith('private'):
-                                shared_file_path = file_path.replace(
+                                shared_file_path = render.path.replace(
                                     mistika.settings['BATCHPATH'], self.settings['shared_queues_folder'], 1)
                                 try:
-                                    folder = os.path.dirname(shared_file_path)
-                                    if not os.path.exists(folder):
+                                    new_folder = os.path.dirname(shared_file_path)
+                                    if not os.path.exists(new_folder):
                                         try:
-                                            os.makedirs(folder)
+                                            os.makedirs(new_folder)
                                         except OSError as e:
                                             print e
                                             continue
-                                    shutil.move(file_path, shared_file_path)
-                                    print 'Moved %s to %s' % (file_path, shared_file_path)
+                                    render_files = glob.glob(re.sub('rnd$', '*', render.path))
+                                    try:
+                                        render_files.remove(render.settings_path)
+                                        render_files.insert(0, render.settings_path)
+                                    except ValueError:
+                                        pass # Render had no settings
+                                    for f_path in render_files:
+                                        new_path = os.path.join(new_folder, os.path.basename(f_path))
+                                        try:
+                                            shutil.move(f_path, new_path)
+                                            print 'Moved %s to %s' % (f_path, new_path)
+                                        except shutil.Error as e:
+                                            print e
+                                        # print '%s -> %s' % (f_path, self.trash_path(f_path))
                                     continue
                                 except IOError as e:
                                     print e
+                            else:
+                                render.private = True
                         file_size = os.path.getsize(file_path)
                         if not render.id in renders:
                             renders[render.id] = render
                         else:
                             render = renders[render.id]
-                        render.private = private
                         render.path = file_path
                         render.settings_read()
             except OSError as e:
                 pass
     def io_populate_render_queue(self, first_run=False):
-        self.io_parse_queue_folder(mistika.settings['BATCHPATH'], private=True)
+        self.io_parse_queue_folder(mistika.settings['BATCHPATH'], local=True)
         self.io_parse_queue_folder(self.settings['shared_queues_folder'])
         renders = self.renders
         for render_id in renders.keys():
