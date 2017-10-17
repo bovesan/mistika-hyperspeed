@@ -12,8 +12,11 @@ import re
 
 import hyperspeed.utils
 
+RENAME_MAGIC_WORDS = ['auto', 'rename']
+
 def escape_par(string):
     return string.replace('(', '\(').replace(')', '\)')
+
 class DependencyType(object):
     def __init__(self, id, description):
         self.id = id
@@ -249,12 +252,6 @@ class Stack(object):
         except IOError as e:
             print 'Could not open ' + self.path
             raise e
-    @property
-    def prettyname(self):
-        if self.groupname:
-            return self.groupname
-        else:
-            return re.sub('^%s\W*' % self.project, '', self.name)
     @property
     def groupname(self):
         try:
@@ -578,6 +575,15 @@ class Render(Stack):
                         self.output_paths.append(dependency.path)
             else:
                 self.output_stack = None
+
+    @property
+    def prettyname(self):
+        if self.groupname:
+            for magic_word in RENAME_MAGIC_WORDS:
+                if magic_word in self.name:
+                    return self.groupname
+        return re.sub('^%s\W*' % self.project, '', self.name)
+
     @property
     def primary_output(self):
         if self.output_video != None:
