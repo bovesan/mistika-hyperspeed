@@ -459,27 +459,29 @@ class RenderManagerWindow(hyperspeed.ui.Window):
         return True
     def gui_batch_folders_setup(self):
         try:
-            batchpath_fstype = subprocess.Popen(['df', '--output=fstype', mistika.settings['BATCHPATH']],
+            batchpath_fs = subprocess.Popen(['df', '-T', mistika.settings['BATCHPATH']],
             stdout=subprocess.PIPE).communicate()[0].splitlines()[-1]
         except IndexError:
             return
-        if batchpath_fstype in ['nfs', 'cifs', 'cvfs']:
-            private_queue_folder = os.path.expanduser('~/BATCH_QUEUES')
-            setup = hyperspeed.ui.dialog_yesno(
-                parent=self,
-                question=
-'''It looks like the Mistika batch queue folder is on a shared file system.
-To separate private and public jobs, the batch queue folder must be unique for each computer.
-Any public jobs will be moved to a shared location.
-
-Change local batch queue folder to %s?''' % private_queue_folder)
-            if not setup:
-                return
-            if self.settings['shared_queues_folder'] == '':
-                self.settings['shared_queues_folder'] = mistika.settings['BATCHPATH']
-                self.shared_queue_entry.set_text(mistika.settings['BATCHPATH'])
-            if self.set_mistika_batchpath(private_queue_folder):
-                self.batch_queue_entry.set_text(private_queue_folder)
+        for fstype in ['nfs', 'cifs', 'cvfs']:
+            if fstype in batchpath_fs.split():
+                private_queue_folder = os.path.expanduser('~/BATCH_QUEUES')
+                question =  "It looks like the Mistika batch queue folder is on a shared file system."
+                question += "\nTo separate private and public jobs, the batch queue folder must be unique for each computer."
+                question += "\nAny public jobs will be moved to a shared location."
+                question += "\n\nChange local batch queue folder to %s?" % private_queue_folder
+                setup = hyperspeed.ui.dialog_yesno(
+                    parent=self,
+                    question = question
+                )
+                if not setup:
+                    return
+                if self.settings['shared_queues_folder'] == '':
+                    self.settings['shared_queues_folder'] = mistika.settings['BATCHPATH']
+                    self.shared_queue_entry.set_text(mistika.settings['BATCHPATH'])
+                if self.set_mistika_batchpath(private_queue_folder):
+                    self.batch_queue_entry.set_text(private_queue_folder)
+                break
     def get_selected_treeview(self):
         treeviews = [
             self.render_treeview,
@@ -1236,6 +1238,13 @@ Change local batch queue folder to %s?''' % private_queue_folder)
                                 shared_file_path = file_path.replace(
                                     mistika.settings['BATCHPATH'], self.settings['shared_queues_folder'], 1)
                                 try:
+                                    folder = os.path.dirname(shared_file_path)
+                                    if not os.path.exists(folder):
+                                        try:
+                                            os.makedirs(folder)
+                                        except OSError as e:
+                                            print e
+                                            continue
                                     shutil.move(file_path, shared_file_path)
                                     print 'Moved %s to %s' % (file_path, shared_file_path)
                                     continue
@@ -1350,9 +1359,10 @@ Change local batch queue folder to %s?''' % private_queue_folder)
         if renders == []:
             renders = self.get_selected_renders()
         for render in renders:
-            for dependency in render.output_stack.dependencies:
-                if dependency.path.startswith(TEMPORARY_RENDERS_FOLDER):
-                    print 'Delete intermediate render file: %s' % dependency.path
+            if render.output_stack:
+                for dependency in render.output_stack.dependencies:
+                    if dependency.path.startswith(TEMPORARY_RENDERS_FOLDER):
+                        print 'Delete intermediate render file? %s' % dependency.path
             self.history.append(RendersDelete(renders))
     def on_render_reset(self, widget, renders=[]):
         if renders == []:
