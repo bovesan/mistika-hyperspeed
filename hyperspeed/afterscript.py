@@ -344,7 +344,9 @@ class AfterscriptFfmpeg(Afterscript):
             dialog.destroy()
             return
     def on_output_pick(self, widget):
-        path = self.output_entry.get_text()
+        args = shlex.split(self.cmd_entry.get_text())
+        last_arg = args[-1]
+        self.output_path = last_arg
         dialog = gtk.FileChooserDialog(
             parent=self.window,
             title="Export to ...",
@@ -352,10 +354,10 @@ class AfterscriptFfmpeg(Afterscript):
             buttons=(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL, gtk.STOCK_SAVE, gtk.RESPONSE_OK),
             backend=None
         )
-        dialog.set_filename(path)
+        dialog.set_filename(self.output_path)
         filter_mov = gtk.FileFilter()
-        filter_mov.set_name("QuickTime video")
-        filter_mov.add_pattern("*.mov")
+        filter_mov.set_name("Default extension")
+        filter_mov.add_pattern("*"+os.path.splitext(self.output_path)[1])
         dialog.set_filter(filter_mov)
         response = dialog.run()
         if response == gtk.RESPONSE_OK:
