@@ -170,7 +170,7 @@ class Window(gtk.Window):
             self.set_default_size(monitor.width-200, monitor.height-200)
         self.connect("key-press-event",self.on_key_press_event)
         if not icon_path:
-            icon_path = 'res/img/hyperspeed_1024px.png'
+            icon_path = os.path.join(hyperspeed.folder, 'res/img/hyperspeed_1024px.png')
         self.set_icon_list(
             gtk.gdk.pixbuf_new_from_file_at_size(icon_path, 16, 16),
             gtk.gdk.pixbuf_new_from_file_at_size(icon_path, 32, 32),
