@@ -114,7 +114,7 @@ class RenderItem(hyperspeed.stack.Render):
             'status'               : 'Not started',
         }
         self.settings_read()
-        self.set_settings()
+        # self.set_settings()
         self.prev_treestore_values = None
     @property
     def settings_path(self):
@@ -1215,6 +1215,12 @@ class RenderManagerWindow(hyperspeed.ui.Window):
                         if not render.path.endswith(render.id+'.rnd'):
                             id_path = os.path.join(os.path.dirname(render.path), render.id+'.rnd')
                             os.renames(render.path, id_path)
+                            continue
+                        if not render.id in renders:
+                            renders[render.id] = render
+                            render.set_settings()
+                        else:
+                            render = renders[render.id]
                         try:
                             if render.settings['render_host'] == None:
                                 if not render.output_video.complete:
@@ -1238,10 +1244,6 @@ class RenderManagerWindow(hyperspeed.ui.Window):
                                     'afterscript_host' : None,
                                 })
                         if local:
-                            if self.autoqueue_checkbox.get_active():
-                                render.set_settings({
-                                    'render_queued' : True,
-                                })
                             if not queue_name.lower().startswith('private'):
                                 shared_file_path = render.path.replace(
                                     mistika.settings['BATCHPATH'], self.settings['shared_queues_folder'], 1)
@@ -1272,11 +1274,9 @@ class RenderManagerWindow(hyperspeed.ui.Window):
                                     print e
                             else:
                                 render.private = True
+                            if not render.id in renders:
+                                init_settings['render_queued'] = self.autoqueue_checkbox.get_active()
                         file_size = os.path.getsize(file_path)
-                        if not render.id in renders:
-                            renders[render.id] = render
-                        else:
-                            render = renders[render.id]
                         render.path = file_path
                         render.settings_read()
             except OSError as e:
