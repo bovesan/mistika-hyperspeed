@@ -1317,11 +1317,13 @@ class RenderManagerWindow(hyperspeed.ui.Window):
                 row_path = treestore.get_path(row_iter)
                 render.row_reference = gtk.TreeRowReference(treestore, row_path)
                 render.treestore = treestore
+                if not render.treeview.row_expanded(parent_row_path):
+                    render.treeview.expand_row(parent_row_path, True)
             else:
                 render.gui_update()
-        if expand:
-            self.render_treeview.expand_all()
-            self.afterscript_treeview.expand_all()
+        # if expand:
+        #     self.render_treeview.expand_all()
+        #     self.afterscript_treeview.expand_all()
     def on_edit_afterscript(self, cell, widget, path, value, treestore):
         file_id = treestore[path][0]
         render = self.renders[file_id]
