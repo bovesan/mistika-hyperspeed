@@ -119,9 +119,12 @@ class RenderItem(hyperspeed.stack.Render):
     @property
     def settings_path(self):
         return os.path.splitext(self.path)[0]+'.cfg'
+    @property
+    def log_path(self):
+        return os.path.splitext(self.path)[0]+'.log'
     def do_render(self, render_processes):
         cmd = [mistika.executable, '-r', self.path]
-        log_path = self.path + '.log'
+        log_path = self.log_path
         # self.process = subprocess.Popen(cmd, stdout=logfile_h, stderr=subprocess.STDOUT)
         # total time: 4.298 sec, 0.029 sec per frame, 34.665 frames per sec
         if json.loads(open(self.settings_path).read())['render_host'] != HOSTNAME:
@@ -1496,7 +1499,7 @@ class RenderManagerWindow(hyperspeed.ui.Window):
             '--autoquit',
         ]
         print ' '.join(cmd)
-        log_path = render.path + '.log'
+        log_path = render.log_path
         # self.process = subprocess.Popen(cmd, stdout=logfile_h, stderr=subprocess.STDOUT)
         # total time: 4.298 sec, 0.029 sec per frame, 34.665 frames per sec
         if json.loads(open(render.settings_path).read())['afterscript_host']:
