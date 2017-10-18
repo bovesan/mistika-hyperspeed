@@ -119,9 +119,12 @@ class RenderItem(hyperspeed.stack.Render):
     @property
     def settings_path(self):
         return os.path.splitext(self.path)[0]+'.cfg'
+    @property
+    def log_path(self):
+        return os.path.splitext(self.path)[0]+'.log'
     def do_render(self, render_processes):
         cmd = [mistika.executable, '-r', self.path]
-        log_path = self.path + '.log'
+        log_path = self.log_path
         # self.process = subprocess.Popen(cmd, stdout=logfile_h, stderr=subprocess.STDOUT)
         # total time: 4.298 sec, 0.029 sec per frame, 34.665 frames per sec
         if json.loads(open(self.settings_path).read())['render_host'] != HOSTNAME:
@@ -1161,10 +1164,18 @@ class RenderManagerWindow(hyperspeed.ui.Window):
         return vbox
     def try_rmdir(self, file_path):
         try:
+            self.files_to_be_deleted.remove(file_path)
+        except ValueError:
+            return
+        try:
             os.rmdir(file_path)
         except OSError:
             pass
     def try_remove(self, file_path):
+        try:
+            self.files_to_be_deleted.remove(file_path)
+        except ValueError:
+            return
         try:
             os.remove(file_path)
         except OSError:
@@ -1172,6 +1183,10 @@ class RenderManagerWindow(hyperspeed.ui.Window):
     def delete_orphaned(self, file_path):
         # Should not be done imidiately because others nodes might be operating.
         # gobject.timeout_add(5000, self.delete_orphaned, file_path)
+        try:
+            self.files_to_be_deleted.remove(file_path)
+        except ValueError:
+            return
         file_id, file_ext = os.path.splitext(file_path)
         rnd_path = file_id+'.rnd'
         if not os.path.exists(rnd_path):
@@ -1180,6 +1195,11 @@ class RenderManagerWindow(hyperspeed.ui.Window):
             except OSError:
                 pass
     def io_parse_queue_folder(self, queue_folder, local=False):
+        try:
+            self.files_to_be_deleted
+        except AttributeError:
+            self.files_to_be_deleted = []
+        files_to_be_deleted = self.files_to_be_deleted
         renders = self.renders
         hostname = socket.gethostname()
         for queue_name in os.listdir(queue_folder):
@@ -1193,23 +1213,26 @@ class RenderManagerWindow(hyperspeed.ui.Window):
             try:
                 for root, dir_names, file_names in os.walk(queue_path, topdown=True):
                     if file_names == dir_names == []:
-                        gobject.timeout_add(5000, self.try_rmdir, root)
-                    # for dir_name in dir_names:
-                    #     if dir_name.startswith('.'):
-                    #         dir_names.remove(dir_name)
+                        if not file_path in files_to_be_deleted:
+                            files_to_be_deleted.append(file_path)
+                            gobject.timeout_add(5000, self.try_rmdir, root)
                     for file_name in file_names:
                         file_path = os.path.join(root, file_name)
                         file_id, file_ext = os.path.splitext(file_path)
                         if '/.trash/' in file_path:
                             # Delete if still there in 60 seconds
-                            gobject.timeout_add(60*1000, self.try_remove, file_path)
+                            if not file_path in files_to_be_deleted:
+                                files_to_be_deleted.append(file_path)
+                                gobject.timeout_add(60*1000, self.try_remove, file_path)
                             continue
                         if file_name == 'priority.cfg':
                             continue
                         if file_ext != '.rnd':
                             rnd_path = file_id+'.rnd'
                             if not os.path.exists(rnd_path):
-                                gobject.timeout_add(5000, self.delete_orphaned, file_path)
+                                if not file_path in files_to_be_deleted:
+                                    files_to_be_deleted.append(file_path)
+                                    gobject.timeout_add(5000, self.delete_orphaned, file_path)
                             continue
                         render = RenderItem(file_path, self.settings, renders)
                         if not render.path.endswith(render.id+'.rnd'):
@@ -1498,7 +1521,7 @@ class RenderManagerWindow(hyperspeed.ui.Window):
             '--autoquit',
         ]
         print ' '.join(cmd)
-        log_path = render.path + '.log'
+        log_path = render.log_path
         # self.process = subprocess.Popen(cmd, stdout=logfile_h, stderr=subprocess.STDOUT)
         # total time: 4.298 sec, 0.029 sec per frame, 34.665 frames per sec
         if json.loads(open(render.settings_path).read())['afterscript_host']:
