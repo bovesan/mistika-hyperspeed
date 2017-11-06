@@ -7,7 +7,7 @@ import os
 import sys
 
 path         = os.path.join(hyperspeed.config_folder, 'main.socket')
-afterscripts = os.path.join(hyperspeed.config_folder, 'main.socket')
+afterscripts = os.path.join(hyperspeed.config_folder, 'afterscripts.socket')
 
 def launch(socket_path, cmd):
     # print 'socket_path: %s' % socket_path
