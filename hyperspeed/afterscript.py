@@ -287,6 +287,8 @@ class AfterscriptFfmpeg(Afterscript):
         if render:
             if render.output_video != None:
                 if '%' in render.output_video.path:
+                    input_args.append('-start_number')
+                    input_args.append(str(render.output_video.start))
                     input_args.append('-r')
                     input_args.append(str(render.fps))
                 video_file_path = render.output_video.path
