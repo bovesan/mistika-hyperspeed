@@ -111,6 +111,7 @@ class RenderItem(hyperspeed.stack.Render):
             'afterscript_queued'   : False,
             'afterscript_frames'   : 0,
             'afterscripts_failed'  : [],
+            'afterscript_output'   : None,
             'status'               : 'Not started',
         }
         self.settings_read()
@@ -869,6 +870,7 @@ class RenderManagerWindow(hyperspeed.ui.Window):
         reset = False
         abort = False
         renders = []
+        output_paths = []
         for row_path in row_paths:
             render = self.renders[treestore[row_path][0]]
             renders.append(render)
@@ -878,6 +880,8 @@ class RenderManagerWindow(hyperspeed.ui.Window):
                 reset = True
             if render.settings['afterscript_host']:
                 abort = True
+            if render.settings['afterscript_output']:
+                output_paths.append(render.settings['afterscript_output'])
         if enqueue:
             newi = gtk.ImageMenuItem(gtk.STOCK_MEDIA_PLAY)
             newi.set_label('Enqueue')
@@ -918,6 +922,12 @@ class RenderManagerWindow(hyperspeed.ui.Window):
             )
             submenu.append(subi)
         newi.set_submenu(submenu)
+        newi.show()
+        menu.append(newi)
+        menu.set_title('Popup')
+        newi = gtk.ImageMenuItem(gtk.STOCK_DIRECTORY)
+        newi.set_label('Reveal output')
+        newi.connect("activate", self.on_output_reveal, renders)
         newi.show()
         menu.append(newi)
         menu.set_title('Popup')
@@ -1401,6 +1411,14 @@ class RenderManagerWindow(hyperspeed.ui.Window):
             for k, v in render.settings.iteritems():
                 message += '\n%s: %s' % (k, v)
             self.gui_info_dialog(message)
+    def on_output_reveal(self, widget=False, renders=[]):
+        if renders == []:
+            renders = self.get_selected_renders()
+        output_paths = []
+        for render in renders:
+            if render.settings['afterscript_output']:
+                output_paths.append(render.settings['afterscript_output'])
+        hyperspeed.utils.reveal_file(output_paths)
     def on_renders_delete(self, widget=False, renders=[]):
         if renders == []:
             renders = self.get_selected_renders()
@@ -1580,6 +1598,8 @@ class RenderManagerWindow(hyperspeed.ui.Window):
                     render.set_settings({
                         'afterscript_frames' : status['frame']
                     })
+                elif output.startswith('Output:'):
+                    render.settings['afterscript_output'] =  output[8:]
                 # print 'line 1294'
                 proc.poll()
             proc.wait()

@@ -506,6 +506,7 @@ class AfterscriptFfmpeg(Afterscript):
         except OSError as e:
             print 'Could not remove incomplete marker: %s' % self.output_marker
             print e
+        print 'Output: %s' % self.output_path
         print 'Process ended'
         self.returncode = proc.returncode
         if proc.returncode > 0:
