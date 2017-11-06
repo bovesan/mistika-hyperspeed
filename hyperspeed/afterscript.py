@@ -401,7 +401,7 @@ class AfterscriptFfmpeg(Afterscript):
     def on_run(self, widget=False):
         self.update_output_path()
         self.output_marker = self.output_path+'.incomplete'
-        force_overwrite = False
+        force_overwrite = None
         render_to_input_folder = False
         if os.path.exists(self.output_path):
             if self.settings['overwrite']:
@@ -444,12 +444,12 @@ class AfterscriptFfmpeg(Afterscript):
         t = threading.Thread(target=self.run, name='ffmpeg', kwargs={'overwrite' : force_overwrite})
         t.setDaemon(True)
         t.start()
-    def run(self, overwrite=False):
+    def run(self, overwrite=None):
         gobject.idle_add(self.progressbar.set_property, 'visible', True)
         cmd_args = self.args
-        if overwrite:
+        if overwrite == True:
             cmd_args = [cmd_args[0]] + ['-y'] + cmd_args[1:]
-        else:
+        elif overwrite == False:
             cmd_args = [cmd_args[0]] + ['-n'] + cmd_args[1:]
         self.write(' '.join(cmd_args)+'\n')
         proc = subprocess.Popen(
