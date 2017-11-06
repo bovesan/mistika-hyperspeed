@@ -1241,7 +1241,9 @@ class RenderManagerWindow(hyperspeed.ui.Window):
                             continue
                         if not render.id in renders:
                             renders[render.id] = render
-                            render.set_settings()
+                            render.set_settings({
+                                'render_queued' : local and self.autoqueue_checkbox.get_active()
+                            })
                         else:
                             render = renders[render.id]
                         try:
@@ -1297,8 +1299,6 @@ class RenderManagerWindow(hyperspeed.ui.Window):
                                     print e
                             else:
                                 render.private = True
-                            if not render.id in renders:
-                                init_settings['render_queued'] = self.autoqueue_checkbox.get_active()
                         file_size = os.path.getsize(file_path)
                         render.path = file_path
                         render.settings_read()
