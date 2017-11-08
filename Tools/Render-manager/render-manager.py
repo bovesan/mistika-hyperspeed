@@ -140,7 +140,7 @@ class RenderItem(hyperspeed.stack.Render):
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.PIPE)
         mistika_bin_pids = []
         with open(log_path, 'w') as log:
-            while proc.returncode == None:
+            while True or proc.returncode == None:
                 mistika_bin_pids = mistika.get_mistika_bin_pids(proc.pid)
                 if len(mistika_bin_pids) > 0:
                     if not mistika_bin_pids[0] in render_processes:
@@ -157,6 +157,8 @@ class RenderItem(hyperspeed.stack.Render):
                         time.sleep(1)
                     os.kill(mistika_bin_pids[0], signal.SIGCONT)
                 line = proc.stdout.readline()
+                if line == '':
+                    break
                 log.write(line)
                 if line.startswith('Done:'):
                     self.set_settings({
@@ -168,26 +170,27 @@ class RenderItem(hyperspeed.stack.Render):
                         'render_end_time' : time.time(),
                         'render_elapsed_time' : float(line.split()[2]),
                     })
+                elif line.startswith('render error:'):
+                    # render error: [Unable to open Xfs file for writing]
+                    self.set_settings({
+                        'status' : line.strip(),
+                    })
                 proc.poll()
-            if proc.returncode == 0:
-                print 'Render complete'
-                self.set_settings({
-                    'render_queued' : False,
-                    })
-            elif proc.returncode == 1:
-                print 'Render process ended with returncode 1'
-                self.set_settings({
-                    'render_queued' : False,
-                    })
-            elif proc.returncode == 2:
+            if proc.returncode in [0, 2]:
                 self.set_settings({
                     'render_queued' : False,
                     'render_frames' : self.frames,
                     'is_rendering' : False,
-                    'status' : 'Render complete',
+                    'status' : 'Render time: %s' % human.duration(render_elapsed_time),
                 })
                 if self.settings['afterscript']:
                     self.move_to_stage('afterscript')
+            elif proc.returncode == 1:
+                print 'Render process ended with returncode 1'
+                self.set_settings({
+                    'render_queued' : False,
+                    'status' : 'code 3',
+                    })
             elif proc.returncode == 3:
                 print 'Aborted by user'
                 self.set_settings({
@@ -250,7 +253,7 @@ class RenderItem(hyperspeed.stack.Render):
         self.prev_treestore_values = new_values
         row_path = self.row_reference.get_path()
         row_iter = treestore.get_iter(row_path)
-        print 'Updating tree row: %s' % self.id
+        # print 'Updating tree row: %s' % self.id
         try:
             treestore[row_path] = self.treestore_values
         except ValueError:
@@ -580,6 +583,9 @@ class RenderManagerWindow(hyperspeed.ui.Window):
             render = self.renders[child_id]
             if render.settings['render_queued']:
                 if render.settings['render_frames'] < render.frames:
+                    if len(render.settings['renders_failed']) >= MAX_RENDER_ATTEMPTS:
+                        print("Max attempts reached for %s" % render.name)
+                        continue
                     self.render_start(render)
                     return True
     def gui_process_afterscripts(self):
