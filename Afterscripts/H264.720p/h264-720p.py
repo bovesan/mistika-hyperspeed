@@ -8,7 +8,7 @@ cmd            = '-vsync 0 -movflags faststart -crf 20 -minrate 0 -maxrate 4M -b
 # Path relative to primary output folder of render:P
 # default_output = '[project]_[render_name].[codec].mov'
 # Absolute path:
-default_output = '/Volumes/SAN3/Masters/[project]/[project]_[rendername]/[project]_[rendername].h264.720p.mov'
+default_output = '/Volumes/SAN3/Masters/[project]/[project]_[rendername]/[project]_[rendername].h264.720p.mp4'
 
 hyperspeed.afterscript.AfterscriptFfmpeg(__file__, cmd, default_output, title)
 hyperspeed.afterscript.gtk.main()
