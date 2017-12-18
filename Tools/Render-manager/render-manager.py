@@ -1396,7 +1396,7 @@ class RenderManagerWindow(hyperspeed.ui.Window):
             if setting_key == 'afterscript':
                 if render.render_progress >= 1.0 and render.settings['stage'] != 'afterscript':
                     render.move_to_stage('afterscript')
-                    return
+                    # return
         self.launch_thread(self.io_populate_render_queue)
     def on_editing_started(self, cell, editable, path):
         print 'on_editing_started()'
