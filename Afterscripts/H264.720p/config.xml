@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<afterscript>
+    <alias>H264 720p</alias>
+    <description>Great for web.</description>
+    <executable>h264-720p.py</executable>
+</afterscript>

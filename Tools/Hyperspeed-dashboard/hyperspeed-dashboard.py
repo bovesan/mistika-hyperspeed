@@ -38,8 +38,8 @@ VERSION_STRING = ''
 CONFIG_FOLDER = '~/.mistika-hyperspeed/'
 CONFIG_FILE = 'hyperspeed.cfg'
 STACK_EXTENSIONS = ['.grp', '.fx', '.env']
-THIS_HOST_ALIAS = 'This machine'
-OTHER_HOSTS_ALIAS = 'Others'
+THIS_HOST_ALIAS = 'Submitted by this machine'
+OTHER_HOSTS_ALIAS = 'Submitted by others'
 
 AUTORUN_TIMES = {
     'Never' :   False,
@@ -152,22 +152,6 @@ def get_zip_members(zip):
             # remove the common prefix
             zipinfo.filename = name[offset:]
             yield zipinfo
-
-class RenderItem(hyperspeed.stack.Stack):
-    def __init__(self, path):
-        super(RenderItem, self).__init__(path)
-        self.progress = 0.0
-        self.duration = video.frames2tc(self.frames, self.fps)
-        self.afterscript = ''
-        self.owner = 'Unknown'
-        self.status = 'Not started'
-    def run(self):
-        cmd = ['mistika', '-c', self.path]
-        self.logfile_path = self.path + '.log'
-        logfile_h = open(self.logfile_path, 'w')
-        self.process = subprocess.Popen(cmd, stdout=logfile_h, stderr=subprocess.STDOUT)
-        self.ret_code = self.process.wait()
-        logfile_h.flush()
 
 class PyApp(gtk.Window):
     quit = False
@@ -1405,8 +1389,8 @@ class PyApp(gtk.Window):
             return
         print 'Failed to execute %s' % repr(exec_args)
     def on_tools_run(self, treeview, path, view_column, *ignore):
-        file_path = self.tools_treestore[path][4]
-        self.launch_subprocess([file_path])
+        file_path = treeview.get_model()[path][4]
+        self.launch_subprocess([file_path], terminal=False)
     def on_afterscripts_run(self, treeview, path, view_column, treeview_obj, cmd_column):
         model = treeview.get_model()
         print 'Not yet implemented'

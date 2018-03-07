@@ -32,10 +32,17 @@ SETTINGS_DEFAULT = {
     'autostart' : False, 
     'remove-input' : False,
     'overwrite' : False,
+    'autoquit' : False,
 }
 SETTINGS_FILENAME = 'settings.cfg'
 RENAME_MAGIC_WORDS = ['auto', 'rename']
 RENDER_DEFAULT_PATH = 'No render loaded'
+
+if len(sys.argv) > 1 and sys.argv[1] == 'Render': # Render aborted
+    sys.exit(1)
+
+if hyperspeed.mistika.launched_by_mistika():
+    hyperspeed.sockets.launch(hyperspeed.sockets.afterscripts, sys.argv)
 
 class Afterscript(object):
     render = None
@@ -45,7 +52,7 @@ class Afterscript(object):
     render_name = ''
     def __init__(self, script_path, cmd, default_output, title=None):
         if not title:
-            title = os.path.splitext(os.path.basename(__file__))
+            title = os.path.splitext(os.path.basename(script_path))
         self.title = title
         self.script_path = script_path
         if type(cmd) == list:
@@ -55,12 +62,17 @@ class Afterscript(object):
         self.init_settings()
         self.settings['output-pattern'] = default_output
         if len(sys.argv) >= 3 and sys.argv[1] == 'ok':
-            hyperspeed.sockets.launch(sys.argv)
             render_name = sys.argv[2]
-            render_path = self.render_path = mistika.get_rnd_path(render_name)
+            if '/' in render_name:
+                render_path = os.path.realpath(render_name)
+                rener_name = os.path.basename(render_name)
+            else:
+                render_path = mistika.get_rnd_path(render_name)
+            self.render_path = render_path
             self.load_render(render_path)
     def init_settings(self):
         self.settings = SETTINGS_DEFAULT
+        self.tempsettings = {}
         script_folder = os.path.dirname(self.script_path)
         # self.script_settings_path = os.path.join(script_folder, SETTINGS_FILENAME)
         self.script_settings_path = os.path.join(hyperspeed.config_folder, self.title+'.cfg')
@@ -69,6 +81,13 @@ class Afterscript(object):
         except IOError:
             # No settings found
             pass
+        for setting in self.settings:
+            if '--%s' % setting in sys.argv[3:]:
+                self.settings[setting] = True
+                self.tempsettings[setting] = False
+            if '--no-%s' % setting in sys.argv[3:]:
+                self.settings[setting] = False
+                self.tempsettings[setting] = False
     def settings_store(self):
         try:
             open(self.script_settings_path, 'w').write(json.dumps(self.settings, sort_keys=True, indent=4))
@@ -80,11 +99,10 @@ class Afterscript(object):
         if render.exists:
             self.init_output_path()
         else:
-            print 'Could not load render: %s' % render_path
-            
+            print 'Could not load render: %s' % render_path        
     def init_output_path(self, callback=None):
         variables = {
-            'project' : mistika.project,
+            'project' : self.render.project,
             'rendername' : self.render_name,
             'codec' : self.render.primary_output.get_codec
         }
@@ -120,13 +138,14 @@ class Afterscript(object):
             callback(output_path)
 
 class AfterscriptFfmpeg(Afterscript):
-    processes = []
     abort = False
-    input_args = []
     cmd_string = ''
-    args = []
+    returncode = 1
     def __init__(self, script_path, cmd, default_output, title='Afterscript', executable='ffmpeg'):
         super(AfterscriptFfmpeg, self).__init__(script_path, cmd, default_output, title)
+        self.processes = []
+        self.input_args = []
+        self.args = []
         self.executable = executable
         self.init_input_args()
         gobject.threads_init()
@@ -148,14 +167,26 @@ class AfterscriptFfmpeg(Afterscript):
         checkbox = self.checkbox_overwrite = gtk.CheckButton('Start automatically')
         checkbox.set_active(self.settings['autostart'])
         checkbox.connect('toggled', self.on_settings_change, 'autostart')
+        if 'autostart' in self.tempsettings:
+            checkbox.set_sensitive(False)
         vbox2.pack_start(checkbox, False, False, 5)
         checkbox = self.checkbox_overwrite = gtk.CheckButton('Overwrite existing output without asking')
         checkbox.set_active(self.settings['overwrite'])
         checkbox.connect('toggled', self.on_settings_change, 'overwrite')
+        if 'overwrite' in self.tempsettings:
+            checkbox.set_sensitive(False)
         vbox2.pack_start(checkbox, False, False, 5)
         checkbox = self.checkbox_remove_input = gtk.CheckButton('Remove input after encoding')
         checkbox.set_active(self.settings['remove-input'])
         checkbox.connect('toggled', self.on_settings_change, 'remove-input')
+        if 'remove-input' in self.tempsettings:
+            checkbox.set_sensitive(False)
+        vbox2.pack_start(checkbox, False, False, 5)
+        checkbox = self.checkbox_autoquit = gtk.CheckButton('Quit automatically')
+        checkbox.set_active(self.settings['autoquit'])
+        checkbox.connect('toggled', self.on_settings_change, 'autoquit')
+        if 'autoquit' in self.tempsettings:
+            checkbox.set_sensitive(False)
         vbox2.pack_start(checkbox, False, False, 5)
         hbox = gtk.HBox()
         label =  gtk.Label('Default output:')
@@ -178,7 +209,7 @@ class AfterscriptFfmpeg(Afterscript):
         vbox2.pack_start(hbox, False, False, 5)
         vbox2.pack_start(gtk.HSeparator(), False, False, 10)
         expander.add(vbox2)
-        vbox.pack_start(expander)
+        vbox.pack_start(expander, False, False)
         hbox = gtk.HBox()
         label =  gtk.Label('Render:')
         hbox.pack_start(label, False, False, 5)
@@ -235,7 +266,7 @@ class AfterscriptFfmpeg(Afterscript):
             try:
                 value = widget.get_active()
             except AttributeError:
-                print 'Could not get value "%s" from %s. Event: %s' % (setting_key, widget, event)
+                # print 'Could not get value "%s" from %s. Event: %s' % (setting_key, widget, event)
                 return
         # print '%s: %s' % (setting_key, value)
         self.settings[setting_key] = value
@@ -255,18 +286,20 @@ class AfterscriptFfmpeg(Afterscript):
         input_args = []
         if render:
             if render.output_video != None:
-                input_args.append('-i')
                 if '%' in render.output_video.path:
-                    video_file_path = render.output_video.path % render.output_video.start
-                else:
-                    video_file_path = render.output_video.path
+                    input_args.append('-start_number')
+                    input_args.append(str(render.output_video.start))
+                    input_args.append('-r')
+                    input_args.append(str(render.fps))
+                video_file_path = render.output_video.path
+                input_args.append('-i')
                 input_args.append(video_file_path)
             elif render.output_proxy != None:
-                input_args.append('-i')
                 if '%' in render.output_proxy.path:
-                    video_file_path = render.output_proxy.path % render.output_proxy.start
-                else:
-                    video_file_path = render.output_proxy.path
+                    input_args.append('-r')
+                    input_args.append(str(render.fps))
+                video_file_path = render.output_proxy.path
+                input_args.append('-i')
                 input_args.append(video_file_path)
             if render.output_audio != None:
                 input_args.append('-i')
@@ -284,6 +317,7 @@ class AfterscriptFfmpeg(Afterscript):
         # for thread in threading.enumerate():
         #     print 'Ending thread: %s' % thread.name
         gtk.main_quit()
+        sys.exit(self.returncode)
     def on_render_pick(self, widget):
         path = self.render_path_entry.get_text()
         if path == RENDER_DEFAULT_PATH:
@@ -312,7 +346,9 @@ class AfterscriptFfmpeg(Afterscript):
             dialog.destroy()
             return
     def on_output_pick(self, widget):
-        path = self.output_entry.get_text()
+        args = shlex.split(self.cmd_entry.get_text())
+        last_arg = args[-1]
+        self.output_path = last_arg
         dialog = gtk.FileChooserDialog(
             parent=self.window,
             title="Export to ...",
@@ -320,10 +356,10 @@ class AfterscriptFfmpeg(Afterscript):
             buttons=(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL, gtk.STOCK_SAVE, gtk.RESPONSE_OK),
             backend=None
         )
-        dialog.set_filename(path)
+        dialog.set_filename(self.output_path)
         filter_mov = gtk.FileFilter()
-        filter_mov.set_name("QuickTime video")
-        filter_mov.add_pattern("*.mov")
+        filter_mov.set_name("Default extension")
+        filter_mov.add_pattern("*"+os.path.splitext(self.output_path)[1])
         dialog.set_filter(filter_mov)
         response = dialog.run()
         if response == gtk.RESPONSE_OK:
@@ -351,29 +387,6 @@ class AfterscriptFfmpeg(Afterscript):
                 args_quoted.append(arg)
         self.cmd_entry.set_text(' '.join(args_quoted))
         self.args = args_quoted
-    def gui_yesno_dialog(self, question, confirm_object=False, confirm_lock=False):
-        dialog = gtk.MessageDialog(
-            parent = self.window,
-            flags=0,
-            type=gtk.MESSAGE_QUESTION,
-            buttons=gtk.BUTTONS_YES_NO,
-            message_format=question
-        )
-        dialog.set_position(gtk.WIN_POS_CENTER)
-        response = dialog.run()
-        dialog.destroy()
-        if response == -8:
-            status = True
-        else:
-            status = False
-        if confirm_object:
-            confirm_object[0] = status
-        if confirm_lock:
-            confirm_lock.release()
-        if status:
-            return True
-        else:
-            return False
     def gui_info_dialog(self, message):
         dialog = gtk.MessageDialog(
             parent = self.window,
@@ -390,13 +403,13 @@ class AfterscriptFfmpeg(Afterscript):
     def on_run(self, widget=False):
         self.update_output_path()
         self.output_marker = self.output_path+'.incomplete'
-        force_overwrite = False
+        force_overwrite = None
         render_to_input_folder = False
         if os.path.exists(self.output_path):
             if self.settings['overwrite']:
                 overwrite = True
             else:
-                overwrite = self.gui_yesno_dialog("File '%s' already exists. Overwrite?" % self.output_path)
+                overwrite = hyperspeed.ui.dialog_yesno(self.window, "File '%s' already exists. Overwrite?" % self.output_path)
             if overwrite:
                 force_overwrite = True
                 try:
@@ -433,15 +446,20 @@ class AfterscriptFfmpeg(Afterscript):
         t = threading.Thread(target=self.run, name='ffmpeg', kwargs={'overwrite' : force_overwrite})
         t.setDaemon(True)
         t.start()
-    def run(self, overwrite=False):
+    def run(self, overwrite=None):
         gobject.idle_add(self.progressbar.set_property, 'visible', True)
         cmd_args = self.args
-        if overwrite:
+        if overwrite == True:
             cmd_args = [cmd_args[0]] + ['-y'] + cmd_args[1:]
-        else:
+        elif overwrite == False:
             cmd_args = [cmd_args[0]] + ['-n'] + cmd_args[1:]
         self.write(' '.join(cmd_args)+'\n')
-        proc = subprocess.Popen(cmd_args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        proc = subprocess.Popen(
+            cmd_args,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT
+        )
         self.processes.append(proc)
         output = ''
         while True:
@@ -454,6 +472,7 @@ class AfterscriptFfmpeg(Afterscript):
             while not char in ['\r', '\n', '']:
                 char = proc.stdout.read(1)
                 output += char
+            proc.stdout.flush()
             if char == '':
                 break
             output = output.rstrip()
@@ -464,7 +483,7 @@ class AfterscriptFfmpeg(Afterscript):
                 confirm = [False]
                 confirm_lock = threading.Lock()
                 confirm_lock.aqcuire()
-                confirm = gobject.idle_add(self.gui_yesno_dialog, output, confirm, confirm_lock)
+                confirm = gobject.idle_add(hyperspeed.ui.dialog_yesno, self.window, output, confirm, confirm_lock)
                 confirm_lock.aqcuire()
                 if confirm[0]:
                     proc.write('y\r')
@@ -489,13 +508,17 @@ class AfterscriptFfmpeg(Afterscript):
         except OSError as e:
             print 'Could not remove incomplete marker: %s' % self.output_marker
             print e
+        print 'Output: %s' % self.output_path
         print 'Process ended'
+        self.returncode = proc.returncode
         if proc.returncode > 0:
             gobject.idle_add(self.gui_info_dialog, output_prev)
         else:
             gobject.idle_add(self.reveal_output_button.set_property, 'visible', True)
             if self.checkbox_remove_input.get_active():
                 render.remove_output()
+        if self.checkbox_autoquit.get_active():
+            gobject.idle_add(self.on_quit, 'autoquit')
     def log_widget(self):
         textview = self.console = gtk.TextView()
         fontdesc = pango.FontDescription("monospace")
@@ -511,10 +534,15 @@ class AfterscriptFfmpeg(Afterscript):
         return expander
     def write(self, string):
         print string,
+        sys.stdout.flush()
         gobject.idle_add(self.gui_write, string)
     def gui_write(self, string):
         self.console_buffer.insert(self.console_buffer.get_end_iter(), string)
 
-# if len(sys.argv) > 1 and sys.argv[1] == 'AfterscriptFfmpeg':
-#     AfterscriptFfmpeg(sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
-#     gtk.main()
+def list():
+    afterscripts = []
+    for line in open(mistika.afterscripts_path):
+        alias = line.strip()
+        link_path = os.path.join(mistika.scripts_folder, alias)
+        afterscripts.append(alias)
+    return afterscripts

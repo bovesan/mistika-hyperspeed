@@ -8,11 +8,15 @@ import threading
 import tempfile
 import copy
 import shutil
+import re
 
 import hyperspeed.utils
 
+RENAME_MAGIC_WORDS = ['auto', 'rename']
+
 def escape_par(string):
     return string.replace('(', '\(').replace(')', '\)')
+
 class DependencyType(object):
     def __init__(self, id, description):
         self.id = id
@@ -77,6 +81,7 @@ class Dependency(object):
             self.frame_ranges = [DependencyFrameRange(self.path, start, end, parent)]
             self._parsed_frame_ranges = None
             self._complete = None
+            self.format = None
             if f_type == 'dat':
                 for font in text.Title(self.path).fonts:
                     self.dependencies.append(Dependency(font, 'font', parent=parent))
@@ -198,6 +203,7 @@ class Stack(object):
     resY = None
     fps = None
     frames = None
+    format = None
     def __init__(self, path):
         self.path = path
         try:
@@ -233,6 +239,8 @@ class Stack(object):
                             self.fps = char_buffer
                         elif object_path.endswith('p/W'):
                             self.frames = int(char_buffer)
+                        elif object_path.endswith('D/H/f'):
+                            self.format = char_buffer
                         elif object_path.endswith('Group/p'): # End of header
                             return
                         char_buffer = ''
@@ -364,6 +372,7 @@ class Stack(object):
         self._dependencies = []
         self._dependency_paths = []
         try:
+            dependency = None
             level_names = []
             fx_type = None
             char_buffer = ''
@@ -404,7 +413,6 @@ class Stack(object):
                             else:
                                 hidden_level = False
                                 # print 'Hidden ends, line', str(line_i)
-                        f_path = False
                         object_path = '/'.join(level_names)
                         if object_path.endswith('F/T'):
                             fx_type = char_buffer
@@ -415,6 +423,7 @@ class Stack(object):
                         elif object_path.endswith('C/F'): # Clip source link
                             f_path = char_buffer
                             f_type = 'lnk'
+                            dependency = Dependency(f_path, f_type, parent=self)
                         elif object_path.endswith('C/d/I/H/p') or object_path.endswith('C/d/I/L/p') or object_path.endswith('C/d/S/p'): # Clip media folder
                             f_folder = char_buffer
                         elif object_path.endswith('C/d/I/s'): # Clip start frame
@@ -424,15 +433,27 @@ class Stack(object):
                         elif object_path.endswith('C/d/I/H/n'):
                             f_path = f_folder + char_buffer
                             f_type = 'highres'
+                        elif object_path.endswith('C/d/I/H/f'):
+                            f_format = char_buffer
                         elif object_path.endswith('C/d/I/L/n'):
                             f_path = f_folder + char_buffer
                             f_type = 'lowres'
+                        elif object_path.endswith('C/d/I/L/f'):
+                            f_format = char_buffer
+                        elif object_path.endswith('C/d/I/H') or object_path.endswith('C/d/I/L'):
+                            if '%' in f_path:
+                                dependency = Dependency(f_path, f_type, CdIs, CdIe, parent=self)
+                            else:
+                                dependency = Dependency(f_path, f_type, parent=self)
+                            dependency.format = f_format
                         elif object_path.endswith('C/d/S/n'):
                             f_path = f_folder + char_buffer
                             f_type = 'audio'
+                            dependency = Dependency(f_path, f_type, parent=self)
                         elif object_path.endswith('F/D'): # .dat file relative path (from projects_path)
                             f_path = char_buffer
                             f_type = 'dat'
+                            dependency = Dependency(f_path, f_type, parent=self)
                         elif fx_type == '146':
                             f_type = 'glsl'
                             if object_path.endswith('F/p/s/c/c'):
@@ -442,6 +463,7 @@ class Stack(object):
                                     f_path = char_buffer
                                 else:
                                     f_path = f_folder + '/' + char_buffer
+                                dependency = Dependency(f_path, f_type, parent=self)
                         elif fx_type == '143':
                             f_type = 'lut'
                             if object_path.endswith('F/p/s/c/c'):
@@ -451,11 +473,8 @@ class Stack(object):
                                     f_path = char_buffer
                                 else:
                                     f_path = f_folder + '/' + char_buffer
-                        if f_path:
-                            if '%' in f_path:
-                                dependency = Dependency(f_path, f_type, CdIs, CdIe, parent=self)
-                            else:
                                 dependency = Dependency(f_path, f_type, parent=self)
+                        if dependency:
                             if relink and not dependency.complete:
                                 print 'Missing dependency: ', dependency.name
                                 new_line, dependency = self.relink_line(line, dependency)
@@ -471,6 +490,7 @@ class Stack(object):
                                     if not child_dependency.name in self._dependency_paths:
                                         self._dependencies.append(child_dependency)
                                         yield child_dependency
+                                dependency = None
 
                         char_buffer = ''
                         del level_names[-1]
@@ -528,28 +548,42 @@ class Stack(object):
         return (line, dependency)
 
 class Render(Stack):
-
+    output_stack = None
     output_video = None
     output_proxy = None
     output_audio = None
-    output_paths = []
-
+    afterscript = None
+    
     def __init__(self, path):
         super(Render, self).__init__(path)
         self.name = os.path.splitext(os.path.basename(self.path))[0]
+        self.output_paths = []
+        self.id = self.project+'/'+self.name
         if self.exists:
             self.clp_path = 'clp'.join(self.path.rsplit('rnd', 1))
-            self.output_stack = Stack(self.clp_path)
-            for dependency in self.output_stack.dependencies:
-                if dependency.type == 'highres':
-                    self.output_video = dependency
-                    self.output_paths.append(dependency.path)
-                elif dependency.type == 'lowres':
-                    self.output_proxy = dependency
-                    self.output_paths.append(dependency.path)
-                elif dependency.type == 'audio':
-                    self.output_audio = dependency
-                    self.output_paths.append(dependency.path)
+            if os.path.exists(self.clp_path):
+                self.output_stack = Stack(self.clp_path)
+                for dependency in self.output_stack.dependencies:
+                    if dependency.type == 'highres':
+                        self.output_video = dependency
+                        self.output_paths.append(dependency.path)
+                    elif dependency.type == 'lowres':
+                        self.output_proxy = dependency
+                        self.output_paths.append(dependency.path)
+                    elif dependency.type == 'audio':
+                        self.output_audio = dependency
+                        self.output_paths.append(dependency.path)
+            else:
+                self.output_stack = None
+
+    @property
+    def prettyname(self):
+        if self.groupname:
+            for magic_word in RENAME_MAGIC_WORDS:
+                if magic_word in self.name:
+                    return self.groupname
+        return re.sub('^%s\W*' % self.project, '', self.name)
+
     @property
     def primary_output(self):
         if self.output_video != None:

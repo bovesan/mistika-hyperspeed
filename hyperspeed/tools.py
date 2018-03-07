@@ -47,6 +47,8 @@ def get_desktop_links():
     return tools
 def get_mistika_links():
     tools = []
+    if not os.path.isfile(mistika.tools_path):
+        return tools
     for line in open(mistika.tools_path):
         line_alias, line_path = line.strip().split()[:2]
         line_path = os.path.realpath(os.path.normpath(line_path))
@@ -119,6 +121,8 @@ def desktop_link(alias, file_path, activated=True, icon_path=False):
                 return False
     return True
 def mistika_link(alias, file_path, activated=True):
+    if not os.path.exists(mistika.tools_path):
+        return False
     file_path = os.path.normpath(file_path)
     new_config = ''
     stored = False
