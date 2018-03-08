@@ -1071,6 +1071,7 @@ class PyApp(gtk.Window):
         }
         try:
             self.config
+            self.config.update(config_force)
         except AttributeError:
             self.config = config_force
         config_path = os.path.join(CONFIG_FOLDER, CONFIG_FILE) 
