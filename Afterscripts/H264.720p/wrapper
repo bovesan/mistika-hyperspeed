@@ -1,0 +1,6 @@
+#!/bin/bash
+
+baseName=$(basename $0)
+export 'LD_LIBRARY_PATH=/usr/local/lib:/usr/lib:/usr/lib64'
+executable=$(grep '<executable>' $(dirname $BASH_SOURCE)/config.xml  | awk -F">" '{print $2}' | awk -F"<" '{print $1}')
+$(dirname $BASH_SOURCE)/$executable $*
