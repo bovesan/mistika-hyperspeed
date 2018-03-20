@@ -1100,7 +1100,7 @@ class PyApp(gtk.Window):
                 self.config[config_item] = config_defaults[config_item]
                 self.config_rw(write=True)
         for config_item in config_force:
-            if self.config[config_item] != config_force[config_item]:
+             if not config_item in self.config or self.config[config_item] != config_force[config_item]:
                 print 'Reset config item: ', config_item
                 self.config[config_item] = config_force[config_item]
                 self.config_rw(write=True)
