@@ -652,6 +652,9 @@ class PyApp(gtk.Window):
                     tree = ET.parse(os.path.join(path, 'config.xml'))
                     xml_root = tree.getroot()
                     path = os.path.join(path, xml_root.find('executable').text)
+                    wrapper_path = os.path.join(path, 'wrapper')
+                    if os.path.exists(wrapper_path):
+                        path = wrapper_path
                     files[path] = {
                         'isdir' : False,
                         'alias' : name
