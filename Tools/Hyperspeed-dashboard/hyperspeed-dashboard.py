@@ -600,7 +600,11 @@ class PyApp(gtk.Window):
                 if 'config.xml' in os.listdir(path):
                     tree = ET.parse(os.path.join(path, 'config.xml'))
                     treeroot = tree.getroot()
-                    path = os.path.join(path, treeroot.find('executable').text)
+                    wrapper_path = os.path.join(path, 'wrapper')
+                    if os.path.exists(wrapper_path):
+                        path = wrapper_path
+                    else:
+                        path = os.path.join(path, treeroot.find('executable').text)
                     files[path] = {'isdir' : False}
                     for child in treeroot:
                         files[path][child.tag] = child.text
@@ -651,10 +655,11 @@ class PyApp(gtk.Window):
                 if 'config.xml' in os.listdir(path):
                     tree = ET.parse(os.path.join(path, 'config.xml'))
                     xml_root = tree.getroot()
-                    path = os.path.join(path, xml_root.find('executable').text)
                     wrapper_path = os.path.join(path, 'wrapper')
                     if os.path.exists(wrapper_path):
                         path = wrapper_path
+                    else:
+                        path = os.path.join(path, xml_root.find('executable').text)
                     files[path] = {
                         'isdir' : False,
                         'alias' : name
