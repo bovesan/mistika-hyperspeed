@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<afterscript>
+    <alias>HF Delivery</alias>
+    <description>Adjustable H264 with web upload.</description>
+    <executable>hf-delivery.py</executable>
+</afterscript>

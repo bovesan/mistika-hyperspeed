@@ -206,6 +206,8 @@ class Stack(object):
     format = None
     def __init__(self, path):
         self.path = path
+        self._tags = []
+        self.getTagsInName()
         try:
             self.size = os.path.getsize(self.path)
             self.ctime = os.path.getctime(self.path)
@@ -272,7 +274,16 @@ class Stack(object):
             self._tags
         except AttributeError:
             self.set_groupname()
+            self.getTagsInName()
         return self._tags
+    def getTagsInName(self):
+        #print os.path.basename(self.path)
+        if '+' in os.path.basename(self.path):
+            try:
+                subject = os.path.basename(self.path).split('+', 1)[1]
+                self._tags += re.split(r'_\d{4}', subject)[0].split('+')
+            except IndexError:
+                pass
     def set_groupname(self):
         try:
             level_names = []
@@ -300,9 +311,9 @@ class Stack(object):
                                 self._groupname = char_buffer
                                 self._title = self._groupname.split('#', 1)[0]
                                 try:
-                                    self._tags = self._groupname.split('#')[1:]
+                                    self._tags += self._groupname.split('#')[1:]
                                 except IndexError:
-                                    self._tags = []
+                                    pass
                                 return
                             else:
                                 ungroup = False
