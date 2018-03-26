@@ -141,19 +141,33 @@ class AfterscriptFfmpeg(Afterscript):
     abort = False
     cmd_string = ''
     returncode = 1
-    def __init__(self, script_path, cmd, default_output, title='Afterscript', executable='ffmpeg', onSuccessCallback=None):
+    onRenderChangeCallbacks = []
+    onSuccessCallbacks = []
+    def __init__(self, script_path, cmd, default_output, title='Afterscript', executable='ffmpeg', onInitCallback=None, onStartCallback=None, onSuccessCallback=None):
         super(AfterscriptFfmpeg, self).__init__(script_path, cmd, default_output, title)
         self.processes = []
         self.input_args = []
         self.args = []
         self.executable = executable
         self.onSuccessCallback = onSuccessCallback
+        self.onStartCallback = onStartCallback
         self.init_input_args()
         gobject.threads_init()
         self.init_window()
         self.cmd_update()
         if self.render != None and self.settings['autostart']:
             gobject.idle_add(self.on_run)
+        if onInitCallback:
+            onInitCallback(self)
+    def onRenderChange(self):
+        for callback in self.onRenderChangeCallbacks:
+            callback(self)
+    def onSuccess(self):
+        gobject.idle_add(self.reveal_output_button.set_property, 'visible', True)
+        if self.checkbox_remove_input.get_active():
+            render.remove_output()
+        for callback in self.onSuccessCallbacks:
+            callback(self)
     def init_window(self):
         window = self.window = gtk.Window()
         screen = self.window.get_screen()
@@ -259,10 +273,11 @@ class AfterscriptFfmpeg(Afterscript):
         # entry.get_buffer().connect("inserted-text", on_insert_cb)
         entry_buffer.insert_text(entry.get_property('cursor_position'), tag, -1)
     def on_settings_change(self, widget, setting_key):
-        if setting_key == 'output-pattern':
+        if type(widget) == gtk.Entry:
             value = widget.get_text()
-            if self.render:
-                gobject.idle_add(self.init_output_path, self.update_output_path)
+            if setting_key == 'output-pattern':
+                if self.render:
+                    gobject.idle_add(self.init_output_path, self.update_output_path)
         else:
             try:
                 value = widget.get_active()
@@ -342,6 +357,7 @@ class AfterscriptFfmpeg(Afterscript):
             dialog.destroy()
             self.load_render(chosen_path)
             self.init_input_args()
+            self.onRenderChange()
             return chosen_path
         elif response == gtk.RESPONSE_CANCEL:
             dialog.destroy()
@@ -462,6 +478,8 @@ class AfterscriptFfmpeg(Afterscript):
             stderr=subprocess.STDOUT
         )
         self.processes.append(proc)
+        if self.onStartCallback != None:
+            self.onStartCallback(self)
         output = ''
         while True:
             if self.abort:
@@ -518,12 +536,6 @@ class AfterscriptFfmpeg(Afterscript):
             self.onSuccess()
         if self.checkbox_autoquit.get_active():
             gobject.idle_add(self.on_quit, 'autoquit')
-    def onSuccess(self):
-        gobject.idle_add(self.reveal_output_button.set_property, 'visible', True)
-        if self.checkbox_remove_input.get_active():
-            render.remove_output()
-        if self.onSuccessCallback != None:
-            self.onSuccessCallback(self)
     def log_widget(self):
         textview = self.console = gtk.TextView()
         fontdesc = pango.FontDescription("monospace")
@@ -538,7 +550,7 @@ class AfterscriptFfmpeg(Afterscript):
         expander.add(scroll)
         return expander
     def write(self, string):
-        print string,
+        #print string,
         sys.stdout.flush()
         gobject.idle_add(self.gui_write, string)
     def gui_write(self, string):
