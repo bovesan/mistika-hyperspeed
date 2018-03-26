@@ -44,6 +44,18 @@ if len(sys.argv) > 1 and sys.argv[1] == 'Render': # Render aborted
 if hyperspeed.mistika.launched_by_mistika():
     hyperspeed.sockets.launch(hyperspeed.sockets.afterscripts, sys.argv)
 
+def getRenderPath():
+    if len(sys.argv) >= 3 and sys.argv[1] == 'ok':
+        render_name = sys.argv[2]
+        if '/' in render_name:
+            render_path = os.path.realpath(render_name)
+            rener_name = os.path.basename(render_name)
+        else:
+            render_path = mistika.get_rnd_path(render_name)
+        return render_path
+    return
+
+
 class Afterscript(object):
     render = None
     cmd = []
@@ -61,15 +73,8 @@ class Afterscript(object):
             self.cmd = [cmd]
         self.init_settings()
         self.settings['output-pattern'] = default_output
-        if len(sys.argv) >= 3 and sys.argv[1] == 'ok':
-            render_name = sys.argv[2]
-            if '/' in render_name:
-                render_path = os.path.realpath(render_name)
-                rener_name = os.path.basename(render_name)
-            else:
-                render_path = mistika.get_rnd_path(render_name)
-            self.render_path = render_path
-            self.load_render(render_path)
+        render_path = getRenderPath()
+        self.load_render(render_path)
     def init_settings(self):
         self.settings = SETTINGS_DEFAULT
         self.tempsettings = {}
@@ -94,6 +99,8 @@ class Afterscript(object):
         except IOError as e:
             print 'Could not store settings. %s' % e
     def load_render(self, render_path):
+        if render_path == None or not os.path.exists(render_path):
+            return
         render = self.render = hyperspeed.stack.Render(render_path)
         self.render_name = render.name
         if render.exists:
@@ -142,6 +149,7 @@ class AfterscriptFfmpeg(Afterscript):
     cmd_string = ''
     returncode = 1
     onRenderChangeCallbacks = []
+    onAfterscriptStartCallbacks = []
     onSuccessCallbacks = []
     def __init__(self, script_path, cmd, default_output, title='Afterscript', executable='ffmpeg', onInitCallback=None, onStartCallback=None, onSuccessCallback=None):
         super(AfterscriptFfmpeg, self).__init__(script_path, cmd, default_output, title)
@@ -155,10 +163,12 @@ class AfterscriptFfmpeg(Afterscript):
         gobject.threads_init()
         self.init_window()
         self.cmd_update()
-        if self.render != None and self.settings['autostart']:
-            gobject.idle_add(self.on_run)
         if onInitCallback:
             onInitCallback(self)
+        if self.render != None:
+            gobject.idle_add(self.onRenderChange)
+        if self.render != None and self.settings['autostart']:
+            gobject.idle_add(self.on_run)
     def onRenderChange(self):
         for callback in self.onRenderChangeCallbacks:
             callback(self)
@@ -177,9 +187,9 @@ class AfterscriptFfmpeg(Afterscript):
         window.set_border_width(10)
         window.set_position(gtk.WIN_POS_CENTER)
         vbox = gtk.VBox()
-        expander = gtk.Expander('Settings')
+        expander = gtk.Expander('Permanent settings')
         vbox2 = gtk.VBox()
-        checkbox = self.checkbox_overwrite = gtk.CheckButton('Start automatically')
+        checkbox = self.checkbox_autostart = gtk.CheckButton('Start automatically')
         checkbox.set_active(self.settings['autostart'])
         checkbox.connect('toggled', self.on_settings_change, 'autostart')
         if 'autostart' in self.tempsettings:
@@ -242,21 +252,24 @@ class AfterscriptFfmpeg(Afterscript):
         entry = self.cmd_entry = gtk.Entry()
         entry.set_text(self.cmd_string)
         hbox.pack_start(entry)
-        vbox.pack_start(hbox, False, False, 5)
         button = self.output_pick_button = gtk.Button('...')
         button.connect("clicked", self.on_output_pick)
         hbox.pack_start(button, False, False, 5)
-        button = gtk.Button('Go')
-        button.connect("clicked", self.on_run)
-        vbox.pack_start(button, False, False, 5)
+        vbox.pack_start(hbox, False, False, 5)
         vbox.pack_start(self.log_widget(), True, True, 5)
+        hbox = gtk.HBox()
+        button = gtk.Button('Encode')
+        button.connect("clicked", self.on_run)
+        hbox.pack_start(button, False, False, 5)
         progressbar = self.progressbar = gtk.ProgressBar()
+        progressbar.set_text("Encoding has not started")
         progressbar.set_no_show_all(True)
-        vbox.pack_start(progressbar, False, False, 5)
+        hbox.pack_start(progressbar)
         button = self.reveal_output_button = gtk.Button('Reveal output')
         button.connect("clicked", self.on_reveal_output)
         button.set_no_show_all(True)
-        vbox.pack_start(button, False, False, 5)
+        hbox.pack_start(button, False, False, 5)
+        vbox.pack_start(hbox, False, False, 5)
         footer = gtk.HBox(False, 5)
         quitButton = gtk.Button('Quit')
         quitButton.set_size_request(70, 30)
@@ -464,6 +477,8 @@ class AfterscriptFfmpeg(Afterscript):
         t.setDaemon(True)
         t.start()
     def run(self, overwrite=None):
+        for callback in self.onAfterscriptStartCallbacks:
+            callback(self)
         gobject.idle_add(self.progressbar.set_property, 'visible', True)
         cmd_args = self.args
         if overwrite == True:
