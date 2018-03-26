@@ -10,5 +10,9 @@ cmd            = '-vsync 0 -movflags faststart -crf 20 -minrate 0 -maxrate 4M -b
 # Absolute path:
 default_output = '/Volumes/SAN3/Masters/[project]/[project]_[rendername]/[project]_[rendername].h264.720p.mp4'
 
-hyperspeed.afterscript.AfterscriptFfmpeg(__file__, cmd, default_output, title)
+hyperspeed.afterscript.AfterscriptFfmpeg(__file__, cmd, default_output, title, onSuccess=onSuccess)
 hyperspeed.afterscript.gtk.main()
+
+def onSuccess(hyperspeed.afterscript.AfterscriptFfmpeg afterscript){
+	print afterscript.output_path
+}

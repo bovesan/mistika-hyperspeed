@@ -141,12 +141,13 @@ class AfterscriptFfmpeg(Afterscript):
     abort = False
     cmd_string = ''
     returncode = 1
-    def __init__(self, script_path, cmd, default_output, title='Afterscript', executable='ffmpeg'):
+    def __init__(self, script_path, cmd, default_output, title='Afterscript', executable='ffmpeg', onSuccessCallback=None):
         super(AfterscriptFfmpeg, self).__init__(script_path, cmd, default_output, title)
         self.processes = []
         self.input_args = []
         self.args = []
         self.executable = executable
+        self.onSuccessCallback = onSuccessCallback
         self.init_input_args()
         gobject.threads_init()
         self.init_window()
@@ -514,11 +515,15 @@ class AfterscriptFfmpeg(Afterscript):
         if proc.returncode > 0:
             gobject.idle_add(self.gui_info_dialog, output_prev)
         else:
-            gobject.idle_add(self.reveal_output_button.set_property, 'visible', True)
-            if self.checkbox_remove_input.get_active():
-                render.remove_output()
+            self.onSuccess()
         if self.checkbox_autoquit.get_active():
             gobject.idle_add(self.on_quit, 'autoquit')
+    def onSuccess(self):
+        gobject.idle_add(self.reveal_output_button.set_property, 'visible', True)
+        if self.checkbox_remove_input.get_active():
+            render.remove_output()
+        if self.onSuccessCallback != None:
+            onSuccessCallback(self)
     def log_widget(self):
         textview = self.console = gtk.TextView()
         fontdesc = pango.FontDescription("monospace")
