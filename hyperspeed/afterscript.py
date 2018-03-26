@@ -523,7 +523,7 @@ class AfterscriptFfmpeg(Afterscript):
         if self.checkbox_remove_input.get_active():
             render.remove_output()
         if self.onSuccessCallback != None:
-            onSuccessCallback(self)
+            self.onSuccessCallback(self)
     def log_widget(self):
         textview = self.console = gtk.TextView()
         fontdesc = pango.FontDescription("monospace")
