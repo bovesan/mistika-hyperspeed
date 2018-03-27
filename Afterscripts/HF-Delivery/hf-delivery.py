@@ -2,9 +2,12 @@
 # -*- coding: utf-8 -*-
 
 import gtk
+import os
+import uuid
 import math
 import subprocess
 import hyperspeed.afterscript
+threading = hyperspeed.afterscript.threading
 gobject = hyperspeed.afterscript.gobject
 
 title          = 'HF Delivery'
@@ -112,9 +115,6 @@ class RestUploader(object):
         if not 'rest_endpoint' in afterscript.settings:
             afterscript.settings['rest_endpoint'] = ''
         gobject.idle_add(self.initGUI)
-        afterscript.onRenderChangeCallbacks.append(self.onRenderChange)
-        afterscript.onAfterscriptStartCallbacks.append(self.onAfterscriptStart)
-        afterscript.onSuccessCallbacks.append(self.onAfterscriptSuccess)
     def initGUI(self):
         afterscript = self.afterscript
         expander = gtk.Expander('Upload settings')
@@ -164,6 +164,9 @@ class RestUploader(object):
         vbox.pack_start(hbox, False, False, 5)
         vbox.show_all()
         afterscript.window.get_children()[0].pack_start(vbox, False, False)
+        afterscript.onRenderChangeCallbacks.append(self.onRenderChange)
+        afterscript.onAfterscriptStartCallbacks.append(self.onAfterscriptStart)
+        afterscript.onSuccessCallbacks.append(self.onAfterscriptSuccess)
         if not afterscript.settings['rest_endpoint'].startswith('http'):
             hostStatusLabel.set_markup('<span color="#aa4400">Please enter a valid url</span>')
         else:
@@ -176,18 +179,59 @@ class RestUploader(object):
         gobject.idle_add(self.uploadHbox.set_no_show_all, False)
         gobject.idle_add(self.uploadHbox.show_all)
         if self.automatically.get_active():
-            self.upload()
+            t = threading.Thread(target=self.upload, name='Upload')
+            t.setDaemon(True)
+            t.start()
     def upload(self, widget=False):
         afterscript = self.afterscript
         if not self.ready:
             return
+        CHUNK_SIZE = 4*1000*1000
+        file_size = os.path.getsize(afterscript.output_path)
+        chunk_dir = '/tmp/upload-chunks/'
+        if not os.path.isdir(chunk_dir):
+            try:
+                os.makedirs(chunk_dir)
+            except OSError:
+                print 'Could not create chunks temp dir: %s' % chunk_dir
+                return;
+        chunk_path = os.path.join(chunk_dir, os.path.basename(afterscript.output_path))
+        dzuuid = uuid.uuid4()
+        dztotalchunkcount = math.ceil(file_size / float(CHUNK_SIZE))
+        chunk_start = 0
+        dzchunkindex = -1
+        with open(afterscript.output_path, 'rb') as f:
+            while chunk_start < file_size:
+                dzchunkindex += 1
+                chunk_end = chunk_start + CHUNK_SIZE
+                open(chunk_path, 'wb').write(f.read(CHUNK_SIZE))
+                chunk_end = min(chunk_end, file_size)
+                cmd = ['curl', '-v', '-H', 'Cookie: token=%s' % afterscript.settings['rest_token'], '-H', 'Project: %s' % afterscript.render.project, afterscript.settings['rest_endpoint']]
+                #cmd += ['-X', 'POST', '-d', '@%s' % afterscript.output_path]
+                #cmd += ['-H', 'Transfer-Encoding: chunked']
+                #cmd += ['-X', 'POST']
+                cmd += ['-F', 'dzuuid=%s' % dzuuid]
+                cmd += ['-F', 'dztotalchunkcount=%i' % dztotalchunkcount]
+                cmd += ['-F', 'dzchunkindex=%s' % dzchunkindex]
+                #cmd += ['-T', '-']
+                cmd += ['-F', 'file=@%s' % chunk_path]
+                response, status = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
+                if '< HTTP/1.1 4' in status:
+                    gobject.idle_add(self.progressbar.set_text, 'Upload failed')
+                    return
+                chunk_start = chunk_end
+                progress_float = chunk_end/float(file_size)
+                progress_percent = progress_float * 100.0
+                progress_string = '%5.2f%%' % progress_percent
+                gobject.idle_add(self.progressbar.set_text, progress_string)
+                gobject.idle_add(self.progressbar.set_fraction, progress_float)
+        gobject.idle_add(self.progressbar.set_fraction, 1)
+        gobject.idle_add(self.progressbar.set_text, 'Upload complete')
+        os.remove(chunk_path)
+
         cmd = ['curl', '-v', '-H', 'Cookie: token=%s' % afterscript.settings['rest_token'], '-H', 'Project: %s' % afterscript.render.project, afterscript.settings['rest_endpoint']]
         #cmd += ['-X', 'POST', '-d', '@%s' % afterscript.output_path]
         cmd += ['-F', 'file=@%s' % afterscript.output_path]
-        response, status = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
-        if '< HTTP/1.1 200 OK' in status:
-            gobject.idle_add(self.progressbar.set_fraction, 1)
-            gobject.idle_add(self.progressbar.set_text, 'Upload complete')
 
     def onRenderChange(self, afterscript):
         if afterscript.render == None:
