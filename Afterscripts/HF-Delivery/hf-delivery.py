@@ -59,6 +59,7 @@ class TagReader(object):
             master = True
             nobug = True
             noslate = True
+            afterscript.add_output_path('/Volumes/SAN3/Masters/[project]/[project]_[rendername]/[project]_[rendername].master.mp4')
         if 'mov' in render.tags:
             ext = '.mov'
             upload = False
@@ -105,7 +106,7 @@ class TagReader(object):
 # Path relative to primary output folder of render:P
 # default_output = '[project]_[render_name].[codec].mov'
 # Absolute path:
-default_output = '/Volumes/SAN3/Masters/[project]/[project]_[rendername]/[project]_[rendername].h264.mp4'
+default_output = '/Volumes/Encoded/Arkivert/[project]/HFD/[project]_[date]-[time]_[rendername].mp4'
 
 class RestUploader(object):
     ready = False
@@ -147,19 +148,14 @@ class RestUploader(object):
         checkbox.set_active(True)
         vbox.pack_start(checkbox, False, False, 5)
         hbox = self.uploadHbox = gtk.HBox()
-        hbox.set_no_show_all(True)
-        button =  gtk.Button('Upload')
+        button = self.uploadButton = gtk.Button('Upload')
         button.connect("clicked", self.upload)
         hbox.pack_start(button, False, False, 5)
         progressbar = self.progressbar = gtk.ProgressBar()
         progressbar.set_text("Upload has not started")
         hbox.pack_start(progressbar)
-        vbox.pack_start(hbox, False, False, 5)
-        hbox = self.linkBox = gtk.HBox()
-        hbox.set_no_show_all(True)
-        label =  gtk.Label('URL:')
-        hbox.pack_start(label, False, False, 5)
         link = self.link =  gtk.LinkButton('', '')
+        link.set_no_show_all(True)
         hbox.pack_start(link, False, False, 5)
         vbox.pack_start(hbox, False, False, 5)
         vbox.show_all()
@@ -172,12 +168,12 @@ class RestUploader(object):
         else:
             self.onRenderChange(afterscript)
     def onAfterscriptStart(self, afterscript):
-        gobject.idle_add(self.uploadHbox.hide)
+        gobject.idle_add(self.uploadButton.hide)
     def onAfterscriptSuccess(self, afterscript):
         if not self.ready:
             return
-        gobject.idle_add(self.uploadHbox.set_no_show_all, False)
-        gobject.idle_add(self.uploadHbox.show_all)
+        gobject.idle_add(self.uploadButton.set_no_show_all, False)
+        gobject.idle_add(self.uploadButton.show_all)
         if self.automatically.get_active():
             t = threading.Thread(target=self.upload, name='Upload')
             t.setDaemon(True)
@@ -247,8 +243,8 @@ class RestUploader(object):
                 gobject.idle_add(self.tokenEntry.hide)
                 gobject.idle_add(self.link.set_label, url)
                 gobject.idle_add(self.link.set_uri, url)
-                gobject.idle_add(self.linkBox.set_no_show_all, False)
-                gobject.idle_add(self.linkBox.show_all)
+                gobject.idle_add(self.link.set_no_show_all, False)
+                gobject.idle_add(self.link.show_all)
                 self.ready = True
             else:
                 gobject.idle_add(self.tokenStatusLabel.set_markup, '<span color="#aa4400">Please enter a valid token</span>')
