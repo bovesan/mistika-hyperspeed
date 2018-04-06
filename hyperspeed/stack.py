@@ -233,9 +233,9 @@ class Stack(object):
                         object_path = '/'.join(level_names)
                         if object_path.endswith('D/RenderProject'):
                             self.project = char_buffer
-                        elif object_path.endswith('D/X'):
+                        elif object_path.endswith('D/X') or object_path.endswith('outputFraming/w'):
                             self.resX = int(char_buffer)
-                        elif object_path.endswith('D/Y'):
+                        elif object_path.endswith('D/Y') or object_path.endswith('outputFraming/h'):
                             self.resY = int(char_buffer)
                         elif object_path.endswith('D/JobFrameRate'):
                             self.fps = char_buffer
