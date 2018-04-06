@@ -258,5 +258,6 @@ def onInit(afterscript):
     TagReader(afterscript)
 
 cmd = ''
-hyperspeed.afterscript.AfterscriptFfmpeg(__file__, cmd, default_output, title, onInitCallback=onInit)
+executable = '/usr/share/ffmpeg/150714/ffmpeg-2.7.1/ffmpeg'
+hyperspeed.afterscript.AfterscriptFfmpeg(__file__, cmd, default_output, title, executable, onInitCallback=onInit)
 hyperspeed.afterscript.gtk.main()
