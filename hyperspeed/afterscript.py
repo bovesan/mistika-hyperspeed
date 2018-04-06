@@ -175,7 +175,7 @@ class AfterscriptFfmpeg(Afterscript):
     def onSuccess(self):
         gobject.idle_add(self.reveal_output_button.set_property, 'visible', True)
         if self.checkbox_remove_input.get_active():
-            render.remove_output()
+            self.render.remove_output()
         for callback in self.onSuccessCallbacks:
             callback(self)
     def init_window(self):
@@ -355,7 +355,7 @@ class AfterscriptFfmpeg(Afterscript):
             parent=self.window,
             title="Read render file",
             action=gtk.FILE_CHOOSER_ACTION_OPEN,
-            buttons=(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL, gtk.STOCK_SAVE, gtk.RESPONSE_OK),
+            buttons=(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL, gtk.STOCK_OPEN, gtk.RESPONSE_OK),
             backend=None
         )
         dialog.set_filename(path)
