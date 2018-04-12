@@ -59,7 +59,7 @@ class TagReader(object):
             master = True
             nobug = True
             noslate = True
-            afterscript.add_output_path('/Volumes/SAN3/Masters/[project]/[project]_[rendername]/[project]_[rendername].master.mp4')
+            afterscript.add_output_path('/Volumes/SAN3/Masters/[project]/[project]_[rendername]/[project]_[rendername].master.mp4', subtitles=True)
         if 'mov' in render.tags:
             ext = '.mov'
             upload = False
