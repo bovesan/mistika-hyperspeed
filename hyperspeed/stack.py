@@ -11,6 +11,7 @@ import shutil
 import re
 
 import hyperspeed.utils
+import hyperspeed.video
 
 RENAME_MAGIC_WORDS = ['auto', 'rename']
 
@@ -47,6 +48,8 @@ class DependencyFrameRange(object):
         self.complete = True
         self.row_references = []
         self.delete_callback = delete_callback
+        self.x = False
+        self.duration = False
     @property
     def size(self):
         if not self._size:
@@ -64,7 +67,7 @@ class DependencyFrameRange(object):
         super(DependencyFrameRange, self).delete(*args,**kwargs)
 
 class Dependency(object):
-    def __init__(self, name, f_type, start = False, end = False, parent=None):
+    def __init__(self, name, f_type, start = False, end = False, parent=None, level=False, x=False, duration=False):
         self.lock = threading.Lock()
         with self.lock:
             self.name = name
@@ -82,8 +85,12 @@ class Dependency(object):
             self._parsed_frame_ranges = None
             self._complete = None
             self.format = None
+            self.level = level
+            self.x = x
+            self.duration = duration
             if f_type == 'dat':
-                for font in text.Title(self.path).fonts:
+                self.text = text.Title(self.path)
+                for font in self.text.fonts:
                     self.dependencies.append(Dependency(font, 'font', parent=parent))
     def __str__(self):
         return self.name
@@ -382,9 +389,12 @@ class Stack(object):
     def iter_dependencies(self, progress_callback=False, relink=False):
         self._dependencies = []
         self._dependency_paths = []
+        self.subtitleIds = []
         try:
             dependency = None
             level_names = []
+            level_offsets = self.level_offsets = {}
+            f_type = None
             fx_type = None
             char_buffer = ''
             char_buffer_store = ''
@@ -425,6 +435,19 @@ class Stack(object):
                                 hidden_level = False
                                 # print 'Hidden ends, line', str(line_i)
                         object_path = '/'.join(level_names)
+                        if object_path.endswith('p/X'):
+                            try:
+                                x = int(char_buffer)
+                                if object_path.endswith('Group/p/X'):
+                                    if not level in level_offsets or x < level_offsets[level]:
+                                        level_offsets[level] = x
+                            except ValueError:
+                                pass
+                        if object_path.endswith('p/W'):
+                            try:
+                                duration = int(char_buffer)
+                            except ValueError:
+                                pass
                         if object_path.endswith('F/T'):
                             fx_type = char_buffer
                         elif object_path.endswith('p/h'):
@@ -451,6 +474,17 @@ class Stack(object):
                             f_type = 'lowres'
                         elif object_path.endswith('C/d/I/L/f'):
                             f_format = char_buffer
+                        elif object_path.endswith('Group/groupType') and char_buffer == '3':
+                            f_type = 'template'
+                        elif f_type == 'template' and object_path.endswith('Group/p/n') and char_buffer.lower().startswith('subs'):
+                            f_type = 'subtitle'
+                        elif f_type == 'subtitle' and object_path.endswith('Group/p/X'):
+                            try:
+                                self.subtitleIds.append(int(char_buffer))
+                                f_type = None
+                            except ValueError:
+                                # print 'Invalid frame number:', char_buffer
+                                pass
                         elif object_path.endswith('C/d/I/H') or object_path.endswith('C/d/I/L'):
                             if '%' in f_path:
                                 dependency = Dependency(f_path, f_type, CdIs, CdIe, parent=self)
@@ -464,7 +498,8 @@ class Stack(object):
                         elif object_path.endswith('F/D'): # .dat file relative path (from projects_path)
                             f_path = char_buffer
                             f_type = 'dat'
-                            dependency = Dependency(f_path, f_type, parent=self)
+                        elif f_type == 'dat' and object_path.endswith('p/W'):
+                            dependency = Dependency(f_path, f_type, parent=self, level=level, x=x, duration=duration)
                         elif fx_type == '146':
                             f_type = 'glsl'
                             if object_path.endswith('F/p/s/c/c'):
@@ -557,6 +592,14 @@ class Stack(object):
                     elif dependency.type in ['highres', 'lowres', 'audio']:
                         return (line.replace('('+escape_par(dependency_foldername)+'/)', '('+escape_par(root)+'/)'), dependency_new)
         return (line, dependency)
+    @property
+    def subtitles(self):
+        try:
+            self._subtitles
+        except AttributeError:
+            self._subtitles = Subtitles(self)
+        return self._subtitles
+
 
 class Render(Stack):
     output_stack = None
@@ -609,3 +652,39 @@ class Render(Stack):
         for dependency in self.output_stack.dependencies:
             if dependency.type in ['highres', 'lowres', 'audio']:
                 dependency.remove()
+
+class Subtitles(object):
+    count = 0
+    def __init__(self, render):
+        self.render = render
+        subs = {}
+        for dependency in render.dependencies:
+            if dependency.type == 'dat':
+                if not dependency.x in render.subtitleIds:
+                    continue
+                if dependency.level != 4:
+                    continue
+                subs[dependency.x] = dependency
+        srt = ''
+        vtt = 'WEBVTT\r\n\r\n'
+        srtIndex = 0
+        for subId in sorted(subs):
+            dependency = subs[subId]
+            srtIndex += 1
+            srtStart = hyperspeed.video.frames2tc_float(subId - render.level_offsets[dependency.level], render.fps)
+            srtEnd = hyperspeed.video.frames2tc_float(subId - render.level_offsets[dependency.level] + dependency.duration, render.fps)
+            srt += '''%i
+%s --> %s
+%s
+
+''' % (srtIndex, srtStart, srtEnd, dependency.text.string )
+            vtt += '''%i
+%s --> %s
+%s
+
+''' % (srtIndex, srtStart.replace(',', '.'), srtEnd.replace(',', '.'), dependency.text.string )
+            self.count = len(subs)
+            self.srt = srt
+            self.vtt = vtt
+
+

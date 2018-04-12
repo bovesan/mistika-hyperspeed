@@ -45,9 +45,19 @@ class ToolsTests(unittest.TestCase):
 
 class StackTests(unittest.TestCase):
     def test_dependencies_attribute(self):
-    	stack = hyperspeed.stack.Stack('Samples/hill14.env')
-    	self.maxDiff = None
-    	# print stack.dependencies
+        stack = hyperspeed.stack.Stack('Samples/hill14.env')
+        self.maxDiff = None
+        # print stack.dependencies
+    def test_subtitles(self):
+        stack = hyperspeed.stack.Stack('Samples/Subtitles/180309-1651_80sek_Nettversjon_mSubs_HF_Delivery_IN_JS422_8B.rnd')
+        self.maxDiff = None
+        blueprint = open('Samples/Subtitles/19667_Merck_80sek_Nettversjon_mSubs.master.USJEKKET!!!.srt')
+        for line in stack.subtitles.srt.splitlines():
+            self.assertEqual(line, blueprint.readline().strip('\n\r'))
+        blueprint = open('Samples/Subtitles/19667_Merck_80sek_Nettversjon_mSubs.master.USJEKKET!!!.vtt')
+        for line in stack.subtitles.vtt.splitlines():
+            self.assertEqual(line, blueprint.readline().strip('\n\r'))
+        # print stack.dependencies
     def test_names(self):
         stack = hyperspeed.stack.Stack('Samples/160912-1745_Gourmet_15sek_tekstet_HF_Delivery_IN_JS422_8B.rnd')
         correct_name = 'Gourmet_15sek_tekstet#noupload'
@@ -64,4 +74,7 @@ class StackTests(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    if 'subtitles' in sys.argv:
+        StackTests('test_subtitles')
+    else:
+        unittest.main()
