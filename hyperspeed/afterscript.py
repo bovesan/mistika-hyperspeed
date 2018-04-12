@@ -601,30 +601,33 @@ class Destination(object):
         gobject.idle_add(vbox.show_all)
     def send(self):
         self.path = self.afterscript.apply_name_variables(self.path)
-        gobject.idle_add(self.progressbar.set_text, self.path)
         if not os.path.isdir(os.path.dirname(self.path)):
             try:
                 os.makedirs(os.path.dirname(self.path))
             except OSError as e:
                 gobject.idle_add(self.progressbar.set_text, e)
                 return
+        cmd = ['rsync', '--progress', '-ua', self.afterscript.output_path, self.path]
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         if self.subtitles:
             gobject.idle_add(self.progressbar.set_text, 'Exporting subtitles')
-            if afterscript.render.subtitles.count > 0:
+            if self.afterscript.render.subtitles.count > 0:
                 srtPath = self.path.rsplit('.', 1)[0]+'.srt'
-                open(srtPath, 'w').write(afterscript.render.subtitles.srt)
+                open(srtPath, 'w').write(self.afterscript.render.subtitles.srt)
                 vttPath = self.path.rsplit('.', 1)[0]+'.vtt'
-                open(vttPath, 'w').write(afterscript.render.subtitles.vtt)
-        if subprocess.call(['rsync', self.afterscript.output_path, self.path]) > 0:
+                open(vttPath, 'w').write(self.afterscript.render.subtitles.vtt)
+        gobject.idle_add(self.progressbar.set_text, self.path)
+        if hyperspeed.utils.rsyncMonitor(proc, self.setProgress):
+            gobject.idle_add(self.reveal_button.set_property, 'visible', True)
+        else:
             gobject.idle_add(self.progressbar.set_text, 'Copy failed to '+self.path)
             return
         #progress_float = float(status['frame']) / float(self.render.frames)
-        progress_float = 1.0
-        progress_percent = progress_float * 100.0
+    def setProgress(self, progress_percent):
         progress_string = '%5.2f%%' % progress_percent
-        gobject.idle_add(self.progressbar.set_fraction, progress_float)
+        gobject.idle_add(self.progressbar.set_fraction, progress_percent*0.01)
         gobject.idle_add(self.reveal_button.set_property, 'visible', True)
-        # gobject.idle_add(self.progressbar.set_text, progress_string)
+        # gobject.idle_add(self.progressbar.set_text, "%s %s" % (self.path, progress_string))
     def on_reveal_output(self, widget):
         hyperspeed.utils.reveal_file(self.path)
 

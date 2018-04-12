@@ -6,6 +6,26 @@ import subprocess
 import os
 import sys
 
+def rsyncMonitor(proc, progressCallback):
+    while proc.returncode == None:
+        output = ''
+        char = None
+        while not char in ['\r', '\n']:
+            proc.poll()
+            if proc.returncode != None:
+                break
+            char = proc.stdout.read(1)
+            output += char
+        fields = output.split()
+        if len(fields) >= 4 and fields[1].endswith('%'):
+            progress_percent = float(fields[1].strip('%'))
+            progressCallback(progress_percent)
+    if proc.returncode == 0:
+        progressCallback(100.0)
+        return True
+    else:
+        return False
+
 def reveal_file(path):
     if isinstance(path, basestring): # Single path
         paths = [path]
