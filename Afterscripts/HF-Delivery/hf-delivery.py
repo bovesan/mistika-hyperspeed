@@ -6,7 +6,9 @@ import os
 import uuid
 import math
 import subprocess
+import time
 import hyperspeed.afterscript
+
 threading = hyperspeed.afterscript.threading
 gobject = hyperspeed.afterscript.gobject
 
@@ -239,8 +241,8 @@ class RestUploader(object):
             logFields = ['b']
         else:
             logFields = ['c']
-        logFields.append(str(render.projectNr))
-        logFields.append(str(mistika.ProjectSansNr))
+        logFields.append(str(ProjectNr))
+        logFields.append(str(ProjectSansNr))
         logFields.append(render.prettyname)
         logFields.append('HF Delivery')
         logFields.append(str(int(time.time())))
