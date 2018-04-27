@@ -110,6 +110,7 @@ default_output = '/Volumes/Encoded/Arkivert/[project]/HFD/[project]_[date]-[time
 
 class RestUploader(object):
     ready = False
+    url = None
     def __init__(self, afterscript):
         afterscript.uploader = self
         self.afterscript = afterscript
@@ -224,11 +225,31 @@ class RestUploader(object):
         gobject.idle_add(self.progressbar.set_fraction, 1)
         gobject.idle_add(self.progressbar.set_text, 'Upload complete')
         os.remove(chunk_path)
-
-        cmd = ['curl', '-v', '-H', 'Cookie: token=%s' % afterscript.settings['rest_token'], '-H', 'Project: %s' % afterscript.render.project, afterscript.settings['rest_endpoint']]
-        #cmd += ['-X', 'POST', '-d', '@%s' % afterscript.output_path]
-        cmd += ['-F', 'file=@%s' % afterscript.output_path]
-
+        self.writeToLog()
+    def writeToLog(self):
+        render = self.afterscript.render
+        logFile = "/Volumes/CENTRAL/Archive/Apps/Media/Mistika/EMP/log/exported.log"
+        if not os.path.isfile(logFile):
+            return
+        ProjectNr = render.project
+        while not ProjectNr.isdigit() and len(ProjectNr) > 0:
+            ProjectNr = ProjectNr[:-1]
+        ProjectSansNr = render.project[len(ProjectNr)+1:]
+        if self.url != None:
+            logFields = ['b']
+        else:
+            logFields = ['c']
+        logFields.append(str(render.projectNr))
+        logFields.append(str(mistika.ProjectSansNr))
+        logFields.append(render.prettyname)
+        logFields.append('HF Delivery')
+        logFields.append(str(int(time.time())))
+        if self.url != None:
+            logFields.append(self.url)
+        try:
+            open(logFile, 'a').write('|'.join(logFields)+'\n')
+        except OSError:
+            pass
     def onRenderChange(self, afterscript):
         if afterscript.render == None:
             return
@@ -238,7 +259,7 @@ class RestUploader(object):
             #print ' '.join(cmd)
             response, status = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
             if '< HTTP/1.1 200 OK' in status:
-                url = response
+                url = self.url = response
                 gobject.idle_add(self.tokenStatusLabel.set_markup, '<b>OK</b>')
                 gobject.idle_add(self.tokenEntry.hide)
                 gobject.idle_add(self.link.set_label, url)
