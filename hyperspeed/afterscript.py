@@ -106,11 +106,14 @@ class Afterscript(object):
         if render.exists:
             self.init_output_path()
         else:
-            print 'Could not load render: %s' % render_path        
-    def init_output_path(self, callback=None):
+            print 'Could not load render: %s' % render_path
+
+    def apply_name_variables(self, name):
         variables = {
             'project' : self.render.project,
             'rendername' : self.render_name,
+            'date' : time.strftime("%y%m%d"),
+            'time' : time.strftime("%H%M"),
             'codec' : self.render.primary_output.get_codec
         }
         rename = False
@@ -119,28 +122,30 @@ class Afterscript(object):
                 variables['rendername'] = self.render.title
                 rename = True
                 break
-        output_path = os.path.normpath(os.path.join(os.path.dirname(self.render.primary_output.path),
-            self.settings['output-pattern']))
         for k, v in variables.iteritems():
             regex_pattern = '\[[^\[\]]*%s[^\[\]]*\]' % k
-            if len(re.findall(regex_pattern, output_path)) > 0:
+            if len(re.findall(regex_pattern, name)) > 0:
                 if callable(v):
                     v = v()
                 if v == None:
-                    output_path = re.sub(regex_pattern, '', output_path)
+                    name = re.sub(regex_pattern, '', name)
                 else:
-                    while re.search(regex_pattern, output_path):
-                        output_path = re.sub(
+                    while re.search(regex_pattern, name):
+                        name = re.sub(
                             regex_pattern,
                             re.search(
                                 regex_pattern,
-                                output_path
+                                name
                             ).group(0).replace(k, v).strip('[]'),
-                            output_path
+                            name
                         )
         # Strip _%05d or .%06d from sequences:
-        output_path = re.sub('\.*_*%\d+d$', '',  output_path)
-        self.output_path = output_path
+        name = re.sub('\.*_*%\d+d$', '',  name)
+        return name
+    def init_output_path(self, callback=None):
+        output_path = os.path.normpath(os.path.join(os.path.dirname(self.render.primary_output.path),
+            self.settings['output-pattern']))
+        self.output_path = self.apply_name_variables(output_path)
         if callback:
             callback(output_path)
 
@@ -151,6 +156,7 @@ class AfterscriptFfmpeg(Afterscript):
     onRenderChangeCallbacks = []
     onAfterscriptStartCallbacks = []
     onSuccessCallbacks = []
+    destinations = []
     def __init__(self, script_path, cmd, default_output, title='Afterscript', executable='ffmpeg', onInitCallback=None, onStartCallback=None, onSuccessCallback=None):
         super(AfterscriptFfmpeg, self).__init__(script_path, cmd, default_output, title)
         self.processes = []
@@ -178,6 +184,8 @@ class AfterscriptFfmpeg(Afterscript):
             self.render.remove_output()
         for callback in self.onSuccessCallbacks:
             callback(self)
+        for destination in self.destinations:
+            destination.send()
     def init_window(self):
         window = self.window = gtk.Window()
         screen = self.window.get_screen()
@@ -543,7 +551,7 @@ class AfterscriptFfmpeg(Afterscript):
             print 'Could not remove incomplete marker: %s' % self.output_marker
             print e
         print 'Output: %s' % self.output_path
-        print 'Process ended'
+        #print 'Process ended'
         self.returncode = proc.returncode
         if proc.returncode > 0:
             gobject.idle_add(self.gui_info_dialog, output_prev)
@@ -570,6 +578,97 @@ class AfterscriptFfmpeg(Afterscript):
         gobject.idle_add(self.gui_write, string)
     def gui_write(self, string):
         self.console_buffer.insert(self.console_buffer.get_end_iter(), string)
+    def add_output_path(self, output_path, subtitles=False):
+        self.destinations.append(Destination(self, output_path, subtitles=subtitles))
+
+class Destination(object):
+    def __init__(self, afterscript, path, primary=False, subtitles=False):
+        print("Destination: "+path)
+        self.path = path
+        self.afterscript = afterscript
+        self.subtitles = subtitles
+        vbox = gtk.VBox()
+        hbox = gtk.HBox()
+        progressbar = self.progressbar = gtk.ProgressBar()
+        progressbar.set_text(path)
+        hbox.pack_start(progressbar)
+        button = self.reveal_button = gtk.Button('Reveal output')
+        button.connect("clicked", self.on_reveal_output)
+        button.set_no_show_all(True)
+        hbox.pack_start(button, False, False, 5)
+        vbox.pack_start(hbox, False, False, 5)
+        gobject.idle_add(afterscript.window.get_children()[0].pack_start, vbox, False, False)
+        gobject.idle_add(vbox.show_all)
+    def send(self):
+        self.path = self.afterscript.apply_name_variables(self.path)
+        if not os.path.isdir(os.path.dirname(self.path)):
+            try:
+                os.makedirs(os.path.dirname(self.path))
+            except OSError as e:
+                gobject.idle_add(self.progressbar.set_text, e)
+                return
+        cmd = ['rsync', '--progress', '-ua', self.afterscript.output_path, self.path]
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        if self.subtitles:
+            gobject.idle_add(self.progressbar.set_text, 'Exporting subtitles')
+            if self.afterscript.render.subtitles.count > 0:
+                srtPath = self.path.rsplit('.', 1)[0]+'.srt'
+                open(srtPath, 'w').write(self.afterscript.render.subtitles.srt)
+                vttPath = self.path.rsplit('.', 1)[0]+'.vtt'
+                open(vttPath, 'w').write(self.afterscript.render.subtitles.vtt)
+        gobject.idle_add(self.progressbar.set_text, self.path)
+        if hyperspeed.utils.rsyncMonitor(proc, self.setProgress):
+            gobject.idle_add(self.reveal_button.set_property, 'visible', True)
+        else:
+            gobject.idle_add(self.progressbar.set_text, 'Copy failed to '+self.path)
+            return
+        #progress_float = float(status['frame']) / float(self.render.frames)
+    def setProgress(self, progress_percent):
+        progress_string = '%5.2f%%' % progress_percent
+        gobject.idle_add(self.progressbar.set_fraction, progress_percent*0.01)
+        gobject.idle_add(self.reveal_button.set_property, 'visible', True)
+        # gobject.idle_add(self.progressbar.set_text, "%s %s" % (self.path, progress_string))
+    def on_reveal_output(self, widget):
+        hyperspeed.utils.reveal_file(self.path)
+
+class Subtitles(object):
+    def __init__(self, afterscript, path, primary=False):
+        self.path = path
+        self.afterscript = afterscript
+        vbox = gtk.VBox()
+        hbox = gtk.HBox()
+        progressbar = self.progressbar = gtk.ProgressBar()
+        progressbar.set_text(path)
+        hbox.pack_start(progressbar)
+        button = self.reveal_button = gtk.Button('Reveal output')
+        button.connect("clicked", self.on_reveal_output)
+        button.set_no_show_all(True)
+        hbox.pack_start(button, False, False, 5)
+        vbox.pack_start(hbox, False, False, 5)
+        gobject.idle_add(afterscript.window.get_children()[0].pack_start, vbox, False, False)
+        gobject.idle_add(vbox.show_all)
+    def send(self):
+        self.path = self.afterscript.apply_name_variables(self.path)
+        gobject.idle_add(self.progressbar.set_text, self.path)
+        if not os.path.isdir(os.path.dirname(self.path)):
+            try:
+                os.makedirs(os.path.dirname(self.path))
+            except OSError as e:
+                gobject.idle_add(self.progressbar.set_text, e)
+                return
+        if subprocess.call(['rsync', self.afterscript.output_path, self.path]) > 0:
+            gobject.idle_add(self.progressbar.set_text, 'Copy failed to '+self.path)
+            return
+        #progress_float = float(status['frame']) / float(self.render.frames)
+        progress_float = 1.0
+        progress_percent = progress_float * 100.0
+        progress_string = '%5.2f%%' % progress_percent
+        gobject.idle_add(self.progressbar.set_fraction, progress_float)
+        gobject.idle_add(self.reveal_button.set_property, 'visible', True)
+        # gobject.idle_add(self.progressbar.set_text, progress_string)
+    def on_reveal_output(self, widget):
+        hyperspeed.utils.reveal_file(self.path)
+
 
 def list():
     afterscripts = []

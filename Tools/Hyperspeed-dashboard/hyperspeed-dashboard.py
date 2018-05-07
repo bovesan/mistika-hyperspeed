@@ -1547,8 +1547,8 @@ class PyApp(gtk.Window):
     def io_update(self):
         gobject.idle_add(self.updateButton.hide)
         gobject.idle_add(self.spinner_update.show)
-        pre_update_checksum = md5(os.path.basename(sys.argv[0]))
-        git = os.path.isdir('.git')
+        pre_update_checksum = md5(os.path.realpath(sys.argv[0]))
+        git = os.path.isdir(os.path.join(self.config['app_folder'], '.git'))
         if git:
             print 'git pull'
             self.launch_subprocess([os.path.join(self.config['app_folder'], 'res/scripts/gitpull.sh')])
@@ -1568,7 +1568,7 @@ class PyApp(gtk.Window):
                 gobject.idle_add(self.updateButton.show)
                 return
             # run update script
-        post_update_checksum = md5(os.path.basename(sys.argv[0]))
+        post_update_checksum = md5(os.path.realpath(sys.argv[0]))
         if True or pre_update_checksum != post_update_checksum:
             version_string = '<span color="#ff9900" weight="bold">Restart to complete update</span>'
             gobject.idle_add(self.versionLabel.set_markup, version_string)
