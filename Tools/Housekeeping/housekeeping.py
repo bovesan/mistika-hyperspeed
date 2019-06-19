@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import gtk
+import glob
 import os
 import subprocess
 import sys
@@ -50,6 +51,8 @@ class PyApp(gtk.Window):
         self.stacks = {}
         self.folders = {}
         self.dependencies = {}
+        self.excess = {}
+        self.files = []
         self.threads = []
         self.queue_size = 0
         self.last_update = {'time':0, 'copied':0}
@@ -57,8 +60,6 @@ class PyApp(gtk.Window):
         vbox = gtk.VBox(False, 10)
 
         hbox = gtk.HBox(False, 10)
-        hbox.pack_start(gtk.Label('Environments, groups or other structures to consolidate:'), False, False, 0)
-        vbox.pack_start(hbox, False, False, 0)
         vbox.pack_start(self.init_stacks_window())
 
         hbox = gtk.HBox(False, 10)
@@ -71,8 +72,6 @@ class PyApp(gtk.Window):
         vbox.pack_start(hbox, False, False, 0)
 
         hbox = gtk.HBox(False, 10)
-        hbox.pack_start(gtk.Label('Folders to clean:'), False, False, 0)
-        vbox.pack_start(hbox, False, False, 0)
         vbox.pack_start(self.init_folders_window())
 
         hbox = gtk.HBox(False, 10)
@@ -141,10 +140,14 @@ class PyApp(gtk.Window):
         #self.present()
         self.parse_command_line_arguments()
         # self.init_dependencies_daemon()
+        self.add_defaults() 
         gobject.idle_add(self.bring_to_front)
     def bring_to_front(self):
         self.present()      
 
+    def add_defaults(self):
+        for path in glob.glob(os.path.join(mistika.projects_folder, mistika.project, 'DATA/*.env')):
+            self.gui_stack_add(path) 
     def init_stacks_window(self):
         treestore = self.stacks_treestore = gtk.TreeStore(str, float, str, bool, bool) # Name, progress float, progress text, progress visible, status visible
         treeview = self.stacks_treeview = gtk.TreeView()
@@ -178,7 +181,7 @@ class PyApp(gtk.Window):
         treeview.set_rules_hint(True)
         cell = gtk.CellRendererText()
         cell.set_property("editable", True)
-        column = gtk.TreeViewColumn('Folder', cell, text=0)
+        column = gtk.TreeViewColumn('Folder to clean', cell, text=0)
         column.set_resizable(True)
         column.set_expand(True)
         treeview.append_column(column)
@@ -321,15 +324,10 @@ class PyApp(gtk.Window):
         row_iter = self.folders_treestore.append(None, [folder_path, 0.0, '0%', False, False])
         row_path = self.folders_treestore.get_path(row_iter)
         folder.row_reference = gtk.TreeRowReference(self.folders_treestore, row_path)
-        # for dependency in stack.dependencies:
-        #     self.dependencies_treestore.append(None, [dependency.name])
-        # print 'creating thread'
-        t = threading.Thread(target=self.get_dependencies, args=[folder])
+        t = threading.Thread(target=self.get_files, args=[folder])
         self.threads.append(t)
         t.setDaemon(True)
         t.start()
-        # print 'started thread'
-        # print threading.active_count()
     def init_dependencies_daemon(self):
         t = self.dependencies_daemon_thread = threading.Thread(target=self.dependencies_daemon)
         self.threads.append(t)
@@ -510,13 +508,13 @@ class PyApp(gtk.Window):
         return t
     def get_dependencies(self, stack):
         for dependency in stack.iter_dependencies(progress_callback=self.stack_read_progress):
-            #print dependency.name
+            if dependency.path in self.excess:
+                del self.excess[dependency.path]
             if not dependency.path in self.dependencies:
                 self.dependencies[dependency.path] = dependency = copy.copy(dependency)
                 if dependency.size != None:
                     self.queue_size += dependency.size
-                # self.dependencies[dependency.path].parents.append(stack)
-                gobject.idle_add(self.gui_dependency_add, dependency)
+                # gobject.idle_add(self.gui_dependency_add, dependency)
             else:
                 with self.dependencies[dependency.path].lock:
                     this_frame_range = dependency.frame_ranges[0]
@@ -525,14 +523,22 @@ class PyApp(gtk.Window):
                         gobject.idle_add(self.gui_dependency_frames_update, dependency.path)
                     if not stack in self.dependencies[dependency.path].parents:
                         self.dependencies[dependency.path].parents.append(stack)
-                        gobject.idle_add(self.gui_dependency_add_parent, dependency.path, stack.path)
+                        # gobject.idle_add(self.gui_dependency_add_parent, dependency.path, stack.path)
         self.status_set('%s in queue' % human.size(self.queue_size))
+    def get_files(self, folder):
+        for root, dir_names, file_names in os.walk(folder, topdown=True):
+            for file_name in file_names:
+                file_path = os.path.join(root, file_name)
+                self.files[file_path] = True
+                if not file_path in self.dependencies:
+                    if not file_path in self.excess:
+                        self.excess[file_path] = Excess(file_path)
     def stack_read_progress(self, stack, progress):
         treestore = self.stacks_treestore
         row_path = stack.row_reference.get_path()
         progress_percent = progress * 100.0
         progress_string = '%5.2f%%' % progress_percent
-        progress_string = '   Looking for dependencies   '
+        progress_string = '   Loading dependencies   '
         # print stack, progress, progress_string
         show_progress = True
         if progress == 1.0:
@@ -565,6 +571,18 @@ class PyApp(gtk.Window):
         if dependency.size != None:
             self.dependency_types[dependency.type].meta['size'] += dependency.size
         self.gui_dependency_summary_update(dependency.type)
+    def gui_excess_add(self, excess):
+        treestore = self.excess_treestore
+        human_size = human.size(excess.size)
+        status = ''
+        text_color = COLOR_DEFAULT
+        parent_row_path = None
+        parent_iter = treestore.get_iter(parent_row_path)
+        row_iter = treestore.append(parent_iter, [dependency.path, 0, '', False, details, human_size, status, text_color, True])
+        row_path = treestore.get_path(row_iter)
+        self.dependencies[dependency.path].row_reference = gtk.TreeRowReference(treestore, row_path)
+        # if '%' in dependency.path:
+        #     gobject.idle_add(self.gui_dependency_frames_update, dependency.path)
     def gui_dependency_summary_update(self, dependency_type, extra_bytes=0):
         dependency_type_object = self.dependency_types[dependency_type]
         treestore = self.dependencies_treestore
@@ -701,6 +719,8 @@ class PyApp(gtk.Window):
             frames_before = self.dependencies[dependency.path].frames
             self.dependencies[dependency.path].parent_remove(stack)
             if len(self.dependencies[dependency.path].parents) == 0:
+                if dependency.path in self.files:
+                    self.excess.add[dependency.path] = []
                 treestore = self.dependencies_treestore
                 row_path = self.dependencies[dependency.path].row_reference.get_path()
                 row_iter = treestore.get_iter(row_path)
