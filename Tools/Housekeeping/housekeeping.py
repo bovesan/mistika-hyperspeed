@@ -107,15 +107,15 @@ class PyApp(gtk.Window):
         vbox.pack_start(hbox, False, False, 0)
 
         hbox = gtk.HBox(False, 10)
-        button = self.button_copy = gtk.Button('Hide excess files')
-        button.connect("clicked", self.on_copy_start)
+        button = self.button_copy = gtk.Button('Disable selected files')
+        button.connect("clicked", self.gui_on_selected_excess, 'disable')
         hbox.pack_start(button, False, False, 5)
-        button = self.button_copy = gtk.Button('Permanently delete hidden files')
-        button.connect("clicked", self.on_copy_start)
+        button = self.button_copy = gtk.Button('Permanently delete selected files')
+        # button.connect("clicked", self.on_copy_start)
         hbox.pack_start(button, False, False, 5)
         gtk.stock_add([(gtk.STOCK_CANCEL, "Abort", 0, 0, "")])
         button = self.button_abort = gtk.Button(stock=gtk.STOCK_CANCEL)
-        button.connect("clicked", self.on_copy_abort)
+        # button.connect("clicked", self.on_copy_abort)
         button.set_no_show_all(True)
         hbox.pack_start(button, False, False, 5)
         vbox.pack_start(hbox, False, False, 0)
@@ -136,9 +136,27 @@ class PyApp(gtk.Window):
         #self.set_keep_above(True)
         #self.present()
         self.parse_command_line_arguments()
-        # self.init_dependencies_daemon()
         self.add_defaults() 
         gobject.idle_add(self.bring_to_front)
+    def gui_on_selected_excess(self, widget, action):
+        treeview = self.excess_treeview
+        selection = treeview.get_selection()
+        (model, row_paths) = selection.get_selected_rows()
+        excess_list = []
+        for row_path in row_paths:
+            row_iter = model.get_iter(row_path)
+            excess_list.append(model[row_path][0])
+        for excess_path in excess_list:
+            if action == 'disable':
+                self.gui_excess_disable(excess_path)
+
+    def gui_excess_disable(self, excess):
+        if type(excess) != Excess:
+            excess = self.excess[excess]
+        treestore = self.excess_treestore
+        row_path = excess.row_reference.get_path()
+        row_iter = treestore.get_iter(row_path)
+        treestore.remove(row_iter)
     def bring_to_front(self):
         self.present()      
 
@@ -287,9 +305,6 @@ class PyApp(gtk.Window):
         row_iter = self.stacks_treestore.append(None, [stack_path, 0.0, '0%', False, False])
         row_path = self.stacks_treestore.get_path(row_iter)
         stack.row_reference = gtk.TreeRowReference(self.stacks_treestore, row_path)
-        # for dependency in stack.dependencies:
-        #     self.dependencies_treestore.append(None, [dependency.name])
-        # print 'creating thread'
         t = threading.Thread(target=self.get_dependencies, args=[stack])
         self.threads.append(t)
         t.setDaemon(True)
@@ -325,23 +340,15 @@ class PyApp(gtk.Window):
         self.threads.append(t)
         t.setDaemon(True)
         t.start()
-    def init_dependencies_daemon(self):
-        t = self.dependencies_daemon_thread = threading.Thread(target=self.dependencies_daemon)
-        self.threads.append(t)
-        t.setDaemon(True)
-        t.start()
-    # def dependencies_daemon(self):
-    def on_copy_start(self, widget):
-        # print 'Launching copy thread'
-        self.button_copy.hide()
-        self.button_abort.show()
-        self.abort = False
-        self.launch_thread(self.io_copy)
-    def on_copy_abort(self, widget):
-        self.status_set('Aborted by user.')
-        self.button_abort.hide()
-        self.button_copy.show()
-        self.abort = True
+    def get_files(self, folder):
+        gobject.idle_add(self.gui_row_update, self.folders_treestore, folder.row_reference, {'1': 0, '2' : 'Indexing', '3': True, '4': False})
+        i = 0
+        for root, dir_names, file_names in os.walk(folder.path, topdown=True):
+            for file_name in file_names:
+                file_path = os.path.join(root, file_name)
+                self.add_file(file_path)
+        gobject.idle_add(self.gui_row_update, self.folders_treestore, folder.row_reference, {'1': 1, '2' : 'Loaded', '3': False, '4': True})
+
     def gui_row_update(self, treestore, row_reference, values):
         row_path = row_reference.get_path()
         for key, value in values.iteritems():
@@ -355,56 +362,46 @@ class PyApp(gtk.Window):
         t.start()
         return t
     def add_file(self, file_path):
-        print file_path
         self.files.append(file_path)
         if not file_path in self.dependencies:
             self.add_excess(file_path)
     def remove_file(self, file_path):
-        if file_path in self.excess:
-            self.remove_excess(file_path)
+        print 'remove_file(%s)' % file_path
+        try:
+            self.remove_excess(self.excess[file_path])
+        except KeyError:
+            pass
         self.files.remove(file_path)
     def add_excess(self, file_path):
         if not file_path in self.excess:
             excess = self.excess[file_path] = Excess(file_path)
             gobject.idle_add(self.gui_excess_add, excess)
-            if excess.size != None:
-                self.queue_size += excess.size
-                self.status_set('Excess: %s' % human.size(self.queue_size))
     def remove_excess(self, excess):
-        gobject.idle_add(self.gui_excess_remove, excess)
-        if excess.size != None:
-            self.queue_size -= excess.size
-            self.status_set('Excess: %s' % human.size(self.queue_size))
+        if excess.path in self.excess:
+            del self.excess[excess.path]
+            gobject.idle_add(self.gui_excess_remove, excess)
     def add_dependency(self, dependency, stack):
         if dependency.path in self.excess:
             self.remove_excess(self.excess[dependency.path]) 
         if not dependency.path in self.dependencies:
-            self.dependencies[dependency.path] = dependency = copy.copy(dependency)
+            self.dependencies[dependency.path] = copy.copy(dependency)
             # gobject.idle_add(self.gui_dependency_add, dependency)
         else:
-            with self.dependencies[dependency.path].lock:
-                this_frame_range = dependency.frame_ranges[0]
-                if '%' in dependency.path and not this_frame_range in self.dependencies[dependency.path].frame_ranges:
-                    self.dependencies[dependency.path].frame_ranges.append(this_frame_range)
-                    gobject.idle_add(self.gui_dependency_frames_update, dependency.path)
-                if not stack in self.dependencies[dependency.path].parents:
-                    self.dependencies[dependency.path].parents.append(stack)
+            dependency = self.dependencies[dependency.path]
+            with dependency.lock:
+                if not stack in dependency.parents:
+                    dependency.parents.append(stack)
                     # gobject.idle_add(self.gui_dependency_add_parent, dependency.path, stack.path)
     def remove_dependency(self, dependency):
+        try:
+            del self.dependencies[dependency.path]
+        except KeyError:
+            pass
         if dependency.path in self.files:
             self.add_excess(dependency.path)
     def get_dependencies(self, stack):
         for dependency in stack.iter_dependencies(progress_callback=self.stack_read_progress):
             self.add_dependency(dependency, stack)
-    def get_files(self, folder):
-        gobject.idle_add(self.gui_row_update, self.folders_treestore, folder.row_reference, {'1': 0, '2' : 'Indexing', '3': True, '4': False})
-        i = 0
-        for root, dir_names, file_names in os.walk(folder.path, topdown=True):
-            for file_name in file_names:
-                file_path = os.path.join(root, file_name)
-                self.add_file(file_path)
-        gobject.idle_add(self.gui_row_update, self.folders_treestore, folder.row_reference, {'1': 1, '2' : 'Loaded', '3': False, '4': True})
-
     def stack_read_progress(self, stack, progress):
         treestore = self.stacks_treestore
         row_path = stack.row_reference.get_path()
@@ -437,8 +434,6 @@ class PyApp(gtk.Window):
         row_iter = self.dependencies_treestore.append(parent_iter, [dependency.path, 0, '', False, details, human_size, status, text_color, True])
         row_path = self.dependencies_treestore.get_path(row_iter)
         self.dependencies[dependency.path].row_reference = gtk.TreeRowReference(self.dependencies_treestore, row_path)
-        if '%' in dependency.path:
-            gobject.idle_add(self.gui_dependency_frames_update, dependency.path)
         if dependency.size != None:
             self.dependency_types[dependency.type].meta['size'] += dependency.size
         self.gui_dependency_summary_update(dependency.type)
@@ -452,13 +447,18 @@ class PyApp(gtk.Window):
         row_iter = treestore.append(parent_iter, [excess.path, 0, '', False, details, human_size, status, text_color, True])
         row_path = treestore.get_path(row_iter)
         excess.row_reference = gtk.TreeRowReference(treestore, row_path)
-        # if '%' in dependency.path:
-        #     gobject.idle_add(self.gui_dependency_frames_update, dependency.path)
+        if excess.size != None:
+            self.queue_size += excess.size
+            self.gui_status_set('Excess: %s' % human.size(self.queue_size))
     def gui_excess_remove(self, excess):
         treestore = self.excess_treestore
-        row_path = self.excess[excess.path].row_reference.get_path()
-        row_iter = treestore.get_iter(row_path)
-        treestore.remove(row_iter)
+        row_path = excess.row_reference.get_path()
+        if (row_path):
+            row_iter = treestore.get_iter(row_path)
+            treestore.remove(row_iter)
+            if excess.size != None:
+                self.queue_size -= excess.size
+                self.gui_status_set('Excess: %s' % human.size(self.queue_size))
     def gui_dependency_summary_update(self, dependency_type, extra_bytes=0):
         dependency_type_object = self.dependency_types[dependency_type]
         treestore = self.dependencies_treestore
@@ -480,64 +480,6 @@ class PyApp(gtk.Window):
             treestore[row_path][3] = True
         else:
             treestore[row_path][3] = False
-    def gui_dependency_frames_update(self, dependency_path):
-        dependency = self.dependencies[dependency_path]
-        treestore = self.dependencies_treestore
-        parent_row_path = dependency.row_reference.get_path()
-        parent_row_iter = treestore.get_iter(parent_row_path)
-        child_row_iter = treestore.iter_children(parent_row_iter)
-        while child_row_iter != None:
-            treestore.remove(child_row_iter)
-            child_row_iter = treestore.iter_next(child_row_iter)
-        good_frame_ranges = 0
-        if dependency.size != None:
-            self.dependency_types[dependency.type].meta['size'] -= dependency.size
-            self.queue_size -= dependency.size
-        dependency_size = 0
-        for frame_range in dependency.frames:
-            if frame_range.start == frame_range.end:
-                frames_name = str(frame_range.start)
-            else:
-                frames_name = '%i - %i' % (frame_range.start, frame_range.end)
-            details = ''
-            status = ''
-            if frame_range.size > 0:
-                dependency_size += frame_range.size
-                human_size = human.size(frame_range.size)
-                if frame_range.complete:
-                    text_color = COLOR_DEFAULT
-                    good_frame_ranges += 1
-                else:
-                    text_color = COLOR_WARNING
-                    details = 'Some frames are missing.'
-            else:
-                human_size = ''
-                text_color = COLOR_ALERT
-                details = 'The whole range is missing.'
-                status = 'Missing'
-
-            if len(dependency.frames) == good_frame_ranges:
-                dependency_status = ''
-                dependency_color = COLOR_DEFAULT
-                dependency_size_human = human.size(dependency_size)
-            elif good_frame_ranges > 0:
-                dependency_status = 'Incomplete'
-                dependency_color = COLOR_WARNING
-                dependency_size_human = human.size(dependency_size)
-            else:
-                dependency_status = 'Missing'
-                dependency_color = COLOR_ALERT
-                dependency_size_human = ''
-            gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'5' : dependency_size_human, '6' : dependency_status, '7': dependency_color})
-            frames_row_iter = self.dependencies_treestore.append(parent_row_iter, [frames_name, 0, '', False, details, human_size, status, text_color, True])
-        if dependency_size > 0:
-            # dependency.size = dependency_size
-            self.queue_size += dependency_size
-            self.dependency_types[dependency.type].meta['size'] += dependency_size
-        # else:
-        #     dependency.size = None
-        self.gui_dependency_summary_update(dependency.type)
-        # self.dependencies_treeview.expand_all()
     def gui_dependency_add_parent(self, dependency_path, parent):
         treestore = self.dependencies_treestore
         row_path = self.dependencies[dependency_path].row_reference.get_path()
@@ -553,7 +495,9 @@ class PyApp(gtk.Window):
             print 'No row reference for %s' % dependency_path
 
     def status_set(self, status):
-        gobject.idle_add(self.status_label.set_text, status)
+        gobject.idle_add(self.gui_status_set, status)
+    def gui_status_set(self, status):
+        self.status_label.set_text(status)
     def gui_on_selected_stacks(self, widget, action):
         treeview = self.stacks_treeview
         selection = treeview.get_selection()
@@ -569,12 +513,13 @@ class PyApp(gtk.Window):
         if type(stack) != Stack:
             stack = self.stacks[stack]
         for dependency in stack.dependencies:
-            frames_before = self.dependencies[dependency.path].frames
-            self.dependencies[dependency.path].parent_remove(stack)
-            if len(self.dependencies[dependency.path].parents) == 0:
+            try:
+                dependency = self.dependencies[dependency.path]
+            except KeyError:
+                print 'Dependency was never added: ', dependency.path
+            dependency.parent_remove(stack)
+            if len(dependency.parents) == 0:
                 self.remove_dependency(dependency)
-            elif self.dependencies[dependency.path].frames != frames_before:
-                self.gui_dependency_frames_update(self.dependencies[dependency.path])
         treestore = self.stacks_treestore
         row_path = stack.row_reference.get_path()
         row_iter = treestore.get_iter(row_path)
@@ -594,6 +539,10 @@ class PyApp(gtk.Window):
     def gui_folder_remove(self, folder):
         if type(folder) != Stack:
             folder = self.folders[folder]
+        print 'Remove folder: ',folder.path
+        for file_path in reversed(self.files):
+            if (file_path.startswith(folder.path)):
+                self.remove_file(file_path)
         treestore = self.folders_treestore
         row_path = folder.row_reference.get_path()
         row_iter = treestore.get_iter(row_path)

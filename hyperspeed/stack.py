@@ -93,9 +93,9 @@ class Dependency(object):
                 for font in self.text.fonts:
                     self.dependencies.append(Dependency(font, 'font', parent=parent))
     def __str__(self):
-        return self.name
+        return 'Dependency(%s)' % self.name
     def __repr__(self):
-        return self.name
+        return 'Dependency(%s)' % self.name
     def parent_remove(self, parent):
         i = 0
         while i < len(self.frame_ranges):
