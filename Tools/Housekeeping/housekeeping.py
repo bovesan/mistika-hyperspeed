@@ -14,6 +14,7 @@ import re
 import copy
 import time
 from datetime import datetime
+import stat
 
 try:
     cwd = os.getcwd()
@@ -41,10 +42,13 @@ class Excess:
     row_reference = None
     size = None
     path = None
+    status = None
     def __init__(self, path):
         self.path = path
-        self.size = os.path.getsize(path)
-        pass
+        file_stat = os.stat(path)
+        self.size = file_stat[stat.ST_SIZE]
+        if oct(file_stat[stat.ST_MODE])[-3] == '2':
+            self.status = 'Disabled'
 
 class PyApp(gtk.Window):
 
@@ -104,20 +108,15 @@ class PyApp(gtk.Window):
         except:
             pass
         hbox.pack_start(spinner, False, False, 5)
-        vbox.pack_start(hbox, False, False, 0)
-
-        hbox = gtk.HBox(False, 10)
+        button = self.button_copy = gtk.Button('Permanently delete selected, disabled files')
+        button.connect("clicked", self.gui_on_selected_excess, 'delete')
+        hbox.pack_end(button, False, False, 5)
+        button = self.button_copy = gtk.Button('Re-enable selected files')
+        button.connect("clicked", self.gui_on_selected_excess, 'enable')
+        hbox.pack_end(button, False, False, 5)
         button = self.button_copy = gtk.Button('Disable selected files')
         button.connect("clicked", self.gui_on_selected_excess, 'disable')
-        hbox.pack_start(button, False, False, 5)
-        button = self.button_copy = gtk.Button('Permanently delete selected files')
-        # button.connect("clicked", self.on_copy_start)
-        hbox.pack_start(button, False, False, 5)
-        gtk.stock_add([(gtk.STOCK_CANCEL, "Abort", 0, 0, "")])
-        button = self.button_abort = gtk.Button(stock=gtk.STOCK_CANCEL)
-        # button.connect("clicked", self.on_copy_abort)
-        button.set_no_show_all(True)
-        hbox.pack_start(button, False, False, 5)
+        hbox.pack_end(button, False, False, 5)
         vbox.pack_start(hbox, False, False, 0)
 
         #menu = ['Sync project', 'Sync media']
@@ -148,15 +147,43 @@ class PyApp(gtk.Window):
             excess_list.append(model[row_path][0])
         for excess_path in excess_list:
             if action == 'disable':
-                self.gui_excess_disable(excess_path)
+                self.excess_disable(excess_path)
+            if action == 'enable':
+                self.excess_enable(excess_path)
+            if action == 'delete':
+                self.excess_delete(excess_path)
 
-    def gui_excess_disable(self, excess):
+    def excess_disable(self, excess):
         if type(excess) != Excess:
             excess = self.excess[excess]
-        treestore = self.excess_treestore
-        row_path = excess.row_reference.get_path()
-        row_iter = treestore.get_iter(row_path)
-        treestore.remove(row_iter)
+        mode = os.lstat(excess.path).st_mode
+        os.chmod(excess.path, mode & 0222)
+        excess.status = 'Disabled'
+        gobject.idle_add(self.gui_row_update, self.excess_treestore, excess.row_reference, {'6': excess.status})
+
+    def excess_enable(self, excess):
+        if type(excess) != Excess:
+            excess = self.excess[excess]
+        mode = os.lstat(excess.path).st_mode
+        if oct(mode)[-3] == '2':
+            mode |= 0400
+        if oct(mode)[-2] == '2':
+            mode |= 0040
+        if oct(mode)[-1] == '2':
+            mode |= 0004
+        os.chmod(excess.path, mode)
+        excess.status = None
+        gobject.idle_add(self.gui_row_update, self.excess_treestore, excess.row_reference, {'6': excess.status})
+
+    def excess_delete(self, excess):
+        if type(excess) != Excess:
+            excess = self.excess[excess]
+        if excess.status != 'Disabled':
+            return
+        os.remove(excess.path)
+        self.remove_file(excess.path)
+        
+    
     def bring_to_front(self):
         self.present()      
 
@@ -440,7 +467,7 @@ class PyApp(gtk.Window):
     def gui_excess_add(self, excess):
         treestore = self.excess_treestore
         human_size = human.size(excess.size)
-        status = ''
+        status = excess.status
         details = ''
         text_color = COLOR_DEFAULT
         parent_iter = None
