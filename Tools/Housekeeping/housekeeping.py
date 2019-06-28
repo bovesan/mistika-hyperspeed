@@ -34,6 +34,13 @@ COLOR_ALERT = '#cc0000'
 class Folder:
     row_reference = None
     path = None
+    extensions = []
+    @property
+    def extensionsString(self):
+        return ', '.join(self.extensions)
+    @extensionsString.setter
+    def extensionsString(self, value):
+        self.extensions = [x.strip() for x in value.split(',')]
     def __init__(self, path):
         self.path = path
         pass
@@ -190,7 +197,7 @@ class PyApp(gtk.Window):
     def add_defaults(self):
         for path in glob.glob(os.path.join(mistika.projects_folder, mistika.project, 'DATA/*.env')):
             self.gui_stack_add(path)
-        self.gui_folder_add(os.path.join(mistika.projects_folder, mistika.project, 'DATA/PRIVATE'))
+        self.gui_folder_add(os.path.join(mistika.projects_folder, mistika.project, 'PRIVATE'), ['.dat'])
         for path in glob.glob(os.path.join('/Volumes/MATERIAL_HF/MISTIKA_MEDIA', mistika.project)):
             self.gui_folder_add(path)
 
@@ -222,7 +229,7 @@ class PyApp(gtk.Window):
         return scrolled_window
 
     def init_folders_window(self):
-        treestore = self.folders_treestore = gtk.TreeStore(str, float, str, bool, bool) # Name, progress float, progress text, progress visible, status visible
+        treestore = self.folders_treestore = gtk.TreeStore(str, float, str, bool, bool, str) # Name, progress float, progress text, progress visible, status visible, extensions
         treeview = self.folders_treeview = gtk.TreeView()
         treeview.set_rules_hint(True)
         cell = gtk.CellRendererText()
@@ -230,6 +237,10 @@ class PyApp(gtk.Window):
         column = gtk.TreeViewColumn('Folders to clean', cell, text=0)
         column.set_resizable(True)
         column.set_expand(True)
+        treeview.append_column(column)
+        cell = gtk.CellRendererText()
+        column = gtk.TreeViewColumn('Filter', cell, text=5)
+        column.set_resizable(True)
         treeview.append_column(column)
         cell = gtk.CellRendererText()
         column = gtk.TreeViewColumn('Status')
@@ -356,11 +367,12 @@ class PyApp(gtk.Window):
             print 'Closed, no files selected'
         dialog.destroy()
 
-    def gui_folder_add(self, folder_path):
+    def gui_folder_add(self, folder_path, extensions=[]):
         if folder_path in self.folders:
             return
         folder = self.folders[folder_path] = Folder(folder_path)
-        row_iter = self.folders_treestore.append(None, [folder_path, 0.0, '0%', False, False])
+        folder.extensions = extensions
+        row_iter = self.folders_treestore.append(None, [folder_path, 0.0, '0%', False, False, folder.extensionsString])
         row_path = self.folders_treestore.get_path(row_iter)
         folder.row_reference = gtk.TreeRowReference(self.folders_treestore, row_path)
         t = threading.Thread(target=self.get_files, args=[folder])
@@ -368,11 +380,15 @@ class PyApp(gtk.Window):
         t.setDaemon(True)
         t.start()
     def get_files(self, folder):
+        print "get_files", folder.path
         gobject.idle_add(self.gui_row_update, self.folders_treestore, folder.row_reference, {'1': 0, '2' : 'Indexing', '3': True, '4': False})
         i = 0
         for root, dir_names, file_names in os.walk(folder.path, topdown=True):
             for file_name in file_names:
                 file_path = os.path.join(root, file_name)
+                if folder.extensions:
+                    if not os.path.splitext(file_name)[-1] in folder.extensions:
+                        continue
                 self.add_file(file_path)
         gobject.idle_add(self.gui_row_update, self.folders_treestore, folder.row_reference, {'1': 1, '2' : 'Loaded', '3': False, '4': True})
 
@@ -389,6 +405,7 @@ class PyApp(gtk.Window):
         t.start()
         return t
     def add_file(self, file_path):
+        print file_path
         self.files.append(file_path)
         if not file_path in self.dependencies:
             self.add_excess(file_path)
