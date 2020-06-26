@@ -58,7 +58,7 @@ class Excess:
             self.status = 'Disabled'
 
 class PyApp(gtk.Window):
-
+    batch_mode = False
     def __init__(self):
         super(PyApp, self).__init__()
         screen = self.get_screen()
@@ -142,7 +142,8 @@ class PyApp(gtk.Window):
         #self.set_keep_above(True)
         #self.present()
         self.parse_command_line_arguments()
-        self.add_defaults() 
+        if len(sys.argv) < 2:
+            self.add_defaults() 
         gobject.idle_add(self.bring_to_front)
     def gui_on_selected_excess(self, widget, action):
         treeview = self.excess_treeview
@@ -303,8 +304,33 @@ class PyApp(gtk.Window):
             while i < len(sys.argv) - 1:
                 i += 1
                 arg = sys.argv[i]
-                if os.path.exists(arg):
-                    self.gui_stack_add(arg)    
+                if arg == '-f':
+                    i += 1
+                    self.gui_folder_add(sys.argv[i])
+                elif arg == '-auto':
+                    self.batch_mode = True
+                elif os.path.exists(arg):
+                    self.gui_stack_add(arg)
+        if self.batch_mode:
+            gobject.idle_add(self.batch_delete)
+    def batch_delete(self):
+        active_threads = 0
+        for thread in self.threads:
+            if thread.is_alive():
+                active_threads += 1
+        if active_threads > 0:
+            #print active_threads, "threads still active"
+            t = threading.Timer(1, self.batch_delete)
+            t.start()
+            return
+        excess_list = []
+        for row in iter(self.excess_treestore):
+            excess_list.append(row[0])
+        print 'Deleting', human.size(self.queue_size), 'of excess files',
+        for excess_path in excess_list:
+            #print "Deleting ", excess_path
+            self.excess_delete(excess_path)
+        gtk.main_quit()
     def on_quit(self, widget):
         print 'Closed by: ' + repr(widget)
         gtk.main_quit()
@@ -380,7 +406,6 @@ class PyApp(gtk.Window):
         t.setDaemon(True)
         t.start()
     def get_files(self, folder):
-        print "get_files", folder.path
         gobject.idle_add(self.gui_row_update, self.folders_treestore, folder.row_reference, {'1': 0, '2' : 'Indexing', '3': True, '4': False})
         i = 0
         for root, dir_names, file_names in os.walk(folder.path, topdown=True):
@@ -405,7 +430,7 @@ class PyApp(gtk.Window):
         t.start()
         return t
     def add_file(self, file_path):
-        print file_path
+        #print file_path
         self.files.append(file_path)
         if not file_path in self.dependencies:
             self.add_excess(file_path)
