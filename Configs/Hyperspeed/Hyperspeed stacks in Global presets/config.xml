@@ -5,7 +5,7 @@
     <links>
     	<link>
     		<target>../../../Stacks</target>
-    		<location>$MISTIKA-ENV$/global_presets/Hyperspeed</location>
+    		<location>$MISTIKA-SHARED$/global_presets/Hyperspeed</location>
     	</link>
     </links>
     <manage>false</manage>

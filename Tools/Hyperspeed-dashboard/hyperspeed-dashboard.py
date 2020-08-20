@@ -85,6 +85,7 @@ def config_value_decode(value, parent_folder = False):
         pass
     value = value.replace('$HOSTNAME$', socket.gethostname())
     value = value.replace('$MISTIKA-ENV$', mistika.env_folder)
+    value = value.replace('$MISTIKA-SHARED$', mistika.shared_folder)
     value = os.path.expanduser(value)
     if parent_folder and not value.startswith('/'):
         value = os.path.join(parent_folder, value)

@@ -71,18 +71,25 @@ def reload():
     global fonts_folder
     global platform
     global executable
-    env_folder = os.path.realpath(os.path.expanduser("~/MISTIKA-ENV"))
-    if os.path.exists(env_folder):
-        product = 'Mistika'
-        executable = 'mistika'
-    else:
-        env_folder = os.path.realpath(os.path.expanduser("~/MAMBA-ENV"))
-        executable = '/Applications/SGOMambaFX.app/Contents/MacOS/mamba'
-        if os.path.exists(env_folder):
-            product = 'Mamba'
-        else:
-            product = False
-            env_folder = None
+    product = False
+    env_folder = None
+    envFolderCandidates = [
+        os.path.realpath(os.path.expanduser("~/SGO AppData/Mistika")),
+        os.path.realpath(os.path.expanduser("~/MISTIKA-ENV")),
+        os.path.realpath(os.path.expanduser("~/MAMBA-ENV")),
+    ]
+    for envFolderCandidate in envFolderCandidates:
+        if os.path.exists(envFolderCandidate):
+            env_folder = envFolderCandidate
+            product = 'Mistika'
+            executable = 'mistika'
+    app_folder = env_folder
+    appFolderCandidates = [
+        os.path.realpath(os.path.expanduser("~/SGO Apps/Mistika Ultima")),
+    ]
+    for appFolderCandidate in appFolderCandidates:
+        if os.path.exists(appFolderCandidate):
+            app_folder = appFolderCandidate
     if 'linux' in platform_module.system().lower():
         platform = 'linux'
         fonts_folder = '/usr/share/fonts/mistika/'
@@ -92,7 +99,14 @@ def reload():
     elif 'windows' in platform_module.system().lower():
         platform = 'windows'
         fonts_folder = 'C:/Windows/Fonts/'
+    sharedFolderCandidates = [
+        os.path.realpath(os.path.expanduser("~/MISTIKA-SHARED")),
+        os.path.join(env_folder, 'shared')
+    ]
     shared_folder = os.path.join(env_folder, 'shared')
+    for sharedFolderCandidate in sharedFolderCandidates:
+        if os.path.exists(sharedFolderCandidate):
+            shared_folder = sharedFolderCandidate
     try:
         version = LooseVersion('.'.join(re.findall(r'\d+',
             subprocess.Popen([executable, '-V'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0].splitlines()[0])))
@@ -135,7 +149,7 @@ def reload():
             open(afterscripts_path, 'a').write('None')
         except IOError:
             print 'Afterscripts config not available: %s' % afterscripts_path
-    scripts_folder = os.path.join(env_folder, 'bin/scripts/')
+    scripts_folder = os.path.join(app_folder, 'bin/scripts/')
     if not os.path.exists(scripts_folder):
         bin_folder_mac = '/Applications/SGOMambaFX.app/Contents/MacOS/'
         scripts_folder_mac = '/Applications/SGOMambaFX.app/Contents/MacOS/scripts/'
