@@ -82,14 +82,22 @@ def reload():
         if os.path.exists(envFolderCandidate):
             env_folder = envFolderCandidate
             product = 'Mistika'
-            executable = 'mistika'
     app_folder = env_folder
     appFolderCandidates = [
         os.path.realpath(os.path.expanduser("~/SGO Apps/Mistika Ultima")),
+        '/Applications/SGO Apps/Mistika Boutique.app/Contents',
     ]
     for appFolderCandidate in appFolderCandidates:
         if os.path.exists(appFolderCandidate):
             app_folder = appFolderCandidate
+    executable = 'mistika'
+    executableCandidates = [
+        'mistika',
+        '/Applications/SGO Apps/Mistika Boutique.app/Contents/MacOS/mistika',
+    ]
+    for executableCandidate in executableCandidates:
+        if os.path.exists(executableCandidate):
+            executable = executableCandidate
     if 'linux' in platform_module.system().lower():
         platform = 'linux'
         fonts_folder = '/usr/share/fonts/mistika/'
@@ -108,8 +116,8 @@ def reload():
         if os.path.exists(sharedFolderCandidate):
             shared_folder = sharedFolderCandidate
     try:
-        version = LooseVersion('.'.join(re.findall(r'\d+',
-            subprocess.Popen([executable, '-V'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0].splitlines()[0])))
+        version = LooseVersion(re.findall(r'(?:Version[^\n\d]*)(\d+\.\d+\.\d+)',
+            subprocess.Popen([executable, '-V'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0])[0])
     except OSError:
         version = None
     try:
