@@ -442,6 +442,7 @@ class AfterscriptFfmpeg(Afterscript):
     def on_reveal_output(self, widget):
         hyperspeed.utils.reveal_file(self.output_path)
     def on_run(self, widget=False):
+        self.render.archive(self.title)
         self.update_output_path()
         self.output_marker = self.output_path+'.incomplete'
         force_overwrite = None
