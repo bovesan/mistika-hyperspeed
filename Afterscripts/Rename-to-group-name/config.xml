@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<afterscript>
+    <alias>Rename to group name</alias>
+    <description>Renames the output based on group name.</description>
+    <executable>rename-to-group-name.py</executable>
+</afterscript>
