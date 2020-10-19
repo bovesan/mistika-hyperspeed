@@ -162,7 +162,10 @@ class AfterscriptFfmpeg(Afterscript):
         self.processes = []
         self.input_args = []
         self.args = []
-        self.executable = executable
+        if os.path.exists(executable):
+            self.executable = executable
+        else:
+            self.executable = 'ffmpeg'
         self.onSuccessCallback = onSuccessCallback
         self.onStartCallback = onStartCallback
         self.init_input_args()

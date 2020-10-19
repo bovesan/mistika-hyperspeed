@@ -127,6 +127,8 @@ def mistika_link(alias, file_path, activated=True):
     new_config = ''
     stored = False
     for line in open(mistika.tools_path):
+        if len(line.strip().split()) < 2:
+            continue
         line_alias, line_path = line.strip().split()[:2]
         line_path = os.path.normpath(line_path)
         if os.path.realpath(file_path) == os.path.realpath(line_path):

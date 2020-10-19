@@ -39,6 +39,7 @@ def get_rnd_path(rnd_name):
 def get_mistikarc_path(env_folder, multiple=False):
     mistikarc_paths = [
         env_folder + '/mistikarc.cfg',
+        env_folder + '/mistikarc.cfg',
         env_folder + '/.mistikarc',
         env_folder + '/.mambarc',
         env_folder + '/../MAMBA-ENV.config/.mambarc',
@@ -83,6 +84,7 @@ def reload():
             env_folder = envFolderCandidate
             product = 'Mistika'
             executable = 'mistika'
+        break
     app_folder = env_folder
     appFolderCandidates = [
         os.path.realpath(os.path.expanduser("~/SGO Apps/Mistika Ultima")),
@@ -143,7 +145,17 @@ def reload():
         settings[key] = value
     projects_folder = get_mistika_projects_folder(env_folder)
     tools_path = os.path.join(shared_folder, 'config/LinuxMistikaTools')
-    afterscripts_path = os.path.join(env_folder, 'etc/setup/RenderEndScript.cfg')
+    afterscripts_path = None
+    afterscripts_path_candidates = [
+        os.path.join(env_folder, 'config/RenderEndScript.cfg'),
+        os.path.join(env_folder, 'etc/setup/RenderEndScript.cfg'),
+    ]
+    for afterscripts_path_candidate in afterscripts_path_candidates:
+        if os.path.exists(afterscripts_path_candidate):
+            afterscripts_path = afterscripts_path_candidate
+        break
+    if not afterscripts_path:
+        afterscripts_path = afterscripts_path_candidates[0]
     if not os.path.isfile(afterscripts_path):
         try:
             open(afterscripts_path, 'a').write('None')
