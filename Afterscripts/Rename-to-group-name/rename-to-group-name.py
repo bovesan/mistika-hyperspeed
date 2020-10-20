@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import sys, os, time, subprocess, re
+import sys, os, time, subprocess, re, glob
 
 try:
     cwd = os.getcwd()
@@ -26,7 +26,7 @@ def prettyPath(path, pattern, prettyname):
         if re.search(r'[^/]*\[(_|\.)?renderName\][^/]*', patternPart):
             partExt = re.search(r'\[(_|\.)?ext\]', patternPart)
             if partExt:
-                partExt = os.path.splitext(pathPart[i])[1]
+                partExt = os.path.splitext(pathParts[i])[1]
             else:
                 partExt = ''
             pathParts[i] = prettyname+partExt
@@ -76,6 +76,11 @@ for dependency in render.output_stack.dependencies:
             folders.append((dependency.type.capitalize(), new_path))
         cleanupFolder = os.path.dirname(dependency.path)
         while cleanupFolder:
+            for garbage in glob.glob(os.path.join(cleanupFolder, '*.w64_tmp')):
+                try:
+                    os.remove(garbage)
+                except Exception as e:
+                    break
             try:
                 os.rmdir(cleanupFolder)
                 cleanupFolder = os.path.dirname(cleanupFolder)
