@@ -19,30 +19,64 @@ render.archive('renamed')
 
 folders = []
 
+def prettyPath(path, pattern, prettyname):
+    pathParts = path.split('/')
+    patternParts = pattern.split('/')
+    for i, patternPart in enumerate(patternParts):
+        if re.search(r'[^/]*\[_?renderName\][^/]*', patternPart):
+            pathParts[i] = prettyname
+    return '/'.join(pathParts)
+
 for dependency in render.output_stack.dependencies:
     if (dependency.type in ['highres', 'lowres', 'audio']):
+        if (dependency.type == 'audio'):
+            new_path = prettyPath(dependency.path, render.audioPath, render.prettyname)
+        else:
+            new_path = prettyPath(dependency.path, render.mediaPath, render.prettyname)
+        folder = os.path.dirname(new_path)
+        if not os.path.isdir(folder):
+            if os.path.exists(folder):
+                subprocess.call(["xmessage", "-nearmouse", "Rename failed:\nTarget path, "+folder+" exists and is not a folder."])
+                sys.exit()
+            else:
+                if not os.path.isdir(archiveFolder):
+                    try:
+                        os.makedirs(archiveFolder)
+                    except Exception as e:
+                        subprocess.call(["xmessage", "-nearmouse", "Rename failed:\nCould not create target folder:, "+folder+"\n"+str(e)])
+                        raise e
         if '%' in dependency.path:
-            sequence_files = []
-            folder = os.path.dirname(dependency.path)
-            new_path = os.path.join(folder, render.prettyname+'_%06d'+os.path.splitext(dependency.path)[1])
             i = 0
             for frame_range in dependency.frame_ranges:
+                if i == 0:
+                    if not os.path.isfile(dependency.path):
+                        break
                 for frame_n in range(frame_range.start, frame_range.end+1):
                     i += 1
-                    sequence_files.append(basename % frame_n)
-                    os.rename(dependency.path % frame_n, new_path % frame_n)
-            if len(os.listdir(folder)) == i:
-                new_folder = os.path.join(os.path.dirname(folder), render.project+'_'+render.prettyname+os.path.splitext(dependency.path)[1])
-                os.rename(folder, new_folder)
-                folders.append((dependency.type.capitalize(), new_folder))
-            else:
-                folders.append((dependency.type.capitalize(), os.path.dirname(dependency.path)))
+                    try:
+                        os.rename(dependency.path % frame_n, new_path % frame_n)
+                    except Exception as e:
+                        subprocess.call(["xmessage", "-nearmouse", "Rename failed:\nFrom: "+dependency.path+"\nTo: "+new_path+"\n"+str(e)])
+                        raise e
+            if i == 0:
+                continue
+            folders.append((dependency.type.capitalize(), folder))
         else:
             if not os.path.isfile(dependency.path):
                 continue
-            new_path = os.path.join(os.path.dirname(dependency.path), render.project+'_'+render.prettyname+os.path.splitext(dependency.path)[1])
-            os.rename(dependency.path, new_path)
+            try:
+                os.rename(dependency.path, new_path)
+            except Exception as e:
+                subprocess.call(["xmessage", "-nearmouse", "Rename failed:\nFrom: "+dependency.path+"\nTo: "+new_path+"\n"+str(e)])
+                raise e
             folders.append((dependency.type.capitalize(), new_path))
+        cleanupFolder = os.path.dirname(dependency.path)
+        while cleanupFolder:
+            try:
+                os.rmdir(cleanupFolder)
+                cleanupFolder = os.path.dirname(cleanupFolder)
+            except Exception as e:
+                break
 
 message = 'Rename complete: \n\
 Project: %s\n\

@@ -206,6 +206,8 @@ class Stack(object):
     exists = False
     dependencies_size = None
     project = None
+    mediaPath = None
+    audioPath = None
     resX = None
     resY = None
     fps = None
@@ -240,6 +242,10 @@ class Stack(object):
                         object_path = '/'.join(level_names)
                         if object_path.endswith('D/RenderProject'):
                             self.project = char_buffer
+                        elif object_path.endswith('D/MediaPath'):
+                            self.mediaPath = int(char_buffer)
+                        elif object_path.endswith('D/AudioPath'):
+                            self.audioPath = int(char_buffer)
                         elif object_path.endswith('D/X') or object_path.endswith('outputFraming/w'):
                             self.resX = int(char_buffer)
                         elif object_path.endswith('D/Y') or object_path.endswith('outputFraming/h'):
