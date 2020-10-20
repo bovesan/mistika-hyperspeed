@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import sys, os, time, subprocess
+import sys, os, time, subprocess, re
 
 try:
     cwd = os.getcwd()
@@ -23,28 +23,32 @@ def prettyPath(path, pattern, prettyname):
     pathParts = path.split('/')
     patternParts = pattern.split('/')
     for i, patternPart in enumerate(patternParts):
-        if re.search(r'[^/]*\[_?renderName\][^/]*', patternPart):
-            pathParts[i] = prettyname
+        if re.search(r'[^/]*\[(_|\.)?renderName\][^/]*', patternPart):
+            partExt = re.search(r'\[(_|\.)?ext\]', patternPart)
+            if partExt:
+                partExt = os.path.splitext(pathPart[i])[1]
+            else:
+                partExt = ''
+            pathParts[i] = prettyname+partExt
     return '/'.join(pathParts)
 
 for dependency in render.output_stack.dependencies:
     if (dependency.type in ['highres', 'lowres', 'audio']):
         if (dependency.type == 'audio'):
-            new_path = prettyPath(dependency.path, render.audioPath, render.prettyname)
+            new_path = prettyPath(dependency.path, render.audioPath, render.project+'_'+render.groupname)
         else:
-            new_path = prettyPath(dependency.path, render.mediaPath, render.prettyname)
+            new_path = prettyPath(dependency.path, render.mediaPath, render.project+'_'+render.groupname)
         folder = os.path.dirname(new_path)
         if not os.path.isdir(folder):
             if os.path.exists(folder):
                 subprocess.call(["xmessage", "-nearmouse", "Rename failed:\nTarget path, "+folder+" exists and is not a folder."])
                 sys.exit()
             else:
-                if not os.path.isdir(archiveFolder):
-                    try:
-                        os.makedirs(archiveFolder)
-                    except Exception as e:
-                        subprocess.call(["xmessage", "-nearmouse", "Rename failed:\nCould not create target folder:, "+folder+"\n"+str(e)])
-                        raise e
+                try:
+                    os.makedirs(folder)
+                except Exception as e:
+                    subprocess.call(["xmessage", "-nearmouse", "Rename failed:\nCould not create target folder:, "+folder+"\n"+str(e)])
+                    raise e
         if '%' in dependency.path:
             i = 0
             for frame_range in dependency.frame_ranges:
@@ -81,7 +85,7 @@ for dependency in render.output_stack.dependencies:
 message = 'Rename complete: \n\
 Project: %s\n\
 Render:  %s\n\
-Name:    %s' % ( render.project, render.name, render.prettyname )
+Name:    %s' % ( render.project, render.name, render.groupname )
 
 buttons = ''
 for i, folder in enumerate(folders):
