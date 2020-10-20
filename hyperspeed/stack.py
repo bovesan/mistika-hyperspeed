@@ -653,14 +653,14 @@ class Render(Stack):
             if dependency.type in ['highres', 'lowres', 'audio']:
                 dependency.remove()
     def archive(self, tag=''):
-        archiveFolder = os.path.join(projects_folder, project, 'DATA', 'RENDER', 'Exported_files')
+        archiveFolder = os.path.join(mistika.projects_folder, self.project, 'DATA', 'RENDER', 'Exported_files')
         if not os.path.isdir(archiveFolder):
             os.makedirs(archiveFolder)
         timeStr = time.strftime("%y%m%d-%H%M")
         if tag:
             tag = '_'+tag
-        archivePath = os.path.join(archiveFolder, "%s_%s%s.rnd" % (timeStr, tag, self.prettyname))
-        shutil.copy2(path, archivePath)
+        archivePath = os.path.join(archiveFolder, "%s%s_%s.rnd" % (timeStr, tag, self.prettyname))
+        shutil.copy2(self.path, archivePath)
 
 class Subtitles(object):
     count = 0

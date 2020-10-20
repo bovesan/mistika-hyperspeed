@@ -34,21 +34,26 @@ for dependency in render.output_stack.dependencies:
             if len(os.listdir(folder)) == i:
                 new_folder = os.path.join(os.path.dirname(folder), render.project+'_'+render.prettyname+os.path.splitext(dependency.path)[1])
                 os.rename(folder, new_folder)
-                folders.append((dependency.type, new_folder))
+                folders.append((dependency.type.capitalize(), new_folder))
             else:
-                folders.append((dependency.type, os.path.dirname(dependency.path)))
+                folders.append((dependency.type.capitalize(), os.path.dirname(dependency.path)))
         else:
+            if not os.path.isfile(dependency.path):
+                continue
             new_path = os.path.join(os.path.dirname(dependency.path), render.project+'_'+render.prettyname+os.path.splitext(dependency.path)[1])
             os.rename(dependency.path, new_path)
-            folders.append((dependency.type, os.path.dirname(dependency.path)))
-
-buttons = ''
-for i, folder in folders.enumerate():
-    buttons += folder[0]+' '+folder[1]+':'+i+','
+            folders.append((dependency.type.capitalize(), new_path))
 
 message = 'Rename complete: \n\
 Project: %s\n\
 Render:  %s\n\
 Name:    %s' % ( render.project, render.name, render.prettyname )
 
+buttons = ''
+for i, folder in enumerate(folders):
+    buttons += folder[0]+':'+str(i+1)+','
+    message += '\n'+folder[0]+': '+folder[1]
+
 nextAction = subprocess.call(["xmessage", "-nearmouse", "-buttons", buttons+"Close:0", message])
+if nextAction > 0:
+  hyperspeed.utils.reveal_file(folders[nextAction-1][1])
