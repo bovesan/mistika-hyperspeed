@@ -243,9 +243,9 @@ class Stack(object):
                         if object_path.endswith('D/RenderProject'):
                             self.project = char_buffer
                         elif object_path.endswith('D/MediaPath'):
-                            self.mediaPath = int(char_buffer)
+                            self.mediaPath = char_buffer
                         elif object_path.endswith('D/AudioPath'):
-                            self.audioPath = int(char_buffer)
+                            self.audioPath = char_buffer
                         elif object_path.endswith('D/X') or object_path.endswith('outputFraming/w'):
                             self.resX = int(char_buffer)
                         elif object_path.endswith('D/Y') or object_path.endswith('outputFraming/h'):
