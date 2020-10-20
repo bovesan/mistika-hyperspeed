@@ -57,10 +57,10 @@ for dependency in render.output_stack.dependencies:
         if '%' in dependency.path:
             i = 0
             for frame_range in dependency.frame_ranges:
-                if i == 0:
-                    if not os.path.isfile(dependency.path % frame_n):
-                        break
                 for frame_n in range(frame_range.start, frame_range.end+1):
+                    if i == 0:
+                        if not os.path.isfile(dependency.path % frame_n):
+                            break
                     i += 1
                     try:
                         os.rename(dependency.path % frame_n, new_path % frame_n)
