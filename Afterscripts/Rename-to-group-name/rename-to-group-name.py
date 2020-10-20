@@ -29,7 +29,12 @@ def prettyPath(path, pattern, prettyname):
                 partExt = os.path.splitext(pathParts[i])[1]
             else:
                 partExt = ''
-            pathParts[i] = prettyname+partExt
+            framenumber = re.search(r'%0\dd', pathParts[i])
+            if framenumber:
+                framenumber = '.'+framenumber.group(0)
+            else:
+                framenumber = ''
+            pathParts[i] = prettyname+framenumber+partExt
     return '/'.join(pathParts)
 
 for dependency in render.output_stack.dependencies:
@@ -53,7 +58,7 @@ for dependency in render.output_stack.dependencies:
             i = 0
             for frame_range in dependency.frame_ranges:
                 if i == 0:
-                    if not os.path.isfile(dependency.path):
+                    if not os.path.isfile(dependency.path % frame_n):
                         break
                 for frame_n in range(frame_range.start, frame_range.end+1):
                     i += 1
