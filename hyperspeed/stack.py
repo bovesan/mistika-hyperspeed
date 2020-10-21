@@ -665,7 +665,7 @@ class Render(Stack):
         timeStr = time.strftime("%y%m%d-%H%M")
         if tag:
             tag = '_'+tag
-        archivePath = os.path.join(archiveFolder, "%s%s_%s.rnd" % (timeStr, tag, self.prettyname))
+        archivePath = os.path.join(archiveFolder, "%s%s_%s.rnd" % (timeStr, tag, self.groupname))
         shutil.copy2(self.path, archivePath)
 
 class Subtitles(object):

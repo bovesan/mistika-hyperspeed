@@ -18,6 +18,7 @@ render = hyperspeed.stack.Render(rnd_path)
 render.archive('renamed')
 
 folders = []
+errors = ""
 
 def prettyPath(path, pattern, prettyname):
     pathParts = path.split('/')
@@ -40,9 +41,9 @@ def prettyPath(path, pattern, prettyname):
 for dependency in render.output_stack.dependencies:
     if (dependency.type in ['highres', 'lowres', 'audio']):
         if (dependency.type == 'audio'):
-            new_path = prettyPath(dependency.path, render.audioPath, render.project+'_'+render.groupname)
+            new_path = prettyPath(dependency.path, render.audioPath, render.project+'_'+render.title)
         else:
-            new_path = prettyPath(dependency.path, render.mediaPath, render.project+'_'+render.groupname)
+            new_path = prettyPath(dependency.path, render.mediaPath, render.project+'_'+render.title)
         folder = os.path.dirname(new_path)
         if not os.path.isdir(folder):
             if os.path.exists(folder):
@@ -70,6 +71,7 @@ for dependency in render.output_stack.dependencies:
             if i == 0:
                 continue
             folders.append((dependency.type.capitalize(), folder))
+            subsFolder = os.path.dirname(folder)
         else:
             if not os.path.isfile(dependency.path):
                 continue
@@ -79,6 +81,7 @@ for dependency in render.output_stack.dependencies:
                 subprocess.call(["xmessage", "-nearmouse", "Rename failed:\nFrom: "+dependency.path+"\nTo: "+new_path+"\n"+str(e)])
                 raise e
             folders.append((dependency.type.capitalize(), new_path))
+            subsFolder = folder
         cleanupFolder = os.path.dirname(dependency.path)
         while cleanupFolder:
             for garbage in glob.glob(os.path.join(cleanupFolder, '*.w64_tmp')):
@@ -91,11 +94,25 @@ for dependency in render.output_stack.dependencies:
                 cleanupFolder = os.path.dirname(cleanupFolder)
             except Exception as e:
                 break
+        if dependency.type == 'highres':
+            srtPath = os.path.join(subsFolder, render.project+'_'+render.title+'.srt')
+            vttPath = os.path.join(subsFolder, render.project+'_'+render.title+'.vtt')
+            write = True
+            if os.path.exists(srtPath) && os.path.exists(vttPath):
+                write = hyperspeed.ui.dialog_yesno(
+                    question = "Subtitle files already exist:\n"+srtPath+"\n"+vttPath+"\nOverwrite?"
+                )
+            if write:
+                try:
+                    open(srtPath, 'w').write(self.afterscript.render.subtitles.srt)
+                    open(vttPath, 'w').write(self.afterscript.render.subtitles.vtt)
+                except Exception as e:
+                    errors += "\n\nError: Failed to write subtitles: "+str(e)
 
 message = 'Rename complete: \n\
 Project: %s\n\
 Render:  %s\n\
-Name:    %s' % ( render.project, render.name, render.groupname )
+Name:    %s' % ( render.project, render.name, render.title )
 
 buttons = ''
 for i, folder in enumerate(folders):
