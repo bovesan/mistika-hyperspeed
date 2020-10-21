@@ -98,14 +98,14 @@ for dependency in render.output_stack.dependencies:
             srtPath = os.path.join(subsFolder, render.project+'_'+render.title+'.srt')
             vttPath = os.path.join(subsFolder, render.project+'_'+render.title+'.vtt')
             write = True
-            if os.path.exists(srtPath) && os.path.exists(vttPath):
+            if os.path.exists(srtPath) and os.path.exists(vttPath):
                 write = hyperspeed.ui.dialog_yesno(
                     question = "Subtitle files already exist:\n"+srtPath+"\n"+vttPath+"\nOverwrite?"
                 )
             if write:
                 try:
-                    open(srtPath, 'w').write(self.afterscript.render.subtitles.srt)
-                    open(vttPath, 'w').write(self.afterscript.render.subtitles.vtt)
+                    open(srtPath, 'w').write(render.subtitles.srt)
+                    open(vttPath, 'w').write(render.subtitles.vtt)
                 except Exception as e:
                     errors += "\n\nError: Failed to write subtitles: "+str(e)
 
@@ -118,6 +118,8 @@ buttons = ''
 for i, folder in enumerate(folders):
     buttons += folder[0]+':'+str(i+1)+','
     message += '\n'+folder[0]+': '+folder[1]
+
+message += errors
 
 nextAction = subprocess.call(["xmessage", "-nearmouse", "-buttons", buttons+"Close:0", message])
 if nextAction > 0:
