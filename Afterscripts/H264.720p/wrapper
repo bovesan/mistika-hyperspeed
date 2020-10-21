@@ -4,4 +4,4 @@ REAL_SOURCE=$(readlink -f "$BASH_SOURCE")
 REAL_DIR=$(dirname "$REAL_SOURCE")
 export 'LD_LIBRARY_PATH=/usr/local/lib:/usr/lib:/usr/lib64'
 executable=$(grep '<executable>' $REAL_DIR/config.xml  | awk -F">" '{print $2}' | awk -F"<" '{print $1}')
-$REAL_DIR/$executable $*
+$REAL_DIR/$executable $* &
