@@ -58,7 +58,7 @@ def reveal_file(path):
                 if not os.path.exists(path):
                     subprocess.Popen(["dolphin", folder], env=dolphinEnv)
                 elif os.path.isdir(path):
-                    subprocess.Popen(["dolphin", path], env=dolphinEnv)
+                    subprocess.Popen(["dolphin", '--select', path], env=dolphinEnv)
                 else:
                     # subprocess.Popen(["dolphin", '--select', path], env=dolphinEnv) # Not supported in Dolphin 1.3
                     subprocess.Popen(["dolphin", folder], env=dolphinEnv)

@@ -94,20 +94,14 @@ for dependency in render.output_stack.dependencies:
                 cleanupFolder = os.path.dirname(cleanupFolder)
             except Exception as e:
                 break
-        if dependency.type == 'highres':
+        if dependency.type == 'highres' && render.subtitles.count > 0:
             srtPath = os.path.join(subsFolder, render.project+'_'+render.title+'.srt')
             vttPath = os.path.join(subsFolder, render.project+'_'+render.title+'.vtt')
-            write = True
-            if os.path.exists(srtPath) and os.path.exists(vttPath):
-                write = hyperspeed.ui.dialog_yesno(
-                    question = "Subtitle files already exist:\n"+srtPath+"\n"+vttPath+"\nOverwrite?"
-                )
-            if write:
-                try:
-                    open(srtPath, 'w').write(render.subtitles.srt)
-                    open(vttPath, 'w').write(render.subtitles.vtt)
-                except Exception as e:
-                    errors += "\n\nError: Failed to write subtitles: "+str(e)
+            try:
+                open(srtPath, 'w').write(render.subtitles.srt)
+                open(vttPath, 'w').write(render.subtitles.vtt)
+            except Exception as e:
+                errors += "\n\nError: Failed to write subtitles: "+str(e)
 
 message = 'Rename complete: \n\
 Project: %s\n\
