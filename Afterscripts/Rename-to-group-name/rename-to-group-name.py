@@ -94,7 +94,7 @@ for dependency in render.output_stack.dependencies:
                 cleanupFolder = os.path.dirname(cleanupFolder)
             except Exception as e:
                 break
-        if dependency.type == 'highres' && render.subtitles.count > 0:
+        if dependency.type == 'highres' and render.subtitles.count > 0:
             srtPath = os.path.join(subsFolder, render.project+'_'+render.title+'.srt')
             vttPath = os.path.join(subsFolder, render.project+'_'+render.title+'.vtt')
             try:
