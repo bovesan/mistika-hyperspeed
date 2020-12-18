@@ -84,7 +84,7 @@ def reload():
             env_folder = envFolderCandidate
             product = 'Mistika'
             executable = 'mistika'
-        break
+            break
     app_folder = env_folder
     appFolderCandidates = [
         os.path.realpath(os.path.expanduser("~/SGO Apps/Mistika Ultima")),
@@ -103,9 +103,10 @@ def reload():
         fonts_folder = 'C:/Windows/Fonts/'
     sharedFolderCandidates = [
         os.path.realpath(os.path.expanduser("~/MISTIKA-SHARED")),
-        os.path.join(env_folder, 'shared')
     ]
-    shared_folder = os.path.join(env_folder, 'shared')
+    if env_folder:
+      sharedFolderCandidates.append(os.path.join(env_folder, 'shared'))
+      shared_folder = os.path.join(env_folder, 'shared')
     for sharedFolderCandidate in sharedFolderCandidates:
         if os.path.exists(sharedFolderCandidate):
             shared_folder = sharedFolderCandidate
