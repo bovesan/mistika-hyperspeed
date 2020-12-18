@@ -467,11 +467,13 @@ class AfterscriptFfmpeg(Afterscript):
             try:
                 os.makedirs(os.path.dirname(self.output_path))
             except OSError:
+                print "Cannot create output dir "+os.path.dirname(self.output_path)+" Outputting to input dir."
                 render_to_input_folder = True
         elif os.path.dirname(self.render.primary_output.path) != os.path.dirname(self.output_path):
             try:
                 open(self.output_marker, 'w').write(str(time.time()))
             except IOError:
+                print "Cannot create output marker "+self.output_marker+" Outputting to input dir."
                 render_to_input_folder = True
         else:
             try:

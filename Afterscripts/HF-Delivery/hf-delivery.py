@@ -100,7 +100,7 @@ class TagReader(object):
         else:
             acodec = ' pcm_s24le '
         if render.output_video.path.endswith('.mp4'):
-            cmd = "-movflags faststart -c:v copy -c:a copy"
+            cmd = "-movflags faststart -c:v copy -c:a "+acodec
         else:
             cmd = "-vsync 0 -movflags faststart -crf "+crf+" -minrate "+minrate+" -maxrate "+maxrate+" -bufsize "+bufsize+" -filter_complex 'scale="+"%i:%i" % (width, height) +":out_color_matrix=bt709,setsar=1' -pix_fmt yuv420p -c:v libx264 -c:a "+acodec
         afterscript.cmd = [cmd]

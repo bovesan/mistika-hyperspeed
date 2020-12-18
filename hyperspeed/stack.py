@@ -528,7 +528,7 @@ class Stack(object):
                                 dependency = Dependency(f_path, f_type, parent=self)
                         if dependency:
                             if relink and not dependency.complete:
-                                print 'Missing dependency: ', dependency.name
+#                                print 'Missing dependency: ', dependency.name
                                 new_line, dependency = self.relink_line(line, dependency)
                                 if line != new_line:
                                     changes = True
@@ -583,7 +583,7 @@ class Stack(object):
     def relink_line(self, line, dependency):
         dependency_basename = os.path.basename(dependency.path)
         dependency_foldername = os.path.dirname(dependency.path)
-        print dependency.type, dependency_foldername, dependency_basename
+        #print dependency.type, dependency_foldername, dependency_basename
         for root, dirs, files in os.walk(os.path.dirname(self.path)):
             for basename in files:
                 if basename == dependency_basename:
