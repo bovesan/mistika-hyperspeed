@@ -96,11 +96,13 @@ class TagReader(object):
         scale = float(width)/float(render.resX)
         height = min(int(round(float(render.resY)*scale*0.25)*4.0), render.resY)
         if aac:
-            acodec = ' aac '
+            acodec = ' aac -b:a 160k -strict -2 -ac 2 -ar 44100 '
         else:
             acodec = ' pcm_s24le '
-
-        cmd            = "-vsync 0 -movflags faststart -crf "+crf+" -minrate "+minrate+" -maxrate "+maxrate+" -bufsize "+bufsize+" -filter_complex 'scale="+"%i:%i" % (width, height) +":out_color_matrix=bt709,setsar=1' -pix_fmt yuv420p -c:v libx264 -c:a "+acodec+" -b:a 160k -strict -2 -ac 2 -ar 44100 -af pan=stereo:c0=c0:c1=c1"
+        if render.output_video.path.endswith('.mp4'):
+            cmd = "-movflags faststart -c:v copy -c:a "+acodec
+        else:
+            cmd = "-vsync 0 -movflags faststart -crf "+crf+" -minrate "+minrate+" -maxrate "+maxrate+" -bufsize "+bufsize+" -filter_complex 'scale="+"%i:%i" % (width, height) +":out_color_matrix=bt709,setsar=1' -pix_fmt yuv420p -c:v libx264 -c:a "+acodec
         afterscript.cmd = [cmd]
         afterscript.cmd_update()
         afterscript.linkSuffix = linkSuffix

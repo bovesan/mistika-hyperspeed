@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<tool>
+<alias>FontParse</alias>
+<description>.</description>
+<executable>FontParse.py</executable>
+</tool>

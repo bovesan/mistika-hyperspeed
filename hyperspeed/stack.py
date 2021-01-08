@@ -206,6 +206,8 @@ class Stack(object):
     exists = False
     dependencies_size = None
     project = None
+    mediaPath = None
+    audioPath = None
     resX = None
     resY = None
     fps = None
@@ -240,6 +242,10 @@ class Stack(object):
                         object_path = '/'.join(level_names)
                         if object_path.endswith('D/RenderProject'):
                             self.project = char_buffer
+                        elif object_path.endswith('D/MediaPath'):
+                            self.mediaPath = char_buffer
+                        elif object_path.endswith('D/AudioPath'):
+                            self.audioPath = char_buffer
                         elif object_path.endswith('D/X') or object_path.endswith('outputFraming/w'):
                             self.resX = int(char_buffer)
                         elif object_path.endswith('D/Y') or object_path.endswith('outputFraming/h'):
@@ -522,7 +528,7 @@ class Stack(object):
                                 dependency = Dependency(f_path, f_type, parent=self)
                         if dependency:
                             if relink and not dependency.complete:
-                                print 'Missing dependency: ', dependency.name
+#                                print 'Missing dependency: ', dependency.name
                                 new_line, dependency = self.relink_line(line, dependency)
                                 if line != new_line:
                                     changes = True
@@ -577,7 +583,7 @@ class Stack(object):
     def relink_line(self, line, dependency):
         dependency_basename = os.path.basename(dependency.path)
         dependency_foldername = os.path.dirname(dependency.path)
-        print dependency.type, dependency_foldername, dependency_basename
+        #print dependency.type, dependency_foldername, dependency_basename
         for root, dirs, files in os.walk(os.path.dirname(self.path)):
             for basename in files:
                 if basename == dependency_basename:
@@ -652,6 +658,15 @@ class Render(Stack):
         for dependency in self.output_stack.dependencies:
             if dependency.type in ['highres', 'lowres', 'audio']:
                 dependency.remove()
+    def archive(self, tag=''):
+        archiveFolder = os.path.join(mistika.projects_folder, self.project, 'DATA', 'RENDER', 'Exported_files')
+        if not os.path.isdir(archiveFolder):
+            os.makedirs(archiveFolder)
+        timeStr = time.strftime("%y%m%d-%H%M")
+        if tag:
+            tag = '_'+tag
+        archivePath = os.path.join(archiveFolder, "%s%s_%s.rnd" % (timeStr, tag, self.groupname))
+        shutil.copy2(self.path, archivePath)
 
 class Subtitles(object):
     count = 0

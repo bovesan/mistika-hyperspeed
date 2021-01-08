@@ -162,7 +162,10 @@ class AfterscriptFfmpeg(Afterscript):
         self.processes = []
         self.input_args = []
         self.args = []
-        self.executable = executable
+        if os.path.exists(executable):
+            self.executable = executable
+        else:
+            self.executable = 'ffmpeg'
         self.onSuccessCallback = onSuccessCallback
         self.onStartCallback = onStartCallback
         self.init_input_args()
@@ -439,6 +442,7 @@ class AfterscriptFfmpeg(Afterscript):
     def on_reveal_output(self, widget):
         hyperspeed.utils.reveal_file(self.output_path)
     def on_run(self, widget=False):
+        self.render.archive(self.title)
         self.update_output_path()
         self.output_marker = self.output_path+'.incomplete'
         force_overwrite = None
@@ -463,11 +467,13 @@ class AfterscriptFfmpeg(Afterscript):
             try:
                 os.makedirs(os.path.dirname(self.output_path))
             except OSError:
+                print "Cannot create output dir "+os.path.dirname(self.output_path)+" Outputting to input dir."
                 render_to_input_folder = True
         elif os.path.dirname(self.render.primary_output.path) != os.path.dirname(self.output_path):
             try:
                 open(self.output_marker, 'w').write(str(time.time()))
             except IOError:
+                print "Cannot create output marker "+self.output_marker+" Outputting to input dir."
                 render_to_input_folder = True
         else:
             try:
