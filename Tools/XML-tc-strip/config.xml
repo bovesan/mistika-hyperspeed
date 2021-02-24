@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<tool>
+<alias>XML TC Strip</alias>
+<description>Strips source tc from all media in fcp xml file.</description>
+<executable>xml-tc-strip.py</executable>
+<terminal>true</terminal>
+</tool>

@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<tool>
+<alias>Render manager</alias>
+<description>Let's you queue and run renders and afterscripts from a shared pool.</description>
+<executable>render-manager.py</executable>
+</tool>

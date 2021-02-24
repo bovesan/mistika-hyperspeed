@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<tool>
+<alias>Housekeeping</alias>
+<description>Cross reference stacks (.env, .grp etc.) with a folder and remove any files not in use by the stacks.</description>
+<executable>housekeeping.py</executable>
+</tool>

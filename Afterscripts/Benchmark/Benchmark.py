@@ -3,19 +3,27 @@
 
 import sys, os, time, subprocess
 
-userEmpDir = os.path.join(os.path.expanduser('~'), ".emp")
-sys.path.append(userEmpDir)
-import emp
-sys.path.append(emp.modulesDir)
-import mistika
+try:
+    cwd = os.getcwd()
+    os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])))
+    sys.path.append("../..")
+    import hyperspeed.human
+    import hyperspeed.mistika
+    import hyperspeed.stack
+except ImportError:
+    sys.exit()
 
-RndName = sys.argv[2]
-RndInfo = mistika.readrnd(RndName)
+rnd_path = hyperspeed.mistika.get_rnd_path(sys.argv[2])
+render = hyperspeed.stack.Render(rnd_path)
 
-videoFile_mtime = os.stat(RndInfo.videoFile).st_mtime
-rndFile_mtime = os.stat(RndInfo.RndPath).st_mtime
+if '%' in render.output_video.path:
+	video_file_path = render.output_video.path % render.output_video.end
+else:
+	video_file_path = render.output_video.path
+videoFile_mtime = os.stat(video_file_path).st_mtime
+rndFile_mtime = os.stat(render.path).st_mtime
 diff = videoFile_mtime - rndFile_mtime
 
-message = 'Modification time: %s %s\n                   %s %s\nDifference:        %s' % (videoFile_mtime, RndInfo.videoFile, rndFile_mtime, RndInfo.RndPath, diff)
+message = '%s %s\n%s %s\n%s difference' % ( hyperspeed.human.time_of_day(rndFile_mtime), render.path, hyperspeed.human.time_of_day(videoFile_mtime), video_file_path, hyperspeed.human.duration(diff))
 
 subprocess.call(['xmessage', message])

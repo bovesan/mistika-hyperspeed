@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<tool>
+<alias>Reveal project</alias>
+<description>Reveals the active Mistika project in the file browser.</description>
+<executable>reveal-project.py</executable>
+</tool>

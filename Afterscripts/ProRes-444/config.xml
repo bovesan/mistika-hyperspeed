@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<afterscript>
+    <alias>ProRes 444</alias>
+    <description>Requires custom FFmbc with Rec709 color matrix</description>
+    <executable>prores444.py</executable>
+</afterscript>

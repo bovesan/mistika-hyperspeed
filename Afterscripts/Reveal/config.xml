@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<afterscript>
+    <alias>Reveal in file browser</alias>
+    <description>Reveals the outputted file(s) in the system file browser after render.</description>
+    <executable>reveal.py</executable>
+</afterscript>

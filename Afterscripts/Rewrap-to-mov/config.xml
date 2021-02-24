@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<afterscript>
+    <alias>Rewrap to mov</alias>
+    <description>Rewraps the render output to mov. Not possible with all render formats.</description>
+    <executable>rewrap-to-mov.py</executable>
+</afterscript>

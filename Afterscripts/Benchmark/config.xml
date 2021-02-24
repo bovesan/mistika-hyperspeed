@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
-<config>
+<afterscript>
     <alias>Benchmark</alias>
     <description>Measures render performance by the difference in modification time of the .rnd file and the rendered video file. Will only work correctly on single segments.</description>
     <executable>Benchmark.py</executable>
-</config>
+</afterscript>
