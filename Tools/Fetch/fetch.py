@@ -44,7 +44,7 @@ class PyApp(gtk.Window):
         button.connect("clicked", self.add_remote_folder)
         hbox.pack_start(button, False, False, 0)
         button = gtk.Button('Remove selected')
-        # button.connect("clicked", self.gui_on_selected_stacks, 'remove')
+        button.connect("clicked", self.remove_selected_mappings)
         hbox.pack_start(button, False, False, 0)
         vbox.pack_start(hbox, False, False, 0)
 
@@ -110,7 +110,7 @@ class PyApp(gtk.Window):
                 local_row = treestore.append(None, [local])
                 for remote in remotes:
                     print remote
-                    local_row = treestore.append(local_row, [remote])
+                    treestore.append(local_row, [remote])
             # print self.settings
         except ValueError as e:
             print e
@@ -150,7 +150,7 @@ class PyApp(gtk.Window):
         cell = gtk.CellRendererText()
         cell.set_property("editable", True)
         cell.connect('edited', self.on_mapping_edited, )
-        column = gtk.TreeViewColumn('Path', cell, text=0)
+        column = gtk.TreeViewColumn('Mappings', cell, text=0)
         column.set_resizable(True)
         column.set_expand(True)
         treeview.append_column(column)
@@ -213,6 +213,15 @@ class PyApp(gtk.Window):
             treeview.expand_to_path(row_path)
             selection.unselect_all()
             selection.select_path(row_path)
+        self.on_mappings_changed()
+    def remove_selected_mappings(self, widget):
+        treeview = self.mappings_treeview
+        treestore = self.mappings_treestore
+        selection = treeview.get_selection()
+        (model, row_paths) = selection.get_selected_rows()
+        for selected_row_path in reversed(row_paths):
+            selected_row_iter = model.get_iter(selected_row_path)
+            treestore.remove(selected_row_iter)
         self.on_mappings_changed()
 
 gobject.threads_init()
