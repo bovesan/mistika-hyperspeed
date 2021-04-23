@@ -40,6 +40,8 @@ class PyApp(gtk.Window):
     settings = {
         'mappings' : {},
     }
+    statPoints = []
+    bytesCopied = 0
     def __init__(self):
         super(PyApp, self).__init__()
         self.stacks = {}
@@ -296,8 +298,22 @@ class PyApp(gtk.Window):
         vbox.pack_start(scrolled_window)
 
         hbox = gtk.HBox(False, 10)
-        self.rate_label = gtk.Label('');
-        hbox.pack_start(self.rate_label, False, False)
+        label = gtk.Label('Transferred:');
+        hbox.pack_start(label, False, False, 5)
+        label = self.bytes_copied_label = gtk.Label('0B');
+        hbox.pack_start(label, False, False, 5)
+        label = gtk.Label('Time:');
+        hbox.pack_start(label, False, False, 5)
+        label = self.time_copied_label = gtk.Label('0');
+        hbox.pack_start(label, False, False, 5)
+        label = gtk.Label('Average rate:');
+        hbox.pack_start(label, False, False, 5)
+        label = self.average_rate_label = gtk.Label('0B/s');
+        hbox.pack_start(label, False, False, 5)
+        label = gtk.Label('Current rate:');
+        hbox.pack_start(label, False, False, 5)
+        label = self.rate_label = gtk.Label('0B/s');
+        hbox.pack_start(label, False, False, 5)
         spacer = gtk.HBox(False)
         hbox.pack_start(spacer)
         button = gtk.Button('Fetch selected')
@@ -393,12 +409,17 @@ class PyApp(gtk.Window):
         t.setDaemon(True)
         t.start()
     def fetch_daemon(self):
+        stats = self.stats = {
+            'bytesCopied': 0,
+            'timeCopied': 0,
+        }
         treestore = self.dependencies_treestore
         self.abort = False
         q = self.fetch_queue = Queue()
         while True:
             dependency = q.get()
             if dependency.path in self.sources:
+                taskStartedAt = time.time()
                 sourcePath = self.sources[dependency.path]
                 if self.abort:
                     return
@@ -426,12 +447,23 @@ class PyApp(gtk.Window):
                 else:
                     gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'4': success ,'6' : 'Error %i' % proc.returncode, '3': False, '7' : COLOR_ALERT, '8' : True})
                 gobject.idle_add(self.gui_dependency_summary_update, dependency.type)
+                taskCompletedAt = time.time()
+                stats['bytesCopied'] += dependency.size
+                stats['timeCopied'] += taskCompletedAt - taskStartedAt
+                gobject.idle_add(self.gui_stats_update)
             q.task_done()
+            if q.empty():
+                gobject.idle_add(self.rate_label.set_text, human.size(0)+'/s')
+
     def init_fetch_daemon(self):
         t = self.fetch_daemon_thread = threading.Thread(target=self.fetch_daemon)
         self.threads.append(t)
         t.setDaemon(True)
         t.start()
+    def gui_stats_update(self):
+        self.bytes_copied_label.set_text(human.size(self.stats['bytesCopied']))
+        self.time_copied_label.set_text(human.duration(self.stats['timeCopied']))
+        self.average_rate_label.set_text(human.size(float(self.stats['bytesCopied']) / self.stats['timeCopied'])+'/s')
     def gui_on_selected_stacks(self, widget, action):
         treeview = self.stacks_treeview
         selection = treeview.get_selection()

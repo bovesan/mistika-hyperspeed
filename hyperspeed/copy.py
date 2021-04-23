@@ -196,7 +196,22 @@ def copy_with_progress(src_path, dst_path, callback, frame_ranges=None):
             state['bytesPrev'] = bytesCopied
             state['timePrev'] = now
             callback(bytesCopied, progress, rate)
-        success = subprocess.call(['cp', '-p', src_path, dst_path]) == 0
+
+        proc = subprocess.Popen(['cp', '-p', src_path, dst_path])
+        first = True
+        while proc.returncode == None:
+            if first:
+                first = False
+            else:
+                bytesCopied = 0
+                try:
+                    bytesCopied = os.path.getsize(dst_path)
+                except Exception as e:
+                    pass
+                internalCallback(bytesCopied)
+            time.sleep(1)
+            proc.poll()
+        success = proc.returncode == 0
         if success:
             internalCallback(totalSize)
         return success
