@@ -13,6 +13,7 @@ import platform
 import json
 import threading
 import copy
+from Queue import Queue
 
 try:
     cwd = os.getcwd()
@@ -74,19 +75,19 @@ class PyApp(gtk.Window):
         self.show_all()
         self.parse_command_line_arguments()
         self.load_settings()
+        self.init_finder_daemon()
+        self.init_fetch_daemon()
         gobject.idle_add(self.present)
     def load_settings(self):
         try:
-            print 'script_settings_path', script_settings_path, open(script_settings_path).read()
+            # print 'script_settings_path', script_settings_path, open(script_settings_path).read()
             self.settings.update(json.loads(open(script_settings_path).read()))
             treestore = self.mappings_treestore
             treestore.clear();
-            print self.settings['mappings']
+            # print self.settings['mappings']
             for local, remotes in self.settings['mappings'].iteritems():
-                print local
                 local_row = treestore.append(None, [local])
                 for remote in remotes:
-                    print remote
                     treestore.append(local_row, [remote])
             # print self.settings
         except ValueError as e:
@@ -233,7 +234,7 @@ class PyApp(gtk.Window):
         spacer = gtk.HBox(False)
         hbox.pack_start(spacer)
         self.status_label = gtk.Label('No stacks loaded')
-        hbox.pack_start(self.status_label, False, False, 5)
+        # hbox.pack_start(self.status_label, False, False, 5)
         spinner = self.spinner_queue = gtk.Image()
         spinner.set_no_show_all(True)
         try:
@@ -241,13 +242,14 @@ class PyApp(gtk.Window):
         except:
             pass
         hbox.pack_start(spinner, False, False, 5)
-        button = gtk.Button('Include selected')
+        # button = gtk.Button('Include selected')
         # button.connect("clicked", self.gui_on_selected_dependencies, 'unskip')
-        hbox.pack_end(button, False, False, 0)
-        button = gtk.Button('Skip selected')
+        # hbox.pack_end(button, False, False, 0)
+        # button = gtk.Button('Skip selected')
         # button.connect("clicked", self.gui_on_selected_dependencies, 'skip')
-        hbox.pack_end(button, False, False, 0)
+        # hbox.pack_end(button, False, False, 0)
         vbox.pack_start(hbox, False, False, 0)
+
         treestore = self.dependencies_treestore = gtk.TreeStore(str, float, str, bool, str, str, str, str, bool) # Name, progress float, progress text, progress visible, details, human size, status, text color, status visible
         treeview = self.dependencies_treeview = gtk.TreeView()
         treeview.set_tooltip_column(4)
@@ -271,16 +273,16 @@ class PyApp(gtk.Window):
         column.set_expand(True)
         treeview.append_column(column)
         cell = gtk.CellRendererText()
-        column = gtk.TreeViewColumn('Size', cell, text=5, foreground=7)
-        column.set_resizable(True)
-        treeview.append_column(column)
-        cell = gtk.CellRendererText()
-        column = gtk.TreeViewColumn('Status')
+        column = gtk.TreeViewColumn('Source')
         column.pack_start(cell, False)
         column.set_attributes(cell, text=6, foreground=7, visible=8)
         cell = gtk.CellRendererProgress()
         column.pack_start(cell, True)
         column.set_attributes(cell, value=1, text=2, visible=3)
+        column.set_resizable(True)
+        treeview.append_column(column)
+        cell = gtk.CellRendererText()
+        column = gtk.TreeViewColumn('Size', cell, text=5, foreground=7)
         column.set_resizable(True)
         treeview.append_column(column)
         treeview.set_model(treestore)
@@ -291,6 +293,14 @@ class PyApp(gtk.Window):
         scrolled_window.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
         scrolled_window.add(treeview)
         vbox.pack_start(scrolled_window)
+
+        hbox = gtk.HBox(False, 10)
+        spacer = gtk.HBox(False)
+        hbox.pack_start(spacer)
+        button = gtk.Button('Fetch selected')
+        button.connect("clicked", self.selected_dependencies_perform, 'fetch')
+        hbox.pack_end(button, False, False, 0)
+        vbox.pack_start(hbox, False, False, 0)
         return vbox
     def add_file_dialog(self, widget):
         if mistika:
@@ -335,8 +345,138 @@ class PyApp(gtk.Window):
         t.start()
         # print 'started thread'
         # print threading.active_count()
-    def init_dependencies_daemon(self):
-        t = self.dependencies_daemon_thread = threading.Thread(target=self.dependencies_daemon)
+    sources = {}
+    def finder_daemon(self):
+        q = self.finder_queue = Queue()
+        while True:
+            dependency = q.get()
+            found = False
+            for localPath in self.settings['mappings']:
+                if dependency.path.startswith(localPath):
+                    for source in self.settings['mappings'][localPath]:
+                        sourcePath = dependency.path.replace(localPath, source)
+                        if os.path.isfile(sourcePath):
+                            if '%' in dependency.path:
+                                pass
+                                # self._size = 0
+                                # for frame_range in self.frame_ranges:
+                                #     if frame_range.size > 0:
+                                #         self._size += frame_range.size
+                                #     else:
+                                #         self._complete = False
+                            else:
+                                try:
+                                    dependency._size = os.path.getsize(sourcePath)
+                                    # print 'Found', sourcePath, human.size(dependency.size)
+                                    self.sources[dependency.path] = sourcePath;
+                                    gobject.idle_add(self.gui_row_update, self.dependencies_treestore, dependency.row_reference, {
+                                        '6': source,
+                                        '5': human.size(dependency.size),
+                                    })
+                                    self.dependency_types[dependency.type].meta['size'] += dependency.size
+                                    self.gui_dependency_summary_update(dependency.type)
+                                    found = True
+                                    break
+                                except OSError:
+                                    dependency._size = None
+                                    dependency._complete = False
+                if found:
+                    break
+            q.task_done()
+
+    def init_finder_daemon(self):
+        t = self.finder_daemon_thread = threading.Thread(target=self.finder_daemon)
+        self.threads.append(t)
+        t.setDaemon(True)
+        t.start()
+    def fetch_daemon(self):
+        treestore = self.dependencies_treestore
+        self.abort = False
+        q = self.fetch_queue = Queue()
+        while True:
+            dependency = q.get()
+            if dependency.path in self.sources:
+                sourcePath = self.sources[dependency.path]
+                if self.abort:
+                    return
+                if dependency.size in [None, 0] or dependency.ignore:
+                    continue
+                row_path = dependency.row_reference.get_path()
+                gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': 0.0,  '3': True, '8' : False})
+                is_sequence = '%' in dependency.path
+                destination_path = dependency.path
+                # destination_path = os.path.join(dependency_path.lstrip('/'), destination_folder).rstrip('/')
+                extra_args = []
+                if ':' in destination_path:
+                    extra_args += ['-e', 'ssh']
+                    host, target_folder = destination_path.split(':', 1)
+                    destination_path_on_host = destination_path.split(':', 1)[1]
+                    cmd = ['ssh', host, 'mkdir', '-p', os.path.dirname(destination_path_on_host)]
+                    subprocess.call(cmd)
+                else:
+                    destination_folder = os.path.dirname(destination_path)
+                    if not os.path.isdir(destination_folder):
+                        try:
+                            os.makedirs(destination_folder)
+                        except OSError:
+                            print 'Could not create destination directory', destination_folder
+                if is_sequence:
+                    sequence_files = []
+                    basename = os.path.basename(sourcePath)
+                    for frame_range in dependency.frame_ranges:
+                        for frame_n in range(frame_range.start, frame_range.end+1):
+                            sequence_files.append(basename % frame_n)
+                    sequence_length = len(sequence_files)
+                    frames_done = 0
+                    temp_handle = tempfile.NamedTemporaryFile()
+                    temp_handle.write('\n'.join(sequence_files) + '\n')
+                    temp_handle.flush()
+                    cmd = ['rsync'] + extra_args + ['-uavv', '--out-format="%n was copied"', '--files-from=%s' % temp_handle.name, os.path.dirname(sourcePath)+'/', os.path.dirname(destination_path)+'/']
+                else:
+                    cmd = ['rsync'] + extra_args + ['--progress', '-ua', sourcePath, destination_path]
+                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                while proc.returncode == None:
+                    if self.abort:
+                        proc.kill()
+                        if is_sequence:
+                            temp_handle.close()
+                        return
+                    output = ''
+                    char = None
+                    while not char in ['\r', '\n']:
+                        proc.poll()
+                        if proc.returncode != None:
+                            break
+                        char = proc.stdout.read(1)
+                        output += char
+                    print output
+                    fields = output.split()
+                    if len(fields) >= 4 and fields[1].endswith('%'):
+                        progress_percent = float(fields[1].strip('%'))
+                        # self.set_progress(extra_bytes=int(fields[0]))
+                        gobject.idle_add(self.gui_dependency_summary_update, dependency.type, int(fields[0]))
+                        # self.status_set(fields[2])
+                        gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': progress_percent, '2': fields[1]})
+                    elif is_sequence and output.strip().endswith('is uptodate') or output.strip().endswith('was copied'):
+                        frames_done += 1
+                        progress_percent = float(frames_done) / float(sequence_length)
+                        progress_string = '%5.2f%%' % progress_percent
+                        gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': progress_percent, '2': progress_string})
+                    proc.poll()
+                # subprocess.call(cmd)
+                if is_sequence:
+                    temp_handle.close()
+                if proc.returncode == 0:
+                    # dependency.ignore = True
+                    self.dependency_types[dependency.type].meta['copied'] += dependency.size
+                    gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': 100.0, '6' : 'Copied', '3': False, '8' : True})
+                    # self.set_progress()
+                else:
+                    gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'4': ' '.join(cmd) ,'6' : 'Error %i' % proc.returncode, '3': False, '7' : COLOR_ALERT, '8' : True})
+                gobject.idle_add(self.gui_dependency_summary_update, dependency.type)
+            q.task_done()
+    def init_fetch_daemon(self):
+        t = self.fetch_daemon_thread = threading.Thread(target=self.fetch_daemon)
         self.threads.append(t)
         t.setDaemon(True)
         t.start()
@@ -388,7 +528,10 @@ class PyApp(gtk.Window):
             #print dependency.name
             if not dependency.path in self.dependencies:
                 self.dependencies[dependency.path] = dependency = copy.copy(dependency)
-                if dependency.size != None:
+                if dependency.size == None:
+                    # self.finder_queue.put(dependency)
+                    pass
+                else:
                     self.queue_size += dependency.size
                 # self.dependencies[dependency.path].parents.append(stack)
                 gobject.idle_add(self.gui_dependency_add, dependency)
@@ -424,7 +567,7 @@ class PyApp(gtk.Window):
         details = '\n'.join(parent_stacks)
         if dependency.size == None:
             human_size = ''
-            status = 'Missing'
+            status = ''
             text_color = COLOR_DEFAULT
         else:
             return
@@ -438,7 +581,9 @@ class PyApp(gtk.Window):
         self.dependencies[dependency.path].row_reference = gtk.TreeRowReference(self.dependencies_treestore, row_path)
         if '%' in dependency.path:
             gobject.idle_add(self.gui_dependency_frames_update, dependency.path)
-        if dependency.size != None:
+        if dependency.size == None:
+            self.finder_queue.put(dependency)
+        else:
             self.dependency_types[dependency.type].meta['size'] += dependency.size
         self.gui_dependency_summary_update(dependency.type)
     def gui_dependency_summary_update(self, dependency_type, extra_bytes=0):
@@ -539,6 +684,47 @@ class PyApp(gtk.Window):
         for key, value in values.iteritems():
             # print treestore, row_path, key, value
             treestore[row_path][int(key)] = value
+    def selected_dependencies_perform(self, widget, action):
+        treeview = self.dependencies_treeview
+        selection = treeview.get_selection()
+        (model, row_paths) = selection.get_selected_rows()
+        for row_path in row_paths:
+            row_iter = model.get_iter(row_path)
+            if model.iter_has_child(row_iter):
+                if model.iter_parent(row_iter) == None:
+                    child_row_iter = model.iter_children(row_iter)
+                    while child_row_iter != None:
+                        child_row_path = model.get_path(child_row_iter)
+                        self.gui_row_actions(child_row_path, action)
+                        child_row_iter = model.iter_next(child_row_iter)
+                else:
+                    child_row_iter = model.iter_children(row_iter)
+                    while child_row_iter != None:
+                        child_row_path = model.get_path(child_row_iter)
+                        self.gui_row_actions(child_row_path, action)
+                        child_row_iter = model.iter_next(child_row_iter)
+                    self.gui_row_actions(row_path, action)
+            else:
+                self.gui_row_actions(row_path, action)
+        if action in ['skip', 'unskip']:
+            self.launch_thread(self.calculate_queue_size)
+
+    def gui_row_actions(self, row_path, action):
+        model = self.dependencies_treestore
+        dependency = self.dependencies[model[row_path][0]]
+        if action == 'fetch' and model[row_path][6] != True:
+            self.fetch_queue.put(dependency)
+        if action == 'skip' and model[row_path][6] != 'Skip':
+            dependency.ignore = True
+            model[row_path][6] = 'Skip'
+            model[row_path][7] = COLOR_DISABLED
+            self.dependency_types[dependency.type].meta['size'] -= dependency.size
+        if action == 'unskip' and model[row_path][6] == 'Skip':
+            dependency.ignore = False
+            model[row_path][6] = ''
+            model[row_path][7] = COLOR_DEFAULT
+            self.dependency_types[dependency.type].meta['size'] += dependency.size
+        
 
 
 gobject.threads_init()
