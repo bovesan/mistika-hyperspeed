@@ -91,6 +91,7 @@ def dehumanizeRate(humanString):
     return Bps
 
 def copy_with_progress(src_path, dst_path, callback, frame_ranges=None):
+    import subprocess
     # ssh-copy-id -o ProxyJump=hocus@s.hocusfocus.no mistika@mistika1
     state = {
         'bytesPrev': 0,
@@ -101,7 +102,6 @@ def copy_with_progress(src_path, dst_path, callback, frame_ranges=None):
         dst_path+=os.path.basename(src_path)
     dst_remote = re.search(r'\S+\:.+', dst_path)
     if src_remote or dst_remote: # ssh
-        import subprocess
         cmd = ['rsync', '--progress', '-Ia']
         ssharg = 'ssh '
         if src_remote:
@@ -188,22 +188,25 @@ def copy_with_progress(src_path, dst_path, callback, frame_ranges=None):
                 print 'Could not create destination directory', destination_folder
         totalSize = os.path.getsize(src_path)
         def internalCallback(bytesCopied):
-            print bytesCopied
             progress = float(bytesCopied) / float(totalSize)
             bytesDelta = bytesCopied - state['bytesPrev']
             now = time.time()
             timeDelta = now - state['timePrev']
-            rate = float(bytesDelta) - timeDelta
+            rate = float(bytesDelta) / timeDelta
             state['bytesPrev'] = bytesCopied
             state['timePrev'] = now
             callback(bytesCopied, progress, rate)
-        bufferSize = 10 * 1024 * 1024;
-        fsrc = open(src_path, 'rb')
-        fdst = open(dst_path, 'wb')
-        copyfileobj(fsrc, fdst, internalCallback, bufferSize)
-        shutil.copymode(src_path, dst_path)
-        shutil.copystat(src_path, dst_path)
-        return True
+        success = subprocess.call(['cp', '-p', src_path, dst_path]) == 0
+        if success:
+            internalCallback(totalSize)
+        return success
+        # bufferSize = 100 * 1024 * 1024;
+        # fsrc = open(src_path, 'rb')
+        # fdst = open(dst_path, 'wb')
+        # copyfileobj(fsrc, fdst, internalCallback, bufferSize)
+        # shutil.copymode(src_path, dst_path)
+        # shutil.copystat(src_path, dst_path)
+        # return True
 
 
 if __name__ == '__main__':

@@ -23,6 +23,7 @@ try:
     from hyperspeed.stack import Stack, DEPENDENCY_TYPES
     from hyperspeed import mistika
     from hyperspeed import human
+    from hyperspeed.copy import copy_with_progress
 except ImportError:
     mistika = False
     config_folder = os.path.expanduser('~/.mistika-hyperspeed/fetch.cfg')
@@ -295,6 +296,8 @@ class PyApp(gtk.Window):
         vbox.pack_start(scrolled_window)
 
         hbox = gtk.HBox(False, 10)
+        self.rate_label = gtk.Label('');
+        hbox.pack_start(self.rate_label, False, False)
         spacer = gtk.HBox(False)
         hbox.pack_start(spacer)
         button = gtk.Button('Fetch selected')
@@ -406,21 +409,22 @@ class PyApp(gtk.Window):
                 is_sequence = '%' in dependency.path
                 destination_path = dependency.path
                 # destination_path = os.path.join(dependency_path.lstrip('/'), destination_folder).rstrip('/')
-                # if is_sequence:
-                #     frame_ranges = dependency.frame_ranges
-                # else:
-                #     frame_ranges = None
-                frame_ranges = is_sequence ? dependency.frame_ranges : None
+                if is_sequence:
+                    frame_ranges = dependency.frame_ranges
+                else:
+                    frame_ranges = None
+                # frame_ranges = is_sequence ? dependency.frame_ranges : None
                 def copyProgressCallback(bytesCopied, progress, rate):
                     gobject.idle_add(self.gui_dependency_summary_update, dependency.type, bytesCopied)
-                    gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': progress, '2': '%5.2f%%' % progress * 100.0})
+                    gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': progress, '2': '%5.2f%%' % (progress * 100.0)})
+                    gobject.idle_add(self.rate_label.set_text, human.size(rate)+'/s')
 
-                success = hyperspeed.copy_with_progress(sourcePath, destination_path, copyProgressCallback, frame_ranges)
+                success = copy_with_progress(sourcePath, destination_path, copyProgressCallback, frame_ranges)
                 if success:
                     self.dependency_types[dependency.type].meta['copied'] += dependency.size
                     gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': 100.0, '6' : 'Copied', '3': False, '8' : True})
                 else:
-                    gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'4': ' '.join(cmd) ,'6' : 'Error %i' % proc.returncode, '3': False, '7' : COLOR_ALERT, '8' : True})
+                    gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'4': success ,'6' : 'Error %i' % proc.returncode, '3': False, '7' : COLOR_ALERT, '8' : True})
                 gobject.idle_add(self.gui_dependency_summary_update, dependency.type)
             q.task_done()
     def init_fetch_daemon(self):
@@ -498,11 +502,11 @@ class PyApp(gtk.Window):
         row_path = stack.row_reference.get_path()
         progress_percent = progress * 100.0
         progress_string = '%5.2f%%' % progress_percent
-        progress_string = '   Looking for dependencies   '
+        progress_string = '   Looking for missing files   '
         # print stack, progress, progress_string
         show_progress = True
         if progress == 1.0:
-            progress_string = '   Dependencies loaded   '
+            progress_string = '   Loaded   '
             show_progress = False
         gobject.idle_add(self.gui_row_update, treestore, stack.row_reference, {'1': progress_percent, '2' : progress_string, '3': show_progress, '4': not show_progress})
         # self.status_set('%s in queue' % human.size(self.queue_size))
