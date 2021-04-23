@@ -406,71 +406,19 @@ class PyApp(gtk.Window):
                 is_sequence = '%' in dependency.path
                 destination_path = dependency.path
                 # destination_path = os.path.join(dependency_path.lstrip('/'), destination_folder).rstrip('/')
-                extra_args = []
-                if ':' in destination_path:
-                    extra_args += ['-e', 'ssh']
-                    host, target_folder = destination_path.split(':', 1)
-                    destination_path_on_host = destination_path.split(':', 1)[1]
-                    cmd = ['ssh', host, 'mkdir', '-p', os.path.dirname(destination_path_on_host)]
-                    subprocess.call(cmd)
-                else:
-                    destination_folder = os.path.dirname(destination_path)
-                    if not os.path.isdir(destination_folder):
-                        try:
-                            os.makedirs(destination_folder)
-                        except OSError:
-                            print 'Could not create destination directory', destination_folder
-                if is_sequence:
-                    sequence_files = []
-                    basename = os.path.basename(sourcePath)
-                    for frame_range in dependency.frame_ranges:
-                        for frame_n in range(frame_range.start, frame_range.end+1):
-                            sequence_files.append(basename % frame_n)
-                    sequence_length = len(sequence_files)
-                    frames_done = 0
-                    temp_handle = tempfile.NamedTemporaryFile()
-                    temp_handle.write('\n'.join(sequence_files) + '\n')
-                    temp_handle.flush()
-                    cmd = ['rsync'] + extra_args + ['-uavv', '--out-format="%n was copied"', '--files-from=%s' % temp_handle.name, os.path.dirname(sourcePath)+'/', os.path.dirname(destination_path)+'/']
-                else:
-                    cmd = ['rsync'] + extra_args + ['--progress', '-ua', sourcePath, destination_path]
-                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                while proc.returncode == None:
-                    if self.abort:
-                        proc.kill()
-                        if is_sequence:
-                            temp_handle.close()
-                        return
-                    output = ''
-                    char = None
-                    while not char in ['\r', '\n']:
-                        proc.poll()
-                        if proc.returncode != None:
-                            break
-                        char = proc.stdout.read(1)
-                        output += char
-                    print output
-                    fields = output.split()
-                    if len(fields) >= 4 and fields[1].endswith('%'):
-                        progress_percent = float(fields[1].strip('%'))
-                        # self.set_progress(extra_bytes=int(fields[0]))
-                        gobject.idle_add(self.gui_dependency_summary_update, dependency.type, int(fields[0]))
-                        # self.status_set(fields[2])
-                        gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': progress_percent, '2': fields[1]})
-                    elif is_sequence and output.strip().endswith('is uptodate') or output.strip().endswith('was copied'):
-                        frames_done += 1
-                        progress_percent = float(frames_done) / float(sequence_length)
-                        progress_string = '%5.2f%%' % progress_percent
-                        gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': progress_percent, '2': progress_string})
-                    proc.poll()
-                # subprocess.call(cmd)
-                if is_sequence:
-                    temp_handle.close()
-                if proc.returncode == 0:
-                    # dependency.ignore = True
+                # if is_sequence:
+                #     frame_ranges = dependency.frame_ranges
+                # else:
+                #     frame_ranges = None
+                frame_ranges = is_sequence ? dependency.frame_ranges : None
+                def copyProgressCallback(bytesCopied, progress, rate):
+                    gobject.idle_add(self.gui_dependency_summary_update, dependency.type, bytesCopied)
+                    gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': progress, '2': '%5.2f%%' % progress * 100.0})
+
+                success = hyperspeed.copy_with_progress(sourcePath, destination_path, copyProgressCallback, frame_ranges)
+                if success:
                     self.dependency_types[dependency.type].meta['copied'] += dependency.size
                     gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': 100.0, '6' : 'Copied', '3': False, '8' : True})
-                    # self.set_progress()
                 else:
                     gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'4': ' '.join(cmd) ,'6' : 'Error %i' % proc.returncode, '3': False, '7' : COLOR_ALERT, '8' : True})
                 gobject.idle_add(self.gui_dependency_summary_update, dependency.type)
