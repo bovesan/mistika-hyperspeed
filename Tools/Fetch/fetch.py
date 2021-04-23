@@ -13,6 +13,7 @@ import platform
 import json
 import threading
 import copy
+import re
 from Queue import Queue
 
 try:
@@ -35,6 +36,30 @@ COLOR_DISABLED = '#888888'
 COLOR_WARNING = '#ff8800'
 COLOR_ALERT = '#cc0000'
 
+def get_size(localOrRemote):
+    remote = re.search(r'^(.*?)(?:([^\s@]*)@)?([^\s@]+)\:(.+)', localOrRemote)
+    if remote:
+        remoteArgs = remote.group(1)
+        remoteUser = remote.group(2)
+        remoteHost = remote.group(3)
+        remotePath = remote.group(4)
+        # print remoteArgs, remoteUser, remoteHost, remotePath
+        cmd = ['ssh']
+        cmd += remoteArgs.split()
+        if remoteUser:
+            cmd += ['-l', remoteUser]
+        cmd += [remoteHost]
+        cmd += ['ls', '-n', remotePath]
+        # print cmd
+        sshProc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'))
+        if sshProc.wait() == 0:
+            result = sshProc.communicate()[0]
+            return int(result.split()[4])
+    else:
+        try:
+            return os.path.getsize(localOrRemote)
+        except OSError:
+            return 0
 class PyApp(gtk.Window):
     batch_mode = False
     settings = {
@@ -369,37 +394,29 @@ class PyApp(gtk.Window):
         q = self.finder_queue = Queue()
         while True:
             dependency = q.get()
-            found = False
             for localPath in self.settings['mappings']:
                 if dependency.path.startswith(localPath):
                     for source in self.settings['mappings'][localPath]:
                         sourcePath = dependency.path.replace(localPath, source)
-                        if os.path.isfile(sourcePath):
-                            if '%' in dependency.path:
-                                pass
-                                # self._size = 0
-                                # for frame_range in self.frame_ranges:
-                                #     if frame_range.size > 0:
-                                #         self._size += frame_range.size
-                                #     else:
-                                #         self._complete = False
-                            else:
-                                try:
-                                    dependency._size = os.path.getsize(sourcePath)
-                                    # print 'Found', sourcePath, human.size(dependency.size)
-                                    self.sources[dependency.path] = sourcePath;
-                                    gobject.idle_add(self.gui_row_update, self.dependencies_treestore, dependency.row_reference, {
-                                        '6': source,
-                                        '5': human.size(dependency.size),
-                                    })
-                                    self.dependency_types[dependency.type].meta['size'] += dependency.size
-                                    self.gui_dependency_summary_update(dependency.type)
-                                    found = True
-                                    break
-                                except OSError:
-                                    dependency._size = None
-                                    dependency._complete = False
-                if found:
+                        if '%' in dependency.path:
+                            dependency._size = 0
+                            for frame_range in dependency.frame_ranges:
+                                frame_range._size = 0
+                                for i in range(frame_range.start, frame_range.end+1):
+                                    frame_range._size += get_size(sourcePath % i)
+                                dependency._size += frame_range.size
+                        else:
+                            dependency._size = get_size(sourcePath)
+                            # print 'Found', sourcePath, human.size(dependency.size)
+                            break
+                if dependency._size > 0:
+                    self.sources[dependency.path] = sourcePath;
+                    gobject.idle_add(self.gui_row_update, self.dependencies_treestore, dependency.row_reference, {
+                        '6': source,
+                        '5': human.size(dependency.size),
+                    })
+                    self.dependency_types[dependency.type].meta['size'] += dependency.size
+                    self.gui_dependency_summary_update(dependency.type)
                     break
             q.task_done()
 
@@ -437,7 +454,7 @@ class PyApp(gtk.Window):
                 # frame_ranges = is_sequence ? dependency.frame_ranges : None
                 def copyProgressCallback(bytesCopied, progress, rate):
                     gobject.idle_add(self.gui_dependency_summary_update, dependency.type, bytesCopied)
-                    gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': progress, '2': '%5.2f%%' % (progress * 100.0)})
+                    gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': progress * 100.0, '2': '%5.2f%%' % (progress * 100.0)})
                     gobject.idle_add(self.rate_label.set_text, human.size(rate)+'/s')
 
                 success = copy_with_progress(sourcePath, destination_path, copyProgressCallback, frame_ranges)

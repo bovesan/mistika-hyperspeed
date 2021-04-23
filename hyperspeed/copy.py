@@ -152,7 +152,7 @@ def copy_with_progress(src_path, dst_path, callback, frame_ranges=None):
             fields = output.split()
             if len(fields) >= 4 and fields[1].endswith('%'):
                 progress_percent = float(fields[1].strip('%'))
-                bytesCopied = fields[0]
+                bytesCopied = int(fields[0])
                 progress = progress_percent / 100.0
                 rate = dehumanizeRate(fields[2])
                 callback(bytesCopied, progress, rate)
