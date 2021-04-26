@@ -186,7 +186,17 @@ def copy_with_progress(src_path, dst_path, callback, frame_ranges=None):
                 os.makedirs(destination_folder)
             except OSError:
                 print 'Could not create destination directory', destination_folder
-        totalSize = os.path.getsize(src_path)
+
+        if frame_ranges:
+            totalSize = 0
+            frameSizes = {}
+            for frame_range in frame_ranges:
+                for frame_n in range(frame_range.start, frame_range.end+1):
+                    frameSize = os.path.getsize(src_path % frame_n)
+                    frameSizes[frame_n] = frameSize
+                    totalSize += frameSize
+        else:
+            totalSize = os.path.getsize(src_path)
         def internalCallback(bytesCopied):
             progress = float(bytesCopied) / float(totalSize)
             bytesDelta = bytesCopied - state['bytesPrev']
@@ -197,24 +207,33 @@ def copy_with_progress(src_path, dst_path, callback, frame_ranges=None):
             state['timePrev'] = now
             callback(bytesCopied, progress, rate)
 
-        proc = subprocess.Popen(['cp', '-p', src_path, dst_path])
-        first = True
-        while proc.returncode == None:
-            if first:
-                first = False
-            else:
-                bytesCopied = 0
-                try:
-                    bytesCopied = os.path.getsize(dst_path)
-                except Exception as e:
-                    pass
-                internalCallback(bytesCopied)
-            time.sleep(1)
-            proc.poll()
-        success = proc.returncode == 0
-        if success:
-            internalCallback(totalSize)
-        return success
+        if frame_ranges:
+            bytesCopied = 0
+            for frame_range in frame_ranges:
+                for frame_n in range(frame_range.start, frame_range.end+1):
+                    if subprocess.call(['cp', '-p', src_path % frame_n, dst_path % frame_n]) == 0:
+                        bytesCopied += frameSizes[frame_n]
+                        internalCallback(bytesCopied)
+            return bytesCopied == totalSize
+        else:
+            proc = subprocess.Popen(['cp', '-p', src_path, dst_path])
+            first = True
+            while proc.returncode == None:
+                if first:
+                    first = False
+                else:
+                    bytesCopied = 0
+                    try:
+                        bytesCopied = os.path.getsize(dst_path)
+                    except Exception as e:
+                        pass
+                    internalCallback(bytesCopied)
+                time.sleep(1)
+                proc.poll()
+            success = proc.returncode == 0
+            if success:
+                internalCallback(totalSize)
+            return success
         # bufferSize = 100 * 1024 * 1024;
         # fsrc = open(src_path, 'rb')
         # fdst = open(dst_path, 'wb')
