@@ -118,7 +118,7 @@ class PyApp(gtk.Window):
                 for remote in remotes:
                     treestore.append(local_row, [remote])
             # print self.settings
-        except ValueError as e:
+        except Exception as e:
             print e
             pass
         else:
