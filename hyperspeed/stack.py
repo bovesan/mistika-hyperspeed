@@ -176,6 +176,8 @@ class Dependency(object):
                             self._size += frame_range.size
                         else:
                             self._complete = False
+                    if self._size == 0:
+                        self._size = None
                 else:
                     try:
                         self._size = os.path.getsize(self.path)

@@ -21,7 +21,7 @@ try:
     os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])))
     sys.path.append("../..")
     from hyperspeed import config_folder
-    from hyperspeed.stack import Stack, DEPENDENCY_TYPES
+    from hyperspeed.stack import Stack, Dependency, DEPENDENCY_TYPES
     from hyperspeed import mistika
     from hyperspeed import human
     from hyperspeed.copy import copy_with_progress
@@ -131,9 +131,25 @@ class PyApp(gtk.Window):
         gtk.main_quit()
     def parse_command_line_arguments(self):
         # -H /Volumes/mediaraid/Projects/22189_Hurtigruta/MISTIKA_JS/MR2_0009_0021.js -L /Volumes/mediaraid/Projects/22189_Hurtigruta/MISTIKA_JS/L_MR2_0009_0021.js -S None -l 0 -n MR2_0009_0021_Raftsundet_V1-0004 -i 0 -s 0 -e 249 -p 22189_Hurtigruta -f RGB10:XFS.RGB10 -T 00:56:28:13 -a 160
-        print ' '.join(sys.argv[1:])
+        if len(sys.argv) > 1:
+            print 'Command line arguments:', ' '.join(sys.argv[1:])
+            dependencies = []
+            for i in range(1, len(sys.argv)):
+                if sys.argv[i] == '-H' and len(sys.argv) > i+1:
+                    if sys.argv[i+1] != 'None':
+                        dependencies.append(Dependency(sys.argv[i+1], 'highres'))
+                if sys.argv[i] == '-L' and len(sys.argv) > i+1:
+                    if sys.argv[i+1] != 'None':
+                        dependencies.append(Dependency(sys.argv[i+1], 'lowres'))
+                if sys.argv[i] == '-S' and len(sys.argv) > i+1:
+                    if sys.argv[i+1] != 'None':
+                        dependencies.append(Dependency(sys.argv[i+1], 'audio'))
+            for dependency in dependencies:
+                if not dependency.path in self.dependencies:
+                    self.dependencies[dependency.path] = dependency
+                    gobject.idle_add(self.gui_dependency_add, dependency)
     def on_mapping_edited(self, cellrenderertext, path, new_text):
-        print cellrenderertext, path, new_text
+        # print cellrenderertext, path, new_text
         treestore = self.mappings_treestore
         treestore[path][0] = new_text
         self.on_mappings_changed()
@@ -143,9 +159,9 @@ class PyApp(gtk.Window):
         for x in treestore:
             mapping = []
             for y in x.iterchildren():
-                print '-', y[0]
+                # print '-', y[0]
                 mapping.append(y[0])
-            print x[0]
+            # print x[0]
             mappings[x[0]] = mapping
         self.settings['mappings'] = mappings
         self.save_settings()
@@ -398,17 +414,18 @@ class PyApp(gtk.Window):
                 if dependency.path.startswith(localPath):
                     for source in self.settings['mappings'][localPath]:
                         sourcePath = dependency.path.replace(localPath, source)
-                        if '%' in dependency.path:
-                            dependency._size = 0
-                            for frame_range in dependency.frame_ranges:
-                                frame_range._size = 0
-                                for i in range(frame_range.start, frame_range.end+1):
-                                    frame_range._size += get_size(sourcePath % i)
-                                dependency._size += frame_range.size
-                        else:
-                            dependency._size = get_size(sourcePath)
-                            # print 'Found', sourcePath, human.size(dependency.size)
-                            break
+                        with dependency.lock:
+                            if '%' in dependency.path:
+                                dependency._size = 0
+                                for frame_range in dependency.frame_ranges:
+                                    frame_range._size = 0
+                                    for i in range(frame_range.start, frame_range.end+1):
+                                        frame_range._size += get_size(sourcePath % i)
+                                    dependency._size += frame_range.size
+                            else:
+                                dependency._size = get_size(sourcePath)
+                                # print 'Found', sourcePath, human.size(dependency.size)
+                                break
                 if dependency._size > 0:
                     self.sources[dependency.path] = sourcePath;
                     gobject.idle_add(self.gui_row_update, self.dependencies_treestore, dependency.row_reference, {
@@ -462,7 +479,7 @@ class PyApp(gtk.Window):
                     self.dependency_types[dependency.type].meta['copied'] += dependency.size
                     gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'1': 100.0, '6' : 'Copied', '3': False, '8' : True})
                 else:
-                    gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'4': success ,'6' : 'Error %i' % proc.returncode, '3': False, '7' : COLOR_ALERT, '8' : True})
+                    gobject.idle_add(self.gui_row_update, treestore, dependency.row_reference, {'4': success ,'6' : 'Error', '3': False, '7' : COLOR_ALERT, '8' : True})
                 gobject.idle_add(self.gui_dependency_summary_update, dependency.type)
                 taskCompletedAt = time.time()
                 stats['bytesCopied'] += dependency.size
@@ -564,7 +581,8 @@ class PyApp(gtk.Window):
         self.dependency_types[dependency.type].meta['count'] += 1
         parent_stacks = []
         for parent_stack in dependency.parents:
-            parent_stacks.append(parent_stack.path)
+            if parent_stack:
+                parent_stacks.append(parent_stack.path)
         details = '\n'.join(parent_stacks)
         if dependency.size == None:
             human_size = ''
@@ -691,7 +709,9 @@ class PyApp(gtk.Window):
         (model, row_paths) = selection.get_selected_rows()
         for row_path in row_paths:
             row_iter = model.get_iter(row_path)
-            if model.iter_has_child(row_iter):
+            if model[row_path][0] in self.dependencies:
+                self.gui_row_actions(row_path, action)
+            elif model.iter_has_child(row_iter):
                 if model.iter_parent(row_iter) == None:
                     child_row_iter = model.iter_children(row_iter)
                     while child_row_iter != None:
