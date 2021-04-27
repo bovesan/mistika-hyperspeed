@@ -21,7 +21,7 @@ try:
     os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])))
     sys.path.append("../..")
     from hyperspeed import config_folder
-    from hyperspeed.stack import Stack, DEPENDENCY_TYPES
+    from hyperspeed.stack import Stack, Dependency, DEPENDENCY_TYPES
     from hyperspeed import mistika
     from hyperspeed import human
     from hyperspeed.copy import copy_with_progress
@@ -133,6 +133,21 @@ class PyApp(gtk.Window):
         # -H /Volumes/mediaraid/Projects/22189_Hurtigruta/MISTIKA_JS/MR2_0009_0021.js -L /Volumes/mediaraid/Projects/22189_Hurtigruta/MISTIKA_JS/L_MR2_0009_0021.js -S None -l 0 -n MR2_0009_0021_Raftsundet_V1-0004 -i 0 -s 0 -e 249 -p 22189_Hurtigruta -f RGB10:XFS.RGB10 -T 00:56:28:13 -a 160
         if len(sys.argv) > 1:
             print 'Command line arguments:', ' '.join(sys.argv[1:])
+            dependencies = []
+            for i in range(1, len(sys.argv)):
+                if sys.argv[i] == '-H' and len(sys.argv) > i+1:
+                    if sys.argv[i+1] != 'None':
+                        dependencies.append(Dependency(sys.argv[i+1], 'highres'))
+                if sys.argv[i] == '-L' and len(sys.argv) > i+1:
+                    if sys.argv[i+1] != 'None':
+                        dependencies.append(Dependency(sys.argv[i+1], 'lowres'))
+                if sys.argv[i] == '-S' and len(sys.argv) > i+1:
+                    if sys.argv[i+1] != 'None':
+                        dependencies.append(Dependency(sys.argv[i+1], 'audio'))
+            for dependency in dependencies:
+                if not dependency.path in self.dependencies:
+                    self.dependencies[dependency.path] = dependency
+                    gobject.idle_add(self.gui_dependency_add, dependency)
     def on_mapping_edited(self, cellrenderertext, path, new_text):
         # print cellrenderertext, path, new_text
         treestore = self.mappings_treestore
@@ -566,7 +581,8 @@ class PyApp(gtk.Window):
         self.dependency_types[dependency.type].meta['count'] += 1
         parent_stacks = []
         for parent_stack in dependency.parents:
-            parent_stacks.append(parent_stack.path)
+            if parent_stack:
+                parent_stacks.append(parent_stack.path)
         details = '\n'.join(parent_stacks)
         if dependency.size == None:
             human_size = ''
