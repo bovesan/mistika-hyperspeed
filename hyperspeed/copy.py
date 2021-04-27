@@ -186,7 +186,6 @@ def copy_with_progress(src_path, dst_path, callback, frame_ranges=None):
                 os.makedirs(destination_folder)
             except OSError:
                 print 'Could not create destination directory', destination_folder
-
         if frame_ranges:
             totalSize = 0
             frameSizes = {}
@@ -206,7 +205,6 @@ def copy_with_progress(src_path, dst_path, callback, frame_ranges=None):
             state['bytesPrev'] = bytesCopied
             state['timePrev'] = now
             callback(bytesCopied, progress, rate)
-
         if frame_ranges:
             bytesCopied = 0
             for frame_range in frame_ranges:

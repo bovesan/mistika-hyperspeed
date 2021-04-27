@@ -559,7 +559,7 @@ class PyApp(gtk.Window):
                     if '%' in dependency.path and not this_frame_range in self.dependencies[dependency.path].frame_ranges:
                         self.dependencies[dependency.path].frame_ranges.append(this_frame_range)
                         gobject.idle_add(self.gui_dependency_frames_update, dependency.path)
-                    elif not stack in self.dependencies[dependency.path].parents:
+                    if not stack in self.dependencies[dependency.path].parents:
                         self.dependencies[dependency.path].parents.append(stack)
                         gobject.idle_add(self.gui_dependency_add_parent, dependency.path, stack.path)
         # self.status_set('%s in queue' % human.size(self.queue_size))
@@ -589,7 +589,7 @@ class PyApp(gtk.Window):
             status = ''
             text_color = COLOR_DEFAULT
         else:
-            # return
+            return
             human_size = human.size(dependency.size)
             status = ''
             text_color = COLOR_DEFAULT
