@@ -83,7 +83,7 @@ def reload():
         if os.path.exists(envFolderCandidate):
             env_folder = envFolderCandidate
             product = 'Mistika'
-            executable = 'mistika'
+            executable = subprocess.Popen(["which", 'mistika'], stdout=subprocess.PIPE).communicate()[0].splitlines()[0]
             break
     app_folder = env_folder
     appFolderCandidates = [
@@ -110,11 +110,17 @@ def reload():
     for sharedFolderCandidate in sharedFolderCandidates:
         if os.path.exists(sharedFolderCandidate):
             shared_folder = sharedFolderCandidate
+    version = None
     try:
-        version = LooseVersion('.'.join(re.findall(r'\d+',
-            subprocess.Popen([executable, '-V'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0].splitlines()[0])))
-    except OSError:
-        version = None
+        cmd = [executable, '-V']
+        versionLines = subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0]
+        versionStrings = re.findall(r'Version(?:.*?)((?:\d|\.)+)', versionLines)
+        if len(versionStrings):
+            version = LooseVersion(versionStrings[0])
+    except OSError as e:
+        print e
+        pass
+    print executable, 'version', version
     try:
         version.vstring
     except AttributeError:
