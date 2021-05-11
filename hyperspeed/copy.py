@@ -103,7 +103,7 @@ def copy_with_progress(src_path, dst_path, callback, frame_ranges=None):
         dst_path+=os.path.basename(src_path)
     dst_remote = re.search(r'\S+\:.+', dst_path)
     if src_remote or dst_remote: # ssh
-        cmd = ['rsync', '--progress', '-Ia']
+        cmd = ['rsync', '--progress', '-Ia', '--no-perms', '--no-owner', '--no-group', '--protect-args']
         ssharg = 'ssh '
         if src_remote:
             args = src_path.replace(src_remote.group(), '')
@@ -139,6 +139,7 @@ def copy_with_progress(src_path, dst_path, callback, frame_ranges=None):
             dst_path = os.path.dirname(dst_path)+'/'
             cmd += ['-vv', '--out-format="%n was copied %l"', '--files-from=%s' % temp_handle.name]
         cmd += [src_path, dst_path]
+        #print cmd
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         def exitHandler():
             if proc.returncode == None:
