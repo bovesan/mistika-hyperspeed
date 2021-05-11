@@ -49,12 +49,14 @@ def get_size(localOrRemote):
         if remoteUser:
             cmd += ['-l', remoteUser]
         cmd += [remoteHost]
-        cmd += ['ls', '-n', remotePath]
-        # print cmd
+        cmd += ['ls', '-n', '"'+remotePath+'"']
+        #print cmd
         sshProc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'))
         if sshProc.wait() == 0:
             result = sshProc.communicate()[0]
             return int(result.split()[4])
+        else:
+            return 0
     else:
         try:
             return os.path.getsize(localOrRemote)

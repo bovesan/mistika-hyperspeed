@@ -5,6 +5,7 @@ import shutil
 import time
 import atexit
 import re
+import tempfile
 
 def copyfileobj(fsrc, fdst, callback, length=1024 * 1024):
     try:
@@ -108,17 +109,24 @@ def copy_with_progress(src_path, dst_path, callback, frame_ranges=None):
             args = src_path.replace(src_remote.group(), '')
             src_path = src_remote.group()
             ssharg += args
+            dst_dir = os.path.dirname(dst_path)
+            if not os.path.exists(dst_dir):
+                try:
+            	    os.makedirs(dst_dir)
+                except:
+                    print 'Could not create directory: %s' % dst_dir
+                    return false
         if dst_remote:
             args = dst_path.replace(dst_remote.group(), '')
             dst_path = dst_remote.group()
             ssharg += args
             host, destination_path_on_host = dst_path.split(':', 1)
-            sshCmd = ssharg.split() + [host, 'mkdir', '-p', os.path.dirname(destination_path_on_host)]
+            sshCmd = ssharg.split() + [host, 'mkdir', '-p', '"'+os.path.dirname(destination_path_on_host)+'"']
             subprocess.call(sshCmd)
         cmd += ['-e', ssharg]
         if frame_ranges:
             sequence_files = []
-            basename = os.path.basename(sourcePath)
+            basename = os.path.basename(src_path)
             for frame_range in frame_ranges:
                 for frame_n in range(frame_range.start, frame_range.end+1):
                     sequence_files.append(basename % frame_n)
@@ -148,7 +156,7 @@ def copy_with_progress(src_path, dst_path, callback, frame_ranges=None):
                 #     break
                 char = proc.stdout.read(1)
                 output += char
-            # print output
+            #print output,
             fields = output.split()
             if len(fields) >= 4 and fields[1].endswith('%'):
                 progress_percent = float(fields[1].strip('%'))
