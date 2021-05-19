@@ -427,6 +427,7 @@ class PyApp(gtk.Window):
                             else:
                                 dependency._size = get_size(sourcePath)
                                 # print 'Found', sourcePath, human.size(dependency.size)
+                            if dependency._size:
                                 break
                 if dependency._size > 0:
                     self.sources[dependency.path] = sourcePath;
