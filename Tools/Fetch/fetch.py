@@ -426,6 +426,12 @@ class PyApp(gtk.Window):
                                     dependency._size += frame_range.size
                             else:
                                 dependency._size = get_size(sourcePath)
+                                if dependency._size > 4*1000*1000*1000 and dependency.path.endswith('.R3D'):
+                                    match = re.search(r"(\d{3})\.R3D$", dependency.path)
+                                    if match:
+                                        index = int(match.group(1))
+                                        nextPath = dependency.path.replace(match.group(1)+'.R3D', '%03d.R3D' % (index + 1))
+                                        self.add_dependency(Dependency(nextPath, dependency.type, dependency.start, dependency.end, dependency, dependency.level, dependency.x, dependency.duration))
                                 # print 'Found', sourcePath, human.size(dependency.size)
                             if dependency._size:
                                 break
@@ -544,9 +550,7 @@ class PyApp(gtk.Window):
         t.setDaemon(True)
         t.start()
         return t
-    def get_dependencies(self, stack):
-        for dependency in stack.iter_dependencies(progress_callback=self.stack_read_progress):
-            #print dependency.name
+    def add_dependency(self, dependency):
             if not dependency.path in self.dependencies:
                 self.dependencies[dependency.path] = dependency = copy.copy(dependency)
                 if dependency.size == None:
@@ -565,6 +569,10 @@ class PyApp(gtk.Window):
                     if not stack in self.dependencies[dependency.path].parents:
                         self.dependencies[dependency.path].parents.append(stack)
                         gobject.idle_add(self.gui_dependency_add_parent, dependency.path, stack.path)
+    def get_dependencies(self, stack):
+        for dependency in stack.iter_dependencies(progress_callback=self.stack_read_progress):
+            #print dependency.name
+            self.add_dependency(dependency)
         # self.status_set('%s in queue' % human.size(self.queue_size))
     def stack_read_progress(self, stack, progress):
         treestore = self.stacks_treestore

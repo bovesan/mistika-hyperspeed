@@ -9,6 +9,7 @@ import tempfile
 import copy
 import shutil
 import re
+import glob
 
 import hyperspeed.utils
 import hyperspeed.video
@@ -92,6 +93,10 @@ class Dependency(object):
                 self.text = text.Title(self.path)
                 for font in self.text.fonts:
                     self.dependencies.append(Dependency(font, 'font', parent=parent))
+            if name.endswith('.R3D'):
+                for chunkName in glob.glob(name.replace('_001.', '_*.')):
+                    if chunkName != self.path:
+                        self.dependencies.append(Dependency(chunkName, f_type, start, end, parent, level, x, duration))
     def __str__(self):
         return 'Dependency(%s)' % self.name
     def __repr__(self):
