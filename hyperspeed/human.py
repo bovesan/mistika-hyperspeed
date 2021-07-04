@@ -19,22 +19,25 @@ def reltime(d):
     elif diff.days == 1:
         return '1 day ago'
     elif diff.days > 1:
-        return '{} days ago'.format(diff.days)
+        return '%i days ago' % diff.days
     elif s <= 1:
         return 'just now'
     elif s < 60:
-        return '{} seconds ago'.format(s)
+        return '%i seconds ago' % s
     elif s < 120:
         return '1 minute ago'
     elif s < 3600:
-        return '{} minutes ago'.format(s/60)
+        return '%i minutes ago' % (s/60)
     elif s < 7200:
         return '1 hour ago'
     else:
-        return '{} hours ago'.format(s/3600)
+        return '%i hours ago' % (s/3600)
         
 def time(d):
     return '%s, %s' % (datetime.fromtimestamp(d).strftime("%H:%M"), reltime(d))
+
+def time_of_day(d):
+    return datetime.fromtimestamp(d).strftime("%H:%M:%S")
 
 def duration(s):
     parts = []

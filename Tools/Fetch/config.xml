@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<tool>
+<alias>Fetch</alias>
+<description>Tries to fetch a file from a number of sources.</description>
+<executable>fetch.py</executable>
+</tool>

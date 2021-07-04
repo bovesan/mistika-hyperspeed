@@ -3,22 +3,57 @@
 import os
 import re
 import subprocess
+import platform as platform_module
+import tempfile
 
 from xml.etree import ElementTree
 from distutils.version import LooseVersion
 
-def get_mistikarc_path(env_folder):
+def launched_by_mistika():
+    if os.getppid() == 1:
+        return True
+    else:
+        return False
+    process_names = ['mistika', 'mistika.bin']
+    parent = subprocess.Popen(['ps', '-o', 'cmd=', str(os.getppid())], stdout=subprocess.PIPE).communicate()[0].strip()
+    print 'Parent:', parent
+    if parent in process_names:
+        return True
+    else:
+        return False
+
+def get_mistika_bin_pids(parent_pid):
+    cmd = ['pstree', '-p', str(parent_pid)]
+    pstree = subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0]
+    try:
+        return [int(pid) for pid in re.findall('mistika.bin\((\d+)\)', pstree)]
+    except AttributeError:
+        return []
+
+def get_rnd_path(rnd_name):
+    for root, dirs, files in os.walk(os.path.join(projects_folder, project, 'DATA/RENDER')):
+        for basename in files:
+            if basename.startswith(rnd_name) and basename.endswith('.rnd'):
+                return os.path.join(root, basename)
+            
+def get_mistikarc_path(env_folder, multiple=False):
     mistikarc_paths = [
-    env_folder + '/.mistikarc',
-    env_folder + '/mistikarc.cfg',
-    env_folder + '/.mambarc',
+        env_folder + '/mistikarc.cfg',
+        env_folder + '/mistikarc.cfg',
+        env_folder + '/.mistikarc',
+        env_folder + '/.mambarc',
+        env_folder + '/../MAMBA-ENV.config/.mambarc',
     ]
-    while len(mistikarc_paths) > 0 and not os.path.exists(mistikarc_paths[0]):
-        del mistikarc_paths[0]
+    for path in mistikarc_paths[:]:
+        if not os.path.exists(path):
+            mistikarc_paths.remove(path)
     if len(mistikarc_paths) == 0:
         print 'Error: mistikarc config not found in %s' % env_folder
         return False
-    return mistikarc_paths[0]
+    if multiple:
+        return mistikarc_paths
+    else:
+        return mistikarc_paths[0]
 
 def get_mistika_projects_folder(env_folder):
     product_work = '%s_WORK' % product.upper()
@@ -34,20 +69,58 @@ def reload():
     global glsl_folder
     global lut_folder
     global fonts
-    env_folder = os.path.realpath(os.path.expanduser("~/MISTIKA-ENV"))
-    if os.path.exists(env_folder):
-        product = 'Mistika'
-    else:
-        env_folder = os.path.realpath(os.path.expanduser("~/MAMBA-ENV"))
-        if os.path.exists(env_folder):
-            product = 'Mamba'
-        else:
-            product = False
-    shared_folder = os.path.join(env_folder, 'shared')
+    global fonts_folder
+    global platform
+    global executable
+    product = False
+    env_folder = None
+    envFolderCandidates = [
+        os.path.realpath(os.path.expanduser("~/SGO AppData/Mistika")),
+        os.path.realpath(os.path.expanduser("~/MISTIKA-ENV")),
+        os.path.realpath(os.path.expanduser("~/MAMBA-ENV")),
+    ]
+    for envFolderCandidate in envFolderCandidates:
+        if os.path.exists(envFolderCandidate):
+            env_folder = envFolderCandidate
+            product = 'Mistika'
+            executable = subprocess.Popen(["which", 'mistika'], stdout=subprocess.PIPE).communicate()[0].splitlines()[0]
+            break
+    app_folder = env_folder
+    appFolderCandidates = [
+        os.path.realpath(os.path.expanduser("~/SGO Apps/Mistika Ultima")),
+    ]
+    for appFolderCandidate in appFolderCandidates:
+        if os.path.exists(appFolderCandidate):
+            app_folder = appFolderCandidate
+    if 'linux' in platform_module.system().lower():
+        platform = 'linux'
+        fonts_folder = '/usr/share/fonts/mistika/'
+    elif 'darwin' in platform_module.system().lower():
+        platform = 'mac'
+        fonts_folder = os.path.expanduser('~/Library/Fonts/')
+    elif 'windows' in platform_module.system().lower():
+        platform = 'windows'
+        fonts_folder = 'C:/Windows/Fonts/'
+    sharedFolderCandidates = [
+        os.path.realpath(os.path.expanduser("~/MISTIKA-SHARED")),
+    ]
+    if env_folder:
+      sharedFolderCandidates.append(os.path.join(env_folder, 'shared'))
+      shared_folder = os.path.join(env_folder, 'shared')
+    for sharedFolderCandidate in sharedFolderCandidates:
+        if os.path.exists(sharedFolderCandidate):
+            shared_folder = sharedFolderCandidate
+    version = None
     try:
-        version = LooseVersion('.'.join(re.findall(r'\d+',subprocess.Popen([product.lower(), '-V'], stdout=subprocess.PIPE).communicate()[0].splitlines()[0])))
-    except OSError:
-        version = LooseVersion('.'.join(re.findall(r'\d+',subprocess.Popen(['/Applications/SGOMambaFX.app/Contents/MacOS/mamba', '-V'], stdout=subprocess.PIPE).communicate()[0].splitlines()[0])))
+        cmd = [executable, '-V']
+        versionLines = subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0]
+        versionStrings = re.findall(r'Version(?:.*?)((?:\d|\.)+)', versionLines)
+        if len(versionStrings):
+            version = LooseVersion(versionStrings[0])
+    except OSError as e:
+        print e
+        pass
+    print executable, 'version', version
     try:
         version.vstring
     except AttributeError:
@@ -79,13 +152,23 @@ def reload():
         settings[key] = value
     projects_folder = get_mistika_projects_folder(env_folder)
     tools_path = os.path.join(shared_folder, 'config/LinuxMistikaTools')
-    afterscripts_path = os.path.join(env_folder, 'etc/setup/RenderEndScript.cfg')
+    afterscripts_path = None
+    afterscripts_path_candidates = [
+        os.path.join(env_folder, 'config/RenderEndScript.cfg'),
+        os.path.join(env_folder, 'etc/setup/RenderEndScript.cfg'),
+    ]
+    for afterscripts_path_candidate in afterscripts_path_candidates:
+        if os.path.exists(afterscripts_path_candidate):
+            afterscripts_path = afterscripts_path_candidate
+        break
+    if not afterscripts_path:
+        afterscripts_path = afterscripts_path_candidates[0]
     if not os.path.isfile(afterscripts_path):
         try:
             open(afterscripts_path, 'a').write('None')
         except IOError:
             print 'Afterscripts config not available: %s' % afterscripts_path
-    scripts_folder = os.path.join(env_folder, 'bin/scripts/')
+    scripts_folder = os.path.join(app_folder, 'bin/scripts/')
     if not os.path.exists(scripts_folder):
         bin_folder_mac = '/Applications/SGOMambaFX.app/Contents/MacOS/'
         scripts_folder_mac = '/Applications/SGOMambaFX.app/Contents/MacOS/scripts/'
@@ -100,6 +183,27 @@ def reload():
             font_path, font_name = line.strip().strip('"').split('"   "')
             fonts[font_name] = font_path
     except IOError:
-        print 'Could not read fonts config: %s' % fonts_config_path
+        pass
+        #print 'Could not read fonts config: %s' % fonts_config_path
 
 reload()
+
+def set_settings(new_settings):
+    print repr(new_settings)
+    global settings
+    for mistika_settings_file in get_mistikarc_path(env_folder, multiple=True):
+        with tempfile.NamedTemporaryFile(delete=False) as temp_handle:
+            for line in open(mistika_settings_file):
+                key = line.split()[0]
+                if key in new_settings:
+                    line = key.ljust(31)+str(new_settings[key])+'\n'
+                    del new_settings[key]
+                temp_handle.write(line)
+                # print line,
+            for key in new_settings:
+                line = key.ljust(31)+str(new_settings[key])+'\n'
+                temp_handle.write(line)
+            temp_handle.flush()
+        os.rename(mistika_settings_file, mistika_settings_file+'.bak')
+        os.rename(temp_handle.name, mistika_settings_file)
+        settings.update(new_settings)

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+PROJECT=$1
+cd $DIR
+export DISPLAY=:0.0
+./housekeeping.py $PROJECT -auto -f /Volumes/MATERIAL_HF/MISTIKA_MEDIA/$PROJECT /Volumes/SLOW_HF/PROJECTS/$PROJECT/DATA/*.env
