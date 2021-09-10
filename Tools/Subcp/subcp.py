@@ -9,17 +9,24 @@ import time
 usage = '''
 Copies a subset of files or directories from src to destination using standard cp, because rsync can be slow on high performance storage.
 
-Usage: %s folder1 [folder2, folder3 ...] [--maxminutes=0] 'src/*' dst
+Usage: %s folder1 [folder2, folder3 ...] [--maxminutes=0] [--dry-run] 'src/*' dst
 
 Remember quotes to avoid shell expansion on src wildcard.
 ''' % os.path.basename(sys.argv[0])
 
 maxMinutes = 0
+dryRun = False
 paths = []
 for arg in sys.argv[1:]:
 	if arg.startswith('-'):
 		if arg.startswith('--maxminutes='):
 			maxMinutes = float(arg.split('=')[1])
+		elif arg == '--dry-run':
+			dryRun = True
+		else:
+			print('Invalid argument: %s' % arg)
+			print(usage)
+			sys.exit(4)
 		continue
 	paths.append(arg)
 
@@ -46,7 +53,7 @@ for srcGlob in glob.glob(src):
 			print('Reached time limit (%i minutes)' % maxMinutes)
 			sys.exit(3)
 		srcPath = os.path.join(srcPreGlob, relPath, folder)
-		dstPath = os.path.join(dst, relPath, folder)
+		dstPath = os.path.join(dst, relPath)
 		if not os.path.exists(srcPath):
 			continue
 		try:
@@ -54,8 +61,9 @@ for srcGlob in glob.glob(src):
 		except:
 			pass
 		cmd = ['cp', '--verbose', '--update', '--recursive', '--archive', srcPath, dstPath]
-		# print(cmd)
-		subprocess.call(cmd)
+		print(cmd)
+		if not dryRun:
+			subprocess.call(cmd)
 
 
 # cd /Volumes/mediaraid-2/Projects && cp --verbose --update --recursive --archive --parents */Media /Volumes/mediaraid/temp/
