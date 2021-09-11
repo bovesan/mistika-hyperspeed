@@ -101,10 +101,12 @@ for srcGlob in glob.glob(src):
         cmd = ['cp', '--verbose', '--update', '--recursive', '--archive', srcPath, dstPath]
         print(cmd)
         if not dryRun:
-            lines = subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0].splitlines()
+            output = subprocess.Popen(cmd, stdout=subprocess.PIPE).communicate()[0]
+            lines = output.splitlines()
             if len(lines) > 0:
                 projectsModified += 1
                 filesCopied += len(lines)
+                sys.stdout.buffer.write(output)
             try:
                 sizeAfter = int(subprocess.Popen(duCmd, stdout=subprocess.PIPE).communicate()[0].split()[0])
             except:
