@@ -54,11 +54,6 @@ def get_size(localOrRemote):
         sshProc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'))
         if sshProc.wait() == 0:
             result = sshProc.communicate()[0]
-            if result.startswith('access control disabled'):
-                result = result.splitlines()[1]
-            print result
-            #print result.split()
-            #print result.split()[4]
             return int(result.split()[4])
         else:
             return 0
