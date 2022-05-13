@@ -4,8 +4,8 @@
 font_folders = [
 	'/usr/share/fonts/',
 	'/Library/Fonts/',
-    '/Volumes/CENTRAL/Projects/*/Graphics/Fonts/'
-    '/Volumes/mediaraid/Projects/*/IMPORT/'
+    '/Volumes/CENTRAL/Projects/*/Graphics/Fonts/',
+    '/Volumes/mediaraid/Projects/*/IMPORT/',
 ]
 
 # from: http://two.pairlist.net/pipermail/reportlab-users/2003-October/002329.html
@@ -254,15 +254,16 @@ class TTFParser:
             'style': style,
         }
 
+cache = {}
+
 def parse(font_path):
-    if font_path in postscript_names:
-        name = postscript_names[font_path]
+    if font_path in cache:
+        info = cache[font_path]
     else:
         try:
             ttf = TTFParser(font_path)
             info = ttf.get_names()
         except:
-            print e
             print 'Could not parse %s. Trying the native way:' % font_path,
             output_path_temp = '/tmp/FontParseTemp.ls'
             cmd = [FontParseBin, '-f', font_path, output_path_temp]
@@ -299,17 +300,17 @@ if __name__ == "__main__":
             ttf = TTFParser(arg)
             print ttf.get_name_PostScript()
     else:
-        postscript_names = {}
-        for output_path in output_paths:
-            output_path = os.path.expanduser(output_path)
-            if os.path.isfile(output_path):
-                print 'Loading existing font list: ' + output_path
-                for line in open(output_path):
-                    try:
-                        strings = line.strip().strip('"').split('"   "')
-                        postscript_names[strings[0]] = strings[1]
-                    except:
-                        continue
+        pass
+        # for output_path in output_paths:
+        #     output_path = os.path.expanduser(output_path)
+        #     if os.path.isfile(output_path):
+        #         print 'Loading existing font list: ' + output_path
+        #         for line in open(output_path):
+        #             try:
+        #                 strings = line.strip().strip('"').split('"   "')
+        #                 cache[strings[0]] = strings[1]
+        #             except:
+        #                 continue
         font_lines = {}
         font_config_lines = {}
         font_paths = []
