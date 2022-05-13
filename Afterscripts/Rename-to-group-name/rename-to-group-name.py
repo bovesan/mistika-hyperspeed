@@ -13,6 +13,10 @@ try:
 except ImportError:
     sys.exit()
 
+process = subprocess.Popen(['xmessage', 'Delaying afterscript 10 seconds'])
+time.sleep(10)
+process.kill()
+
 rnd_path = hyperspeed.mistika.get_rnd_path(sys.argv[2])
 render = hyperspeed.stack.Render(rnd_path)
 render.archive('renamed')
