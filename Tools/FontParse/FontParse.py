@@ -4,7 +4,8 @@
 font_folders = [
 	'/usr/share/fonts/',
 	'/Library/Fonts/',
-	'/Volumes/CENTRAL/Projects/*/Graphics/Fonts/'
+    '/Volumes/CENTRAL/Projects/*/Graphics/Fonts/'
+    '/Volumes/mediaraid/Projects/*/IMPORT/'
 ]
 
 # from: http://two.pairlist.net/pipermail/reportlab-users/2003-October/002329.html
@@ -69,7 +70,8 @@ from glob import glob
 output_paths = [
 '~/MAMBA-ENV/extern/.fontParseOut',
 '~/MISTIKA-ENV/extern/.fontParseOut',
-'/home/mistika/SGO AppData/localshared/extern/.fontParseOut'
+'/home/mistika/SGO AppData/localshared/extern/.fontParseOut',
+'/home/mistika/SGO AppData/localshared/extern/fonts.cfg',
 ]
 FontParseBins = [
 	'/home/mistika/MISTIKA-ENV/bin/FontParse',
@@ -220,7 +222,10 @@ class TTFParser:
                 print "", ttf_tables[record['tag']],
             print
 
-    def get_name_PostScript(self):
+    def get_names(self):
+        postScriptName = ''
+        family = ''
+        style = ''
         start = self.seek_table("name")
         nameFormat = self.read_ushort()
         numTables = self.read_ushort()
@@ -234,10 +239,58 @@ class TTFParser:
             offset = self.read_ushort()
             pos = self.tell()
             self.seek(start + nameStringOffset + offset)
-            name = self.read_variable(length)
+            name = sanitize(self.read_variable(length))
+            # print nameID, name
             self.seek(pos)
+            if nameID == 1:
+                family = name
+            if nameID == 2:
+                style = name
             if nameID == 6:
-                return name
+                postScriptName = name
+        return {
+            'name': postScriptName,
+            'family': family,
+            'style': style,
+        }
+
+def parse(font_path):
+    if font_path in postscript_names:
+        name = postscript_names[font_path]
+    else:
+        try:
+            ttf = TTFParser(font_path)
+            info = ttf.get_names()
+        except:
+            print e
+            print 'Could not parse %s. Trying the native way:' % font_path,
+            output_path_temp = '/tmp/FontParseTemp.ls'
+            cmd = [FontParseBin, '-f', font_path, output_path_temp]
+            try:
+                if os.path.isfile(output_path_temp):
+                    os.remove(output_path_temp)
+                print ' '.join(cmd)
+                subprocess.call(cmd)
+                name = open(output_path_temp).readline().strip().strip('"').split('"   "')[1]
+                [family, style] = name.rsplit('-', 1)
+                info = {
+                    "name": name,
+                    "family": family,
+                    "style": style,
+                }
+            except:
+                print 'Could not parse %s' % font_path
+                return
+            
+    if info['name'] == '':
+        name = os.path.basename(font_path)
+    return info
+
+def test():
+    info = parse(os.path.join(os.path.dirname(__file__), 'Samples/27 Sans-Regular.otf'))
+    assert info['name'] == '27Sans'
+    assert info['family'] == '27 Sans'
+    assert info['style'] == 'Regular'
 
 if __name__ == "__main__":
     import sys, subprocess
@@ -258,7 +311,9 @@ if __name__ == "__main__":
                     except:
                         continue
         font_lines = {}
+        font_config_lines = {}
         font_paths = []
+        test()
         for font_folder in reversed(font_folders):
             print 'Searching for fonts in: ' + font_folder
             for font_folder_glob in glob(os.path.expanduser(font_folder)):
@@ -268,42 +323,30 @@ if __name__ == "__main__":
                             continue
                         if basename.lower().endswith('.otf') or basename.lower().endswith('.ttf'):
                             font_path = os.path.join(root, basename)
-                            if font_path in postscript_names:
-                                name = postscript_names[font_path]
-                            else:
-                                try:
-                                    ttf = TTFParser(font_path)
-                                    name = sanitize(ttf.get_name_PostScript())
-                                    #if not is_ascii(name):
-                                    #print name
-                                except:
-                                    print 'Could not parse %s. Trying the native way:' % font_path,
-                                    output_path_temp = '/tmp/FontParseTemp.ls'
-                                    cmd = [FontParseBin, '-f', font_path, output_path_temp]
-                                    try:
-                                        if os.path.isfile(output_path_temp):
-                                            os.remove(output_path_temp)
-                                        print ' '.join(cmd)
-                                        subprocess.call(cmd)
-                                        name = open(output_path_temp).readline().strip().strip('"').split('"   "')[1]
-                                    except:
-                                        print 'Could not parse %s' % font_path
-                                        continue
-                                    
-                            if name == '':
-                                name = basename
+                            font_info = parse(font_path)
+                            if not font_info:
+                                continue
+                            name = font_info['name']
                             font_lines[name] = '"%s"   "%s"' %(font_path, name)
                             print font_lines[name]
+                            font_config_lines[name] = 'p#%s f#%s [%s]' %(font_path, font_info['family'], font_info['style'])
+                            print font_config_lines[name]
         output_string = ''
         for name in sorted(font_lines):
             output_string += font_lines[name] + '\n'
+        output_string_cfg = ''
+        for name in sorted(font_config_lines):
+            output_string_cfg += font_config_lines[name] + '\n'
         for output_path in output_paths:
             output_path = os.path.expanduser(output_path)
             if os.path.isfile(output_path):
                 print '\nUpdating %s ...' % output_path,
                 try:
                     os.remove(output_path)
-                    open(output_path, 'w').write(output_string)
+                    if output_path.endswith('.cfg'):
+                        open(output_path, 'w').write(output_string_cfg)
+                    else:
+                        open(output_path, 'w').write(output_string)
                     success = True
                 except:
                     success = False
