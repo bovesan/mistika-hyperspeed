@@ -55,11 +55,16 @@ def get_mistikarc_path(env_folder, multiple=False):
     else:
         return mistikarc_paths[0]
 
-def get_mistika_projects_folder(env_folder):
+def get_mistika_projects_folder(env_folder, shared_folder, config_name):
+    config_path = os.path.join(shared_folder, 'presets', '.mistikarc.'+config_name)
     product_work = '%s_WORK' % product.upper()
-    for line in open(os.path.join(env_folder, product_work)):
+    for line in open(config_path):
         if line.startswith(product_work):
             return line.strip().split(' ', 1)[1].strip()
+    #legacy
+    for line in open(os.path.join(env_folder, product_work)):
+        if line.startswith(product_work):                                                                                                                                             
+             return line.strip().split(' ', 1)[1].strip()
 
 def reload():
     global env_folder, tools_path, shared_folder, version, project, user, settings, product, projects_folder
@@ -150,7 +155,7 @@ def reload():
         elif value.lower() == 'false':
             value = False
         settings[key] = value
-    projects_folder = get_mistika_projects_folder(env_folder)
+    projects_folder = get_mistika_projects_folder(env_folder, shared_folder, settings['STANDARD'])
     tools_path = os.path.join(shared_folder, 'config/LinuxMistikaTools')
     afterscripts_path = None
     afterscripts_path_candidates = [
