@@ -8,6 +8,7 @@ import math
 import subprocess
 import time
 import hyperspeed.afterscript
+import hyperspeed.mistika
 
 threading = hyperspeed.afterscript.threading
 gobject = hyperspeed.afterscript.gobject
@@ -61,7 +62,10 @@ class TagReader(object):
             master = True
             nobug = True
             noslate = True
-            afterscript.add_output_path('/Volumes/SAN3/Masters/[project]/[project]_[rendername]/[project]_[rendername].master.mp4', subtitles=True)
+            afterscript.add_output_path('/Volumes/Central/CentralProjects/[project]/Output/From_Online/Deliverables/[project]_[rendername].master.mp4', subtitles=True)
+        else:
+            afterscript.add_output_path('/Volumes/Central/CentralProjects/[project]/Output/From_Online/Previews/[project]_[date]-[time]_[rendername].mp4')
+
         if 'mov' in render.tags:
             ext = '.mov'
             upload = False
@@ -110,7 +114,7 @@ class TagReader(object):
 # Path relative to primary output folder of render:P
 # default_output = '[project]_[render_name].[codec].mov'
 # Absolute path:
-default_output = '/Volumes/Encoded/Arkivert/[project]/HFD/[project]_[date]-[time]_[rendername].mp4'
+default_output = os.path.join(hyperspeed.mistika.projects_folder, hyperspeed.mistika.project, 'OUTPUT/HFD/[project]_[date]-[time]_[rendername].mp4')
 
 class RestUploader(object):
     ready = False

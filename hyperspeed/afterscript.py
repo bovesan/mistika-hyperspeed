@@ -613,7 +613,7 @@ class Destination(object):
             except OSError as e:
                 gobject.idle_add(self.progressbar.set_text, e)
                 return
-        cmd = ['rsync', '--progress', '-ua', self.afterscript.output_path, self.path]
+        cmd = ['rsync', '--progress', '-uaA', '--no-perms', self.afterscript.output_path, self.path]
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         if self.subtitles:
             gobject.idle_add(self.progressbar.set_text, 'Exporting subtitles')
@@ -624,6 +624,8 @@ class Destination(object):
                 open(vttPath, 'w').write(self.afterscript.render.subtitles.vtt)
         gobject.idle_add(self.progressbar.set_text, self.path)
         if hyperspeed.utils.rsyncMonitor(proc, self.setProgress):
+            gobject.idle_add(self.reveal_button.set_property, 'visible', True)
+        elif os.path.exists(self.path) and os.path.getsize(self.path) == os.path.getsize(self.afterscript.output_path):
             gobject.idle_add(self.reveal_button.set_property, 'visible', True)
         else:
             gobject.idle_add(self.progressbar.set_text, 'Copy failed to '+self.path)
