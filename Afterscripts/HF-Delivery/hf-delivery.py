@@ -25,12 +25,12 @@ class TagReader(object):
         inpixels = render.resX * render.resY
 
         # Default values
-        pixels = 1280*720
+        pixels = 1920*1080
         upload = True
         master = False
         crf = '20'
         minrate = '0'
-        maxrate = '4M'
+        maxrate = '2M'
         bufsize = '15M'
         ext = '.mp4'
         aac = True
