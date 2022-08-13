@@ -10,6 +10,29 @@ try:
 except ImportError:
     gtk = False
 
+os_symlink = getattr(os, "symlink", None)
+if callable(os_symlink):
+    pass
+else:
+    print "Patching windows symlink support"
+    def symlink_ms(source, link_name):
+        import ctypes
+        import ctypes.wintypes as wintypes
+        if os.path.exists(link_name):
+            df = ctypes.windll.kernel32.DeleteFileW
+            if df(link_name) == 0:
+                print "Could not remove existing file:", link_name
+                print "You should remove the file manually through Explorer or an elevated cmd process."
+                raise ctypes.WinError()
+        csl = ctypes.windll.kernel32.CreateSymbolicLinkW
+        csl.argtypes = (ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint32)
+        csl.restype = ctypes.c_ubyte
+        flags = 1 if os.path.isdir(source) else 0
+        flags += 2 # For unprivileged mode. Requires Developer Mode to be activated.
+        if csl(link_name, source, flags) == 0:
+            raise ctypes.WinError()
+    os.symlink = symlink_ms
+
 def msg(message, error=False):
     try:
         if error:
@@ -88,6 +111,9 @@ if install:
         msg('Hyperspeed module was installed successfully, but gtk is missing.\n\
             Graphical user interfaces will not be available.')
 
+import hyperspeed
+open(hyperspeed.folderConfigFile, 'w').write(os.path.dirname(os.path.realpath(__file__)))
+
 import hyperspeed.tools
 
 hyperspeed_dashboard_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'Tools/Hyperspeed-dashboard/hyperspeed-dashboard.py')
@@ -105,4 +131,4 @@ if hyperspeed.mistika.product == 'Mistika':
             file_path=hyperspeed_dashboard_path
         )
 
-subprocess.Popen([hyperspeed_dashboard_path])
+subprocess.Popen([hyperspeed_dashboard_path], shell=True)

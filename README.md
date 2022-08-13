@@ -11,6 +11,11 @@ They are divided into the following categories:
   * [hyperspeed.stack](#hyperspeedstack)
 
 To get started, run **./install.py**
+
+## Windows support
+This project requires Python 2 and PyGTK 2. PyGTK 2 on Windows is only supported by the 32bit interpreter, which means you should use these two installers:
+* https://www.python.org/ftp/python/2.7.18/python-2.7.18.msi
+* https://download.gnome.org/binaries/win32/pygtk/2.24/pygtk-all-in-one-2.24.2.win32-py2.7.msi
 ## Tools
 ![Screenshot](http://bovesan.com/wp-content/uploads/2017/09/Screen-Shot-2017-09-10-at-20.02.54.png)
 Scripts or programs which can be run manually or at specific intervals to perform any task. You can also show these in the Extras panel in Mistika.

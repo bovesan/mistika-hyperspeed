@@ -2,7 +2,11 @@
 
 import os
 
-folder = os.path.realpath(os.path.join(os.path.dirname(__file__), '..'))
+folderConfigFile = os.path.expanduser('~/.mistika-hyperspeed/folder')
+if os.path.exists(folderConfigFile):
+	folder = open(folderConfigFile).read()
+else:
+	folder = os.path.realpath(os.path.join(os.path.dirname(__file__), '..'))
 config_folder = os.path.expanduser('~/.mistika-hyperspeed/')
 if not os.path.isdir(config_folder):
 	os.makedirs(config_folder)

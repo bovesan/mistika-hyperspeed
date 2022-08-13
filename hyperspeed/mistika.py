@@ -90,6 +90,9 @@ def reload():
             product = 'Mistika'
             executable = subprocess.Popen(["which", 'mistika'], stdout=subprocess.PIPE).communicate()[0].splitlines()[0]
             break
+    if not product:
+        print "Mistika not found"
+        return
     app_folder = env_folder
     appFolderCandidates = [
         os.path.realpath(os.path.expanduser("~/SGO Apps/Mistika Ultima")),

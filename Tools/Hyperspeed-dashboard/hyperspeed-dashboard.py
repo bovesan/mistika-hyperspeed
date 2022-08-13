@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 
 import datetime
@@ -65,17 +65,21 @@ try:
         sys.exit(0)
 except socket.error as e:
     print e
+except AttributeError as e:
+    print e
 
-s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 try:
     os.remove(hyperspeed.sockets.path)
 except OSError as e:
     print e
 try:
     print 'Binding socket'
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     s.bind(hyperspeed.sockets.path)
     print 'Socket bound'
 except socket.error as e:
+    print e
+except AttributeError as e:
     print e
 
 def config_value_decode(value, parent_folder = False):
@@ -175,12 +179,15 @@ class PyApp(gtk.Window):
         if 'darwin' in platform.system().lower():
             self.set_resizable(False) # Because resizing crashes the app on Mac
         self.connect("key-press-event",self.on_key_press_event)
+        src = 'res/img/hyperspeed_1024px.png'
+        src = os.path.abspath(src)
+        print src
         self.set_icon_list(
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/hyperspeed_1024px.png', 16, 16),
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/hyperspeed_1024px.png', 32, 32),
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/hyperspeed_1024px.png', 64, 64),
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/hyperspeed_1024px.png', 128, 128),
-            gtk.gdk.pixbuf_new_from_file_at_size('res/img/hyperspeed_1024px.png', 256, 256),
+            gtk.gdk.pixbuf_new_from_file_at_size(src, 16, 16),
+            gtk.gdk.pixbuf_new_from_file_at_size(src, 32, 32),
+            gtk.gdk.pixbuf_new_from_file_at_size(src, 64, 64),
+            gtk.gdk.pixbuf_new_from_file_at_size(src, 128, 128),
+            gtk.gdk.pixbuf_new_from_file_at_size(src, 256, 256),
         )
         gtkrc = '''
         style "theme-fixes" {
