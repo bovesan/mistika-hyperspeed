@@ -1,21 +1,20 @@
 # mistika-hyperspeed
 This project provides a framework for extending or tweaking a SGO Mistika or Mamba system, and also includes several such extensions. The screenshots might not show all current extensions.
-They are divided into the following categories:
-* [Tools](#tools)
-* [Afterscripts](#afterscripts)
-* [Stacks](#stacks)
-* [Configs](#configs)
-* [Web links](#web-links)
-* [Modules](#modules)
-  * [hyperspeed.mistika](#hyperspeedmistika)
-  * [hyperspeed.stack](#hyperspeedstack)
 
-To get started, run **./install.py**
+## Gettings started
+### Extra steps on Windows
+#### Enable Windows Developer Mode
+This is required for symlink support without running as administrator.
+#### Python 2
+PyGTK requires the 32bit version:
+https://www.python.org/ftp/python/2.7.18/python-2.7.18.msi
+#### PyGTK 2
+https://download.gnome.org/binaries/win32/pygtk/2.24/pygtk-all-in-one-2.24.2.win32-py2.7.msi
+### Clone the git repository
+    git clone git@github.com:bovesan/mistika-hyperspeed.git
+### Run the installer
+    ./install.py
 
-## Windows support
-This project requires Python 2 and PyGTK 2. PyGTK 2 on Windows is only supported by the 32bit interpreter, which means you should use these two installers:
-* https://www.python.org/ftp/python/2.7.18/python-2.7.18.msi
-* https://download.gnome.org/binaries/win32/pygtk/2.24/pygtk-all-in-one-2.24.2.win32-py2.7.msi
 ## Tools
 ![Screenshot](http://bovesan.com/wp-content/uploads/2017/09/Screen-Shot-2017-09-10-at-20.02.54.png)
 Scripts or programs which can be run manually or at specific intervals to perform any task. You can also show these in the Extras panel in Mistika.
