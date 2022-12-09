@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<tool>
+<alias>Reveal central project</alias>
+<description>Reveals the active Mistika project in central storage.</description>
+<executable>reveal-central.py</executable>
+</tool>
