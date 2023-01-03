@@ -115,7 +115,7 @@ class PyApp(gtk.Window):
         except:
             pass
         hbox.pack_start(spinner, False, False, 5)
-        button = self.button_copy = gtk.Button('Permanently delete selected, disabled files')
+        button = self.button_copy = gtk.Button('Destroy selected, disabled files')
         button.connect("clicked", self.gui_on_selected_excess, 'delete')
         hbox.pack_end(button, False, False, 5)
         button = self.button_copy = gtk.Button('Re-enable selected files')
@@ -188,7 +188,7 @@ class PyApp(gtk.Window):
             excess = self.excess[excess]
         if excess.status != 'Disabled':
             return
-        os.remove(excess.path)
+        open(excess.path, 'w').close()
         self.remove_file(excess.path)
         
     
@@ -431,6 +431,8 @@ class PyApp(gtk.Window):
         return t
     def add_file(self, file_path):
         #print file_path
+        if not os.path.getsize(file_path):
+            return
         self.files.append(file_path)
         if not file_path in self.dependencies:
             self.add_excess(file_path)
